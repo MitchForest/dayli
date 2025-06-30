@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dayli</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      iframe {
+        width: 100vw;
+        height: 100vh;
+        border: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- This will be replaced by Tauri in production -->
+    <iframe id="app" src="http://localhost:3000"></iframe>
+    <script>
+      // In production, you would update this to your Vercel URL
+      // For example: document.getElementById('app').src = 'https://dayli.vercel.app';
+      
+      // Optional: Add error handling
+      window.addEventListener('DOMContentLoaded', () => {
+        const iframe = document.getElementById('app');
+        iframe.addEventListener('error', () => {
+          document.body.innerHTML = '<div style="padding: 20px; font-family: system-ui;">Unable to connect to Dayli. Please ensure the web app is running.</div>';
+        });
+      });
+    </script>
+  </body>
+</html> 

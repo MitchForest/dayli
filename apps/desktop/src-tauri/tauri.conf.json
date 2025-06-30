@@ -4,9 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.dayli.desktop",
   "build": {
-    "frontendDist": "../../web/.next/out",
-    "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "cd ../web && bun run build"
+    "frontendDist": "../src",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
   },
   "app": {
     "windows": [
@@ -20,7 +21,8 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "dangerousDisableAssetCspModification": true
     }
   },
   "plugins": {

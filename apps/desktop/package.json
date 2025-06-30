@@ -1,11 +1,13 @@
 {
-  "name": "dayli-desktop",
+  "name": "@repo/desktop",
   "version": "0.1.0",
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
+    "dev": "node src/start-server.js & bun tauri dev",
+    "build": "bun tauri build",
+    "preview": "bun tauri preview",
+    "build:tauri": "tauri build",
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
