@@ -1,10 +1,11 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@repo/database/client';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
 import { getProfile } from '@repo/database/queries';
 import type { AuthContextType } from '../types';
 import type { User } from '@supabase/supabase-js';
+import type { Database } from '@repo/database/database.types';
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -13,61 +14,80 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const supabase = useMemo(() =>
+    createBrowserClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    ),
+  []);
+
   useEffect(() => {
-    // Check active sessions and sets the user
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
+    const fetchSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
       if (session?.user) {
-        // Fetch the user's profile
-        getProfile(session.user.id).then(setProfile)
+        const currentProfile = await getProfile(session.user.id, supabase);
+        if (currentProfile) {
+          setProfile(currentProfile);
+        }
       }
-      setLoading(false)
-    })
+      setLoading(false);
+    };
 
-    // Listen for changes on auth state (sign in, sign out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        // Fetch the user's profile when auth state changes
-        getProfile(session.user.id).then(setProfile)
-      } else {
-        setProfile(null)
+    fetchSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          const existingProfile = await getProfile(session.user.id, supabase);
+          if (existingProfile) {
+            setProfile(existingProfile);
+          } else {
+            const { data: newProfile, error } = await supabase
+              .from('profiles')
+              .insert({
+                id: session.user.id,
+                email: session.user.email,
+                full_name: session.user.user_metadata.full_name,
+                avatar_url: session.user.user_metadata.avatar_url,
+              })
+              .select()
+              .single();
+
+            if (error) {
+              console.error('Error creating profile:', error);
+            } else {
+              setProfile(newProfile);
+            }
+          }
+        } else {
+          setProfile(null);
+        }
       }
-    })
+    );
 
-    return () => subscription.unsubscribe()
-  }, [])
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   const signInWithGoogle = async () => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`
-        }
-      });
-      
-      if (error) {
-        console.error('Error signing in with Google:', error);
-      }
-    } catch (error) {
-      console.error('Error in signInWithGoogle:', error);
-    }
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        scopes: 'openid profile email',
+      },
+    });
   };
 
-
-
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) {
-      console.error('Error signing out:', error)
-    } else {
-      // Redirect to login page after successful sign out
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login'
-      }
+    await supabase.auth.signOut();
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
     }
-  }
+  };
 
   const value: AuthContextType = {
     user,

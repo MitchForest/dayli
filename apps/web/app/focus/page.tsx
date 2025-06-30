@@ -5,9 +5,10 @@ import { useChatStore } from '@/stores';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { DaySchedule } from '@/modules/schedule/components/DaySchedule';
 
 export default function FocusPage() {
-  const { schedule } = useMockSchedule('typical_day');
+  useMockSchedule('typical_day');
   const { isCollapsed, toggleCollapsed } = useChatStore();
 
   return (
@@ -21,22 +22,8 @@ export default function FocusPage() {
           <div className="max-w-4xl mx-auto">
             <h1 className="text-3xl font-semibold mb-8">Today&apos;s Focus</h1>
             
-            {/* Schedule will be rendered here in Sprint 01.01 */}
-            <div className="space-y-4">
-              <div className="bg-card rounded-lg p-6 border border-border">
-                <h2 className="text-lg font-medium mb-2">Schedule View</h2>
-                <p className="text-muted-foreground">
-                  Time blocks and tasks will be displayed here in the next sprint.
-                </p>
-                {schedule && (
-                  <div className="mt-4 text-sm text-muted-foreground">
-                    <p>📊 {schedule.dailyTasks.length} tasks for today</p>
-                    <p>⏱️ {schedule.stats.focusMinutes} minutes of focus time</p>
-                    <p>📧 {schedule.timeBlocks.filter(b => b.type === 'email' || b.type === 'quick-decisions').length} email blocks</p>
-                  </div>
-                )}
-              </div>
-            </div>
+            {/* Schedule View */}
+            <DaySchedule />
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { supabase } from '../client';
 import type { QueryResult, QueryListResult, QueryOptions } from '../types';
 import type { Database } from '../database.types';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -70,7 +71,10 @@ export async function getCurrentUserProfile(): Promise<QueryResult<UserProfile>>
 /**
  * Get a user profile by user ID
  */
-export async function getProfile(userId: string): Promise<Profile | null> {
+export async function getProfile(
+  userId: string,
+  supabase: SupabaseClient<Database>
+): Promise<Profile | null> {
   try {
     const { data, error } = await supabase
       .from('profiles')

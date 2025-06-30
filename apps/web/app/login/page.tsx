@@ -3,9 +3,14 @@
 import { useAuth } from '@repo/auth/hooks'
 import { Button } from '@/components/ui/button'
 import { Sparkles } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 
-export default function LoginPage() {
+function LoginContent() {
   const { loading, signInWithGoogle } = useAuth()
+  const searchParams = useSearchParams()
+  const error = searchParams.get('error')
+  const message = searchParams.get('message')
 
   if (loading) {
     return (
@@ -33,6 +38,14 @@ export default function LoginPage() {
             Sign in to continue
           </p>
         </div>
+
+        {/* Error message */}
+        {error === 'auth_callback_error' && (
+          <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+            <p className="font-medium">Authentication failed</p>
+            {message && <p className="mt-1 text-xs">{decodeURIComponent(message)}</p>}
+          </div>
+        )}
 
         {/* Sign in buttons */}
         <div className="space-y-3">
@@ -76,5 +89,20 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   )
 } 

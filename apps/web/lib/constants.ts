@@ -17,6 +17,15 @@ export const TIME_BLOCK_COLORS = {
   break: 'var(--secondary)',
 } as const;
 
+// Time block gradients for subtle depth
+export const TIME_BLOCK_GRADIENTS = {
+  focus: 'linear-gradient(to bottom, oklch(var(--primary) / 0.12), oklch(var(--primary) / 0.08))',
+  meeting: 'linear-gradient(to bottom, oklch(var(--muted) / 0.9), oklch(var(--muted) / 0.85))',
+  email: 'linear-gradient(to bottom, oklch(var(--accent) / 0.12), oklch(var(--accent) / 0.08))',
+  'quick-decisions': 'linear-gradient(to bottom, oklch(var(--warning) / 0.12), oklch(var(--warning) / 0.08))',
+  break: 'linear-gradient(to bottom, oklch(var(--secondary) / 0.9), oklch(var(--secondary) / 0.85))',
+} as const;
+
 // Time block background opacity
 export const TIME_BLOCK_OPACITY = '0.1';
 

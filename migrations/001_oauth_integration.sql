@@ -19,10 +19,17 @@ CREATE POLICY "Users can view their own profile"
 ON public.profiles FOR SELECT 
 USING (auth.uid() = id);
 
+CREATE POLICY "Users can insert their own profile"
+ON public.profiles FOR INSERT
+WITH CHECK (auth.uid() = id);
+
 CREATE POLICY "Users can update their own profile" 
 ON public.profiles FOR UPDATE 
 USING (auth.uid() = id);
 
+-- The trigger and function below are removed in favor of client-side profile creation
+-- to avoid transaction issues during OAuth sign-up.
+/*
 -- Create function to handle new user creation
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
@@ -31,8 +38,14 @@ BEGIN
   VALUES (
     NEW.id,
     NEW.email,
-    NEW.raw_user_meta_data->>'full_name',
-    NEW.raw_user_meta_data->>'avatar_url'
+    COALESCE(
+      NEW.raw_user_meta_data->>'full_name',
+      NEW.raw_app_meta_data->>'name'
+    ),
+    COALESCE(
+      NEW.raw_user_meta_data->>'avatar_url',
+      NEW.raw_app_meta_data->>'picture'
+    )
   );
   RETURN NEW;
 END;
@@ -43,6 +56,6 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
+*/
 -- Note: OAuth providers (Google, GitHub) need to be configured in the Supabase Dashboard
 -- under Authentication > Providers 
