@@ -1,0 +1,42 @@
+{
+  "name": "@repo/auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./hooks": "./src/hooks/index.ts",
+    "./utils": "./src/utils/index.ts",
+    "./providers": "./src/providers/index.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "check-types": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "*",
+    "@repo/typescript-config": "*",
+    "@types/react": "19.1.0",
+    "eslint": "^9.29.0",
+    "typescript": "5.8.2"
+  },
+  "dependencies": {
+    "@repo/database": "*",
+    "@repo/shared": "*",
+    "@supabase/supabase-js": "^2.50.0",
+    "react": "^19.1.0",
+    "zustand": "^5.0.2",
+    "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "@tauri-apps/api": "^2.1.1"
+  },
+  "peerDependenciesMeta": {
+    "@tauri-apps/api": {
+      "optional": true
+    }
+  }
+} 

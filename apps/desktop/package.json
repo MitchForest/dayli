@@ -1,0 +1,36 @@
+{
+  "name": "dayli-desktop",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/auth": "*",
+    "@repo/database": "*",
+    "@repo/shared": "*",
+    "@repo/ui": "*",
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-shell": "^2.0.2",
+    "@tauri-apps/plugin-store": "^2.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "*",
+    "@repo/typescript-config": "*",
+    "@tauri-apps/cli": "^2.6.2",
+    "@types/node": "^22.15.3",
+    "@types/react": "19.1.0",
+    "@types/react-dom": "19.1.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.29.0",
+    "typescript": "5.8.2",
+    "vite": "^6.0.3"
+  }
+} 

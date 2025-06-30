@@ -1,0 +1,29 @@
+{
+  "name": "@repo/database",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./client": "./src/client.ts",
+    "./types": "./src/types.ts",
+    "./queries": "./src/queries/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "check-types": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "generate-types": "supabase gen types typescript --local > src/database.types.ts"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "*",
+    "@repo/typescript-config": "*",
+    "supabase": "^1.223.1",
+    "typescript": "5.8.2"
+  },
+  "dependencies": {
+    "@repo/shared": "*",
+    "@supabase/supabase-js": "^2.46.1",
+    "zod": "^3.23.8"
+  }
+} 
