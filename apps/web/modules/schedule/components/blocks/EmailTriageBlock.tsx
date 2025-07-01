@@ -23,12 +23,12 @@ export function EmailTriageBlock({
   style
 }: EmailTriageBlockProps) {
   // Calculate height based on duration (4px per minute = 60px per 15min block)
-  const height = (duration / 15) * 20;
+  const height = Math.max(40, (duration / 15) * 30);
   
   return (
     <div
       className={cn(
-        "absolute left-0 right-0 rounded-md border border-green-500/20",
+        "rounded-md border border-green-500/20",
         "bg-gradient-to-br from-green-100 to-green-200",
         "hover:from-green-200 hover:to-green-300",
         "transition-all duration-200 cursor-pointer",

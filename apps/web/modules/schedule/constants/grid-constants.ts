@@ -3,8 +3,8 @@
  */
 
 // Grid dimensions
-export const HOUR_HEIGHT = 80; // 4 × 20px for 15-min cells
-export const CELL_HEIGHT = 20; // 15-minute cell
+export const HOUR_HEIGHT = 120; // 4 × 30px for 15-min cells (more readable)
+export const CELL_HEIGHT = 30; // 15-minute cell
 export const TIME_LABEL_WIDTH = 48; // Compact time labels
 export const GRID_PADDING = 16; // Padding around grid
 export const DAY_SPACING = 20; // Space between days

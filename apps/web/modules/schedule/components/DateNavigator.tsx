@@ -8,11 +8,38 @@ import { format } from 'date-fns';
 import { useSimpleScheduleStore } from '../store/simpleScheduleStore';
 import { Button } from '@/components/ui/button';
 
+// This is a hack - we need to access the animation controls from ScheduleView
+// In a production app, this would be done through context or props
+let scheduleViewAnimationCallbacks: {
+  animateNext?: () => Promise<void>;
+  animatePrev?: () => Promise<void>;
+} = {};
+
+export function setScheduleViewAnimationCallbacks(callbacks: typeof scheduleViewAnimationCallbacks) {
+  scheduleViewAnimationCallbacks = callbacks;
+}
+
 export const DateNavigator = memo(() => {
   const currentDate = useSimpleScheduleStore(state => state.currentDate);
-  const navigateToPreviousDay = useSimpleScheduleStore(state => state.navigateToPreviousDay);
-  const navigateToNextDay = useSimpleScheduleStore(state => state.navigateToNextDay);
+  const storeNavigatePrev = useSimpleScheduleStore(state => state.navigateToPreviousDay);
+  const storeNavigateNext = useSimpleScheduleStore(state => state.navigateToNextDay);
   const navigateToToday = useSimpleScheduleStore(state => state.navigateToToday);
+  
+  const navigateToPreviousDay = async () => {
+    if (scheduleViewAnimationCallbacks.animatePrev) {
+      await scheduleViewAnimationCallbacks.animatePrev();
+    } else {
+      storeNavigatePrev();
+    }
+  };
+  
+  const navigateToNextDay = async () => {
+    if (scheduleViewAnimationCallbacks.animateNext) {
+      await scheduleViewAnimationCallbacks.animateNext();
+    } else {
+      storeNavigateNext();
+    }
+  };
   
   const formattedDate = format(currentDate, 'EEEE, MMMM d');
   

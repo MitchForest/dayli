@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { Panel, PanelGroup, PanelResizeHandle, ImperativePanelHandle } from 'react-resizable-panels';
 import { ChatPanel } from '@/modules/chat/components/ChatPanel';
 import { SchedulePanel } from '@/modules/schedule/components/SchedulePanel';
 
 export default function FocusPage() {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const chatPanelRef = useRef<any>(null);
+  const chatPanelRef = useRef<ImperativePanelHandle>(null);
   
   const handleResize = useCallback((size: number) => {
     // When dragged below 10%, collapse to 1%

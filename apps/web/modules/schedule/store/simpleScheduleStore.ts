@@ -6,6 +6,7 @@ import type { UserPreferencesTyped } from '@/modules/settings/types/preferences.
 interface SimpleScheduleState {
   currentDate: Date;
   preferences: UserPreferencesTyped | null;
+  navigatedToTodayViaButton: boolean;
   
   // Actions
   setCurrentDate: (date: Date) => void;
@@ -13,12 +14,14 @@ interface SimpleScheduleState {
   navigateToToday: () => void;
   navigateToNextDay: () => void;
   navigateToPreviousDay: () => void;
+  clearTodayNavigation: () => void;
 }
 
 export const useSimpleScheduleStore = create<SimpleScheduleState>()(
   subscribeWithSelector((set, get) => ({
     currentDate: startOfToday(),
     preferences: null,
+    navigatedToTodayViaButton: false,
     
     setCurrentDate: (date) => set({ currentDate: date }),
     
@@ -26,7 +29,7 @@ export const useSimpleScheduleStore = create<SimpleScheduleState>()(
     
     navigateToToday: () => {
       const today = startOfToday();
-      set({ currentDate: today });
+      set({ currentDate: today, navigatedToTodayViaButton: true });
     },
     
     navigateToNextDay: () => set((state) => {
@@ -40,5 +43,7 @@ export const useSimpleScheduleStore = create<SimpleScheduleState>()(
       prevDay.setDate(prevDay.getDate() - 1);
       return { currentDate: prevDay };
     }),
+    
+    clearTodayNavigation: () => set({ navigatedToTodayViaButton: false }),
   }))
 ); 

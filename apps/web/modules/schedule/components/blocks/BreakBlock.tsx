@@ -23,7 +23,7 @@ export function BreakBlock({
   style
 }: BreakBlockProps) {
   // Calculate height based on duration (4px per minute = 60px per 15min block)
-  const height = (duration / 15) * 20;
+  const height = Math.max(40, (duration / 15) * 30);
   
   const getIcon = () => {
     switch(type) {
@@ -36,7 +36,7 @@ export function BreakBlock({
   return (
     <div
       className={cn(
-        "absolute left-0 right-0 rounded-md border border-yellow-500/20",
+        "rounded-md border border-yellow-500/20",
         "bg-gradient-to-br from-yellow-100 to-yellow-200",
         "hover:from-yellow-200 hover:to-yellow-300",
         "transition-all duration-200 cursor-pointer",

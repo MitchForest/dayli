@@ -1,29 +1,33 @@
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 import type { DailySchedule } from '../types/schedule.types';
 
 interface ScheduleStore {
-  schedules: Map<string, DailySchedule>;
+  schedules: Record<string, DailySchedule>;
   getSchedule: (date: string) => DailySchedule | undefined;
   setSchedule: (date: string, schedule: DailySchedule) => void;
   toggleTaskComplete: (date: string, taskId: string) => void;
 }
 
-export const useScheduleStore = create<ScheduleStore>((set, get) => {
-  const state = {
-    schedules: new Map<string, DailySchedule>(),
-  };
-
-  const actions = {
+export const useScheduleStore = create<ScheduleStore>()(
+  subscribeWithSelector((set, get) => ({
+    schedules: {},
+    
     getSchedule: (date: string) => {
-      return get().schedules.get(date);
+      return get().schedules[date];
     },
+    
     setSchedule: (date: string, schedule: DailySchedule) => {
       set(state => ({
-        schedules: new Map(state.schedules).set(date, schedule),
+        schedules: {
+          ...state.schedules,
+          [date]: schedule,
+        },
       }));
     },
+    
     toggleTaskComplete: (date: string, taskId: string) => {
-      const schedule = get().schedules.get(date);
+      const schedule = get().schedules[date];
       if (!schedule) return;
 
       const updatedSchedule = {
@@ -39,9 +43,12 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => {
         ),
       };
       
-      get().setSchedule(date, updatedSchedule);
+      set(state => ({
+        schedules: {
+          ...state.schedules,
+          [date]: updatedSchedule,
+        },
+      }));
     },
-  };
-
-  return { ...state, ...actions };
-}); 
+  }))
+); 

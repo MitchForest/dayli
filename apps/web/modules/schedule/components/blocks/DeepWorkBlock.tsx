@@ -42,13 +42,13 @@ export function DeepWorkBlock({
   style 
 }: DeepWorkBlockProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  // Calculate height based on duration (4px per minute = 60px per 15min block)
-  const height = Math.max(40, (duration / 15) * 20);
+  // Calculate height based on duration (30px per 15min block)
+  const height = Math.max(40, (duration / 15) * 30);
   
   return (
     <div
       className={cn(
-        "absolute left-0 right-0 rounded-md border border-blue-500/20",
+        "rounded-md border border-blue-500/20",
         "bg-gradient-to-br from-blue-100 to-blue-200",
         "hover:from-blue-200 hover:to-blue-300",
         "transition-all duration-200 cursor-pointer",

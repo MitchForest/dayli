@@ -73,6 +73,20 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   },
 });
 
+// Helper to create ISO timestamp that represents local time
+function createLocalTimestamp(date: Date, timeStr: string, timezone: string = 'America/New_York'): string {
+  const [hours = 0, minutes = 0] = timeStr.split(':').map(Number);
+  
+  // Create a date string in YYYY-MM-DD format
+  const dateStr = date.toISOString().split('T')[0];
+  
+  // Create the timestamp as if it were UTC (but it represents local time)
+  // This is a common pattern when you want to store "wall clock time"
+  const timestamp = `${dateStr}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00.000Z`;
+  
+  return timestamp;
+}
+
 async function handleMockData() {
   if (clearData) {
     console.log(`🗑️  Clearing mock data for user: ${userEmail}`);
@@ -264,80 +278,166 @@ async function handleMockData() {
         await supabase.from('time_blocks').insert(timeBlock);
       }
       
-      // Add some focus blocks and email triage blocks for all days
-        // Morning email triage
+      // Add AI-generated blocks for ALL days (not just today)
+      // Morning email triage
+      await supabase.from('time_blocks').insert({
+        user_id: userId,
+        daily_schedule_id: schedule.id,
+        start_time: createLocalTimestamp(scheduleDate, '08:00', userTimezone),
+        end_time: createLocalTimestamp(scheduleDate, '08:30', userTimezone),
+        type: 'email',
+        title: 'Morning Email Triage',
+        source: 'ai',
+        metadata: {},
+      });
+      
+      // Focus block (if no morning meetings)
+      const hasMorningMeeting = dayEvents.some(event => {
+        const hour = new Date(event.start.dateTime || '').getHours();
+        return hour >= 9 && hour < 12;
+      });
+      
+      if (!hasMorningMeeting) {
         await supabase.from('time_blocks').insert({
           user_id: userId,
           daily_schedule_id: schedule.id,
-          start_time: `${dateStr}T08:00:00Z`,
-          end_time: `${dateStr}T08:30:00Z`,
+          start_time: createLocalTimestamp(scheduleDate, '09:00', userTimezone),
+          end_time: createLocalTimestamp(scheduleDate, '11:00', userTimezone),
+          type: 'focus',
+          title: 'Deep Work Block',
+          source: 'ai',
+          metadata: {},
+        });
+      }
+      
+      // Lunch break
+      await supabase.from('time_blocks').insert({
+        user_id: userId,
+        daily_schedule_id: schedule.id,
+        start_time: createLocalTimestamp(scheduleDate, '12:00', userTimezone),
+        end_time: createLocalTimestamp(scheduleDate, '13:00', userTimezone),
+        type: 'break',
+        title: 'Lunch Break',
+        source: 'ai',
+        metadata: {},
+      });
+      
+      // Afternoon focus block (if no afternoon meetings)
+      const hasAfternoonMeeting = dayEvents.some(event => {
+        const hour = new Date(event.start.dateTime || '').getHours();
+        return hour >= 14 && hour < 17;
+      });
+      
+      if (!hasAfternoonMeeting) {
+        await supabase.from('time_blocks').insert({
+          user_id: userId,
+          daily_schedule_id: schedule.id,
+          start_time: createLocalTimestamp(scheduleDate, '14:00', userTimezone),
+          end_time: createLocalTimestamp(scheduleDate, '16:00', userTimezone),
+          type: 'focus',
+          title: 'Afternoon Focus',
+          source: 'ai',
+          metadata: {},
+        });
+      }
+      
+      // Evening email triage
+      await supabase.from('time_blocks').insert({
+        user_id: userId,
+        daily_schedule_id: schedule.id,
+        start_time: createLocalTimestamp(scheduleDate, '16:30', userTimezone),
+        end_time: createLocalTimestamp(scheduleDate, '17:00', userTimezone),
+        type: 'email',
+        title: 'Evening Email Review',
+        source: 'ai',
+        metadata: {},
+      });
+      
+      // Add some overlapping blocks for testing
+      if (dayOffset === 0) { // Today only
+        // Add an overlapping meeting
+        await supabase.from('time_blocks').insert({
+          user_id: userId,
+          daily_schedule_id: schedule.id,
+          start_time: createLocalTimestamp(scheduleDate, '10:30', userTimezone),
+          end_time: createLocalTimestamp(scheduleDate, '11:30', userTimezone),
+          type: 'meeting',
+          title: 'Team Standup',
+          source: 'calendar',
+          metadata: {},
+        });
+        
+        // Add another overlapping focus block
+        await supabase.from('time_blocks').insert({
+          user_id: userId,
+          daily_schedule_id: schedule.id,
+          start_time: createLocalTimestamp(scheduleDate, '14:30', userTimezone),
+          end_time: createLocalTimestamp(scheduleDate, '15:30', userTimezone),
+          type: 'focus',
+          title: 'Code Review',
+          source: 'ai',
+          metadata: {},
+        });
+        
+        // Add a complex overlap scenario with 4 concurrent blocks
+        await supabase.from('time_blocks').insert({
+          user_id: userId,
+          daily_schedule_id: schedule.id,
+          start_time: createLocalTimestamp(scheduleDate, '15:00', userTimezone),
+          end_time: createLocalTimestamp(scheduleDate, '16:30', userTimezone),
+          type: 'meeting',
+          title: 'Product Planning',
+          source: 'calendar',
+          metadata: {},
+        });
+        
+        await supabase.from('time_blocks').insert({
+          user_id: userId,
+          daily_schedule_id: schedule.id,
+          start_time: createLocalTimestamp(scheduleDate, '15:15', userTimezone),
+          end_time: createLocalTimestamp(scheduleDate, '15:45', userTimezone),
+          type: 'meeting',
+          title: 'Quick Sync',
+          source: 'calendar',
+          metadata: {},
+        });
+        
+        await supabase.from('time_blocks').insert({
+          user_id: userId,
+          daily_schedule_id: schedule.id,
+          start_time: createLocalTimestamp(scheduleDate, '15:30', userTimezone),
+          end_time: createLocalTimestamp(scheduleDate, '16:00', userTimezone),
           type: 'email',
-          title: 'Morning Email Triage',
-          source: 'ai',
+          title: 'Urgent Email Response',
+          source: 'manual',
           metadata: {},
         });
-        
-        // Focus block (if no morning meetings)
-        const hasMorningMeeting = dayEvents.some(event => {
-          const hour = new Date(event.start.dateTime || '').getHours();
-          return hour >= 9 && hour < 12;
-        });
-        
-        if (!hasMorningMeeting) {
-          await supabase.from('time_blocks').insert({
-            user_id: userId,
-            daily_schedule_id: schedule.id,
-            start_time: `${dateStr}T09:00:00Z`,
-            end_time: `${dateStr}T11:00:00Z`,
-            type: 'focus',
-            title: 'Deep Work Block',
-            source: 'ai',
-            metadata: {},
-          });
-        }
-        
-        // Lunch break
+      }
+      
+      // Add some overlapping blocks for other days too
+      if (dayOffset === 1) { // Tomorrow
         await supabase.from('time_blocks').insert({
           user_id: userId,
           daily_schedule_id: schedule.id,
-          start_time: `${dateStr}T12:00:00Z`,
-          end_time: `${dateStr}T13:00:00Z`,
-          type: 'break',
-          title: 'Lunch Break',
-          source: 'ai',
+          start_time: createLocalTimestamp(scheduleDate, '10:00', userTimezone),
+          end_time: createLocalTimestamp(scheduleDate, '11:30', userTimezone),
+          type: 'meeting',
+          title: 'Design Review',
+          source: 'calendar',
           metadata: {},
         });
         
-        // Afternoon focus block (if no afternoon meetings)
-        const hasAfternoonMeeting = dayEvents.some(event => {
-          const hour = new Date(event.start.dateTime || '').getHours();
-          return hour >= 14 && hour < 17;
-        });
-        
-        if (!hasAfternoonMeeting) {
-          await supabase.from('time_blocks').insert({
-            user_id: userId,
-            daily_schedule_id: schedule.id,
-            start_time: `${dateStr}T14:00:00Z`,
-            end_time: `${dateStr}T16:00:00Z`,
-            type: 'focus',
-            title: 'Afternoon Focus',
-            source: 'ai',
-            metadata: {},
-          });
-        }
-        
-        // Evening email triage
         await supabase.from('time_blocks').insert({
           user_id: userId,
           daily_schedule_id: schedule.id,
-          start_time: `${dateStr}T16:30:00Z`,
-          end_time: `${dateStr}T17:00:00Z`,
-          type: 'email',
-          title: 'Evening Email Review',
-          source: 'ai',
+          start_time: createLocalTimestamp(scheduleDate, '10:30', userTimezone),
+          end_time: createLocalTimestamp(scheduleDate, '11:00', userTimezone),
+          type: 'meeting',
+          title: 'Customer Call',
+          source: 'calendar',
           metadata: {},
         });
+      }
       
       console.log(`✅ Created schedule for ${dateStr} with ${dayEvents.length} meetings`);
     }

@@ -23,12 +23,12 @@ export function BlockedTimeBlock({
   style
 }: BlockedTimeBlockProps) {
   // Calculate height based on duration (4px per minute = 60px per 15min block)
-  const height = (duration / 15) * 20;
+  const height = Math.max(40, (duration / 15) * 30);
   
   return (
     <div
       className={cn(
-        "absolute left-0 right-0 rounded-md border border-gray-400/20",
+        "rounded-md border border-gray-400/20",
         "bg-gray-50",
         "transition-all duration-200 cursor-pointer",
         "shadow-sm hover:shadow-md",

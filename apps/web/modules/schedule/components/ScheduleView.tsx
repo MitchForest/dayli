@@ -10,6 +10,7 @@ import { TimeLabel } from './TimeLabel';
 import { CurrentTimeIndicator } from './CurrentTimeIndicator';
 import { TIME_LABEL_WIDTH, HOUR_HEIGHT } from '../constants/grid-constants';
 import { addDays, isToday, startOfDay } from 'date-fns';
+import { setScheduleViewAnimationCallbacks } from './DateNavigator';
 
 export function ScheduleView() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -19,11 +20,14 @@ export function ScheduleView() {
   const currentDate = useSimpleScheduleStore(state => state.currentDate);
   const setCurrentDate = useSimpleScheduleStore(state => state.setCurrentDate);
   const setPreferences = useSimpleScheduleStore(state => state.setPreferences);
+  const navigatedToTodayViaButton = useSimpleScheduleStore(state => state.navigatedToTodayViaButton);
+  const clearTodayNavigation = useSimpleScheduleStore(state => state.clearTodayNavigation);
   
   const { preferences } = useUserPreferences();
   const [viewportWidth, setViewportWidth] = useState(0);
   const previousDateRef = useRef(currentDate);
   const animationSourceRef = useRef<'drag' | 'button' | null>(null);
+  const hasInitiallyScrolledRef = useRef(false);
   
   // Fetch schedule data - this ensures data is loaded
   const { loading } = useSchedule();
@@ -37,6 +41,40 @@ export function ScheduleView() {
   
   // Calculate day width (viewport width minus time labels)
   const dayWidth = viewportWidth - TIME_LABEL_WIDTH;
+  
+  // Set up animation callbacks for DateNavigator
+  useEffect(() => {
+    setScheduleViewAnimationCallbacks({
+      animateNext: async () => {
+        // Animate to show the next day (already rendered)
+        await controls.start({
+          x: -dayWidth,
+          transition: { type: "spring", stiffness: 500, damping: 35 }
+        });
+        
+        // Then update the date
+        const nextDay = addDays(currentDate, 1);
+        setCurrentDate(nextDay);
+        
+        // Reset position instantly
+        x.set(0);
+      },
+      animatePrev: async () => {
+        // Animate to show the previous day (already rendered)
+        await controls.start({
+          x: dayWidth,
+          transition: { type: "spring", stiffness: 500, damping: 35 }
+        });
+        
+        // Then update the date
+        const prevDay = addDays(currentDate, -1);
+        setCurrentDate(prevDay);
+        
+        // Reset position instantly
+        x.set(0);
+      }
+    });
+  }, [controls, x, dayWidth, currentDate, setCurrentDate]);
   
   // Update viewport width on resize
   useEffect(() => {
@@ -70,83 +108,60 @@ export function ScheduleView() {
     };
   }, []);
   
-  // Handle animations based on how the date changed
+  // We'll handle button navigation differently - no animation here
   useEffect(() => {
-    // Skip if same date
-    if (!previousDateRef.current || previousDateRef.current.getTime() === currentDate.getTime()) {
-      return;
-    }
-    
-    // If animation came from drag, we already handled it
-    if (animationSourceRef.current === 'drag') {
-      animationSourceRef.current = null;
-      previousDateRef.current = currentDate;
-      return;
-    }
-    
-    // This must be from button navigation
-    const dayDiff = Math.floor((currentDate.getTime() - previousDateRef.current.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (dayDiff !== 0) {
-      // Always animate when navigating via buttons
-      // For multi-day jumps, cap the animation distance for better UX
-      const animationDistance = Math.sign(dayDiff) * Math.min(Math.abs(dayDiff), 2);
-      x.set(-animationDistance * dayWidth);
-      controls.start({
-        x: 0,
-        transition: { type: "spring", stiffness: 500, damping: 35 }
-      });
-    }
-    
     previousDateRef.current = currentDate;
-  }, [currentDate, controls, x, dayWidth]);
+  }, [currentDate]);
   
-  // Handle scroll position
+  // Handle scroll position on initial load ONLY
   useEffect(() => {
-    if (!preferences || !scrollContainerRef.current || loading) {
+    if (!scrollContainerRef.current || loading || viewportWidth === 0 || hasInitiallyScrolledRef.current) {
       return;
     }
     
-    // Check if we navigated to today (from any other day)
-    const navigatedToToday = isToday(currentDate) && 
-      previousDateRef.current && 
-      (previousDateRef.current.getTime() !== currentDate.getTime());
+    // Mark that we've done the initial scroll
+    hasInitiallyScrolledRef.current = true;
     
-    if (navigatedToToday) {
-      // Center on current time when navigating to today
+    if (isToday(currentDate)) {
+      // Initial load on today - center on current time
       const now = new Date();
       const currentHour = now.getHours() + now.getMinutes() / 60;
-      const scrollTop = currentHour * HOUR_HEIGHT - scrollContainerRef.current.offsetHeight / 3;
+      const scrollTop = currentHour * HOUR_HEIGHT - scrollContainerRef.current.offsetHeight / 2;
+      
+      scrollContainerRef.current.scrollTo({
+        top: Math.max(0, scrollTop),
+        behavior: 'auto'
+      });
+    } else {
+      // Initial load on other day - start at work hours
+      const start = preferences?.work_start_time || '08:00';
+      const [hour = 8] = start.split(':').map(Number);
+      const scrollTop = hour * HOUR_HEIGHT - 100;
+      
+      scrollContainerRef.current.scrollTo({
+        top: Math.max(0, scrollTop),
+        behavior: 'auto'
+      });
+    }
+  }, [loading, viewportWidth, currentDate, preferences]); // Include dependencies for initial load
+  
+  // Handle scrolling when today button is clicked
+  useEffect(() => {
+    if (navigatedToTodayViaButton && scrollContainerRef.current && !loading) {
+      // Scroll to current time
+      const now = new Date();
+      const currentHour = now.getHours() + now.getMinutes() / 60;
+      const scrollTop = currentHour * HOUR_HEIGHT - scrollContainerRef.current.offsetHeight / 2;
       
       scrollContainerRef.current.scrollTo({
         top: Math.max(0, scrollTop),
         behavior: 'smooth'
       });
-    } else if (!previousDateRef.current) {
-      // Initial load
-      if (isToday(currentDate)) {
-        // For today, center on current time
-        const now = new Date();
-        const currentHour = now.getHours() + now.getMinutes() / 60;
-        const scrollTop = currentHour * HOUR_HEIGHT - scrollContainerRef.current.offsetHeight / 3;
-        
-        scrollContainerRef.current.scrollTo({
-          top: Math.max(0, scrollTop),
-          behavior: 'auto' // Instant scroll on load
-        });
-      } else {
-        // For other days, center on work hours
-        const start = preferences.work_start_time || '08:00';
-        const [hour = 8] = start.split(':').map(Number);
-        const scrollTop = hour * HOUR_HEIGHT - 100;
-        
-        scrollContainerRef.current.scrollTo({
-          top: Math.max(0, scrollTop),
-          behavior: 'auto' // Instant scroll on load
-        });
-      }
+      
+      // Clear the flag after scrolling
+      clearTodayNavigation();
     }
-  }, [currentDate, preferences, loading]);
+  }, [navigatedToTodayViaButton, loading, clearTodayNavigation]);
   
   // Handle drag to change days
   const handleDragEnd = useCallback(async (_: any, info: PanInfo) => {

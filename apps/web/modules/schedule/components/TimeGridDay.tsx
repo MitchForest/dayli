@@ -11,6 +11,7 @@ import type { UserPreferencesTyped } from '@/modules/settings/types/preferences.
 import { DeepWorkBlock, MeetingBlock, EmailTriageBlock, BreakBlock } from './blocks';
 import { useScheduleStore } from '../store/scheduleStore';
 import { format, addDays } from 'date-fns';
+import { calculateBlockLayout, getBlockLayoutStyle, type LayoutBlock } from '../utils/blockLayout';
 
 interface TimeGridDayProps {
   dayOffset: number; // Days from current date (-1, 0, 1)
@@ -26,7 +27,7 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
   const dateString = format(date, 'yyyy-MM-dd');
   
   // Subscribe to schedule changes for this specific date
-  const schedule = useScheduleStore(state => state.schedules.get(dateString));
+  const schedule = useScheduleStore(state => state.schedules[dateString]);
 
   // Calculate work hours
   const { workStartHour, workEndHour } = useMemo(() => {
@@ -43,7 +44,11 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
     };
   }, [preferences]);
   
-  const blocksToRender = schedule?.timeBlocks || [];
+  // Calculate layout for blocks to handle overlaps
+  const layoutBlocks = useMemo(() => {
+    const blocks = schedule?.timeBlocks || [];
+    return calculateBlockLayout(blocks);
+  }, [schedule?.timeBlocks]);
   
   // Helper to parse time string to hour position
   const getTimePosition = (timeStr: string) => {
@@ -67,10 +72,10 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
         />
       ))}
       
-      {/* Render actual time blocks from database */}
-      {blocksToRender.length > 0 && (
+      {/* Render actual time blocks from database with overlap handling */}
+      {layoutBlocks.length > 0 && (
         <div className="absolute inset-0 pointer-events-none">
-          {blocksToRender.map((block) => {
+          {layoutBlocks.map((block: LayoutBlock) => {
             const top = getTimePosition(block.startTime);
             // Calculate duration from start and end times
             const startParts = block.startTime.split(':').map(Number);
@@ -79,13 +84,21 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
             const endMinutes = (endParts[0] || 0) * 60 + (endParts[1] || 0);
             const duration = endMinutes - startMinutes;
             
+            // Get layout styles for overlapping blocks
+            const layoutStyles = getBlockLayoutStyle(block, viewportWidth - 48); // Subtract time label width
+            
             const commonProps = {
               title: block.title,
               startTime: block.startTime,
               endTime: block.endTime,
               duration,
               className: "pointer-events-auto",
-              style: { top: `${top}px` }
+              style: { 
+                top: `${top}px`,
+                left: layoutStyles.left,
+                width: layoutStyles.width,
+                position: 'absolute' as const
+              }
             };
             
             switch (block.type) {
@@ -96,6 +109,10 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
                     {...commonProps}
                     id={block.id}
                     tasks={block.tasks}
+                    capacity={3}
+                    onAddTask={() => {}}
+                    onToggleTask={() => {}}
+                    onRemoveTask={() => {}}
                   />
                 );
               case 'meeting':
