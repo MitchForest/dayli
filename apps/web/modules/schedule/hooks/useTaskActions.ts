@@ -5,18 +5,16 @@ import { useScheduleStore } from '../store/scheduleStore';
 import { useSimpleScheduleStore } from '../store/simpleScheduleStore';
 import { format } from 'date-fns';
 import type { DailyTask } from '../types/schedule.types';
-import { createClient } from '@supabase/supabase-js';
-import type { Database, Task } from '@repo/database/types';
+import { useAuth } from '@repo/auth/hooks';
+import type { Database } from '@repo/database/types';
 
-export function useTaskActions() {
+type Task = Database['public']['Tables']['tasks']['Row'];
+
+export const useTaskActions = () => {
+  const { supabase, user } = useAuth();
   const { toggleTaskComplete, getSchedule } = useScheduleStore();
   const currentDate = useSimpleScheduleStore(state => state.currentDate);
   
-  const supabase = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
   const completeTask = useCallback((taskId: string) => {
     const dateString = format(currentDate, 'yyyy-MM-dd');
     toggleTaskComplete(dateString, taskId);
@@ -64,7 +62,6 @@ export function useTaskActions() {
   }, []);
 
   const addTaskToBlock = useCallback(async (blockId: string, task: Partial<Task>) => {
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     // Create the task
@@ -103,7 +100,7 @@ export function useTaskActions() {
     }
 
     return newTask;
-  }, []);
+  }, [supabase, user]);
 
   const removeTaskFromBlock = useCallback(async (blockId: string, taskId: string) => {
     // Remove from time block
@@ -128,7 +125,7 @@ export function useTaskActions() {
       console.error('Error updating task status:', updateError);
       throw updateError;
     }
-  }, []);
+  }, [supabase]);
 
   const loadTasksForBlock = useCallback(async (blockId: string): Promise<Task[]> => {
     const { data, error } = await supabase
@@ -146,7 +143,7 @@ export function useTaskActions() {
     }
 
     return data?.map(d => d.tasks).filter(Boolean) || [];
-  }, []);
+  }, [supabase]);
 
   return {
     completeTask,

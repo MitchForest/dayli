@@ -4,14 +4,17 @@ import type { DailySchedule } from '../types/schedule.types';
 
 interface ScheduleStore {
   schedules: Record<string, DailySchedule>;
+  refreshTrigger: number;
   getSchedule: (date: string) => DailySchedule | undefined;
   setSchedule: (date: string, schedule: DailySchedule) => void;
   toggleTaskComplete: (date: string, taskId: string) => void;
+  invalidateSchedule: (date?: string) => void;
 }
 
 export const useScheduleStore = create<ScheduleStore>()(
   subscribeWithSelector((set, get) => ({
     schedules: {},
+    refreshTrigger: 0,
     
     getSchedule: (date: string) => {
       return get().schedules[date];
@@ -49,6 +52,25 @@ export const useScheduleStore = create<ScheduleStore>()(
           [date]: updatedSchedule,
         },
       }));
+    },
+    
+    invalidateSchedule: (date?: string) => {
+      set(state => {
+        if (date) {
+          // Remove specific date from cache
+          const { [date]: _, ...rest } = state.schedules;
+          return { 
+            schedules: rest,
+            refreshTrigger: state.refreshTrigger + 1
+          };
+        } else {
+          // Clear all schedules
+          return { 
+            schedules: {},
+            refreshTrigger: state.refreshTrigger + 1
+          };
+        }
+      });
     },
   }))
 ); 

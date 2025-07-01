@@ -1,6 +1,11 @@
-import { useState, useCallback } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import type { Database, Email } from '@repo/database/types';
+'use client';
+
+import { useState, useCallback, useEffect } from 'react';
+import { useAuth } from '@repo/auth/hooks';
+import type { Database } from '@repo/database/types';
+import { useEmailStore } from '../store/emailStore';
+
+type Email = Database['public']['Tables']['emails']['Row'];
 
 interface EmailTriageStats {
   processed: number;
@@ -19,10 +24,7 @@ export function useEmailTriage(blockId: string) {
     never: 0,
   });
 
-  const supabase = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const { supabase } = useAuth();
 
   const loadEmails = useCallback(async () => {
     setIsLoading(true);

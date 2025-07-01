@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "",
+    "beforeDevCommand": "bun run ../start-server.js",
     "beforeBuildCommand": ""
   },
   "app": {
@@ -17,12 +17,20 @@
         "height": 800,
         "resizable": true,
         "fullscreen": false,
-        "center": true
+        "center": true,
+        "url": "index.html"
       }
     ],
     "security": {
       "csp": null,
-      "dangerousDisableAssetCspModification": true
+      "dangerousDisableAssetCspModification": true,
+      "dangerousRemoteDomainIpcAccess": [
+        {
+          "domain": "localhost:3000",
+          "windows": ["main"],
+          "enableTauriAPI": true
+        }
+      ]
     }
   },
   "plugins": {

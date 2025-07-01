@@ -1,14 +1,17 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useChatStore } from '../store/chatStore';
 import { cn } from '@/lib/utils';
 import { Bot, User, Loader2, Check, X, Wrench } from 'lucide-react';
 import { format } from 'date-fns';
+import type { Message } from 'ai';
 
-export function MessageList() {
-  const messages = useChatStore((state) => state.messages);
-  const isLoading = useChatStore((state) => state.isLoading);
+interface MessageListProps {
+  messages: Message[];
+  isLoading?: boolean;
+}
+
+export function MessageList({ messages, isLoading = false }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -19,7 +22,7 @@ export function MessageList() {
   }, [messages]);
 
   // Helper to format tool execution status
-  const getToolExecutionDisplay = (toolName: string, result: any) => {
+  const getToolExecutionDisplay = (toolName: string, invocation: any) => {
     // Map tool names to user-friendly descriptions
     const toolDescriptions: Record<string, string> = {
       createTimeBlock: 'Creating time block',
@@ -34,7 +37,11 @@ export function MessageList() {
     };
 
     const description = toolDescriptions[toolName] || toolName;
-    const status = result?.success === false ? 'failed' : 'completed';
+    
+    // Check if the invocation has completed (has a result)
+    const hasResult = invocation.state === 'result';
+    const result = hasResult ? invocation.result : null;
+    const status = result?.success === false ? 'failed' : hasResult ? 'completed' : 'pending';
     
     return { description, status };
   };
@@ -79,12 +86,12 @@ export function MessageList() {
                 {message.toolInvocations.map((invocation, index) => {
                   const { description, status } = getToolExecutionDisplay(
                     invocation.toolName,
-                    invocation.result
+                    invocation
                   );
                   
                   return (
                     <div
-                      key={index}
+                      key={`${message.id}-tool-${index}`}
                       className={cn(
                         "flex items-center gap-2 text-xs",
                         message.role === 'user' ? 'text-primary-foreground/80' : 'text-muted-foreground'
@@ -94,6 +101,7 @@ export function MessageList() {
                       <span>{description}</span>
                       {status === 'completed' && <Check className="h-3 w-3 text-green-500" />}
                       {status === 'failed' && <X className="h-3 w-3 text-red-500" />}
+                      {status === 'pending' && <Loader2 className="h-3 w-3 animate-spin" />}
                     </div>
                   );
                 })}
@@ -104,7 +112,7 @@ export function MessageList() {
               "text-xs mt-1",
               message.role === 'user' ? 'text-primary-foreground/60' : 'text-muted-foreground'
             )}>
-              {format(message.timestamp, 'h:mm a')}
+              {message.createdAt ? format(new Date(message.createdAt), 'h:mm a') : ''}
             </p>
           </div>
           

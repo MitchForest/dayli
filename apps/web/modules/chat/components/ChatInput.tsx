@@ -5,20 +5,19 @@ import { Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '../store/chatStore';
 import { cn } from '@/lib/utils';
-import { useChat } from 'ai/react';
+import type { UseChatHelpers } from 'ai/react';
 
-export function ChatInput() {
+interface ChatInputProps extends UseChatHelpers {}
+
+export function ChatInput({ 
+  input, 
+  handleInputChange, 
+  handleSubmit, 
+  isLoading 
+}: ChatInputProps) {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { commandHistory, addToHistory } = useChatStore();
-  
-  // Use AI SDK's useChat hook
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
-    api: '/api/chat',
-    onError: (error) => {
-      console.error('Chat error:', error);
-    },
-  });
 
   // Focus input on mount and when pressing Cmd+K
   useEffect(() => {
@@ -32,21 +31,6 @@ export function ChatInput() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  // Update store when messages change
-  useEffect(() => {
-    const store = useChatStore.getState();
-    // Clear existing messages and add new ones
-    store.clearMessages();
-    messages.forEach(msg => {
-      store.addMessage({
-        content: msg.content,
-        role: msg.role as 'user' | 'assistant',
-        toolInvocations: msg.toolInvocations as any,
-      });
-    });
-    store.setLoading(isLoading);
-  }, [messages, isLoading]);
 
   const onSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -92,7 +76,7 @@ export function ChatInput() {
   return (
     <div className="border-t border-border p-4">
       <div className="text-xs text-muted-foreground mb-2">
-        Type /commands to see list of available commands
+        Ask me anything about your schedule, tasks, or emails
       </div>
       <form onSubmit={onSubmit} className="flex gap-2">
         <textarea

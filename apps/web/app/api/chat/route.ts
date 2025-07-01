@@ -89,6 +89,14 @@ NEVER:
 
 export async function POST(req: Request) {
   try {
+    console.log('Chat API called');
+    
+    // Check for OpenAI API key
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY is not set');
+      return new Response('OpenAI API key not configured', { status: 500 });
+    }
+
     // Create server-side Supabase client
     const cookieStore = await cookies();
     const supabase = createServerClient<Database>(
@@ -113,16 +121,24 @@ export async function POST(req: Request) {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {
+      console.error('Auth error:', userError);
       return new Response('Unauthorized', { status: 401 });
     }
 
-    // Configure service factory with user context
-    ServiceFactory.getInstance().configure({ 
-      userId: user.id,
-      supabaseClient: supabase 
-    }, true); // Using mock for now, will switch to false when ready
+    // Configure ServiceFactory with Supabase client BEFORE setting up the global user ID
+    const factory = ServiceFactory.getInstance();
+    factory.configure({ userId: user.id, supabaseClient: supabase }, false); // Use real services
+    
+    // Set up global user ID for tools
+    (global as Record<string, unknown>).getCurrentUserId = () => user.id;
 
     const { messages } = await req.json();
+    
+    console.log('Chat request received:', { 
+      userId: user.id, 
+      messageCount: messages.length,
+      lastMessage: messages[messages.length - 1]?.content?.substring(0, 100) 
+    });
 
     // Define all tools
     const tools = {
@@ -137,10 +153,6 @@ export async function POST(req: Request) {
       getPreferences,
     };
 
-    // Inject user context into global for tools to access
-    const originalGetUserId = (global as Record<string, unknown>).getCurrentUserId;
-    (global as Record<string, unknown>).getCurrentUserId = () => user.id;
-
     try {
       const result = await streamText({
         model: openai('gpt-4-turbo'),
@@ -148,6 +160,7 @@ export async function POST(req: Request) {
         tools,
         maxSteps: 5, // Allow multi-step operations
         system: systemPrompt,
+        temperature: 0.7,
         onStepFinish: async ({ toolCalls }) => {
           // This callback fires after each tool execution
           // Could be used to update UI with progress
@@ -158,11 +171,23 @@ export async function POST(req: Request) {
       return result.toDataStreamResponse();
     } finally {
       // Restore original function
-      (global as Record<string, unknown>).getCurrentUserId = originalGetUserId;
+      (global as Record<string, unknown>).getCurrentUserId = undefined;
     }
   } catch (error) {
     console.error('Chat API error:', error);
-    return new Response('Internal Server Error', { status: 500 });
+    
+    // More detailed error response for debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorResponse = {
+      error: 'Chat API Error',
+      message: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error : undefined
+    };
+    
+    return new Response(JSON.stringify(errorResponse), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
 

@@ -1,10 +1,10 @@
 import { StateGraph, END } from '@langchain/langgraph';
 import { createChatModel, parseJSONResponse } from '../utils/openai';
 import { EmailTriageStateType } from '../types/workflow.types';
-import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@repo/database/types';
 
-export function createEmailTriageWorkflow() {
+export function createEmailTriageWorkflow(supabase: SupabaseClient<Database>) {
   const model = createChatModel({ temperature: 0.2 });
 
   const workflow = new StateGraph<EmailTriageStateType>({
@@ -66,11 +66,6 @@ export function createEmailTriageWorkflow() {
 
   // Node: Process decisions and update database
   workflow.addNode('processDecisions', async (state: EmailTriageStateType) => {
-    const supabase = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-
     const tasksToCreate = [];
     const emailUpdates = [];
     let nowCount = 0;

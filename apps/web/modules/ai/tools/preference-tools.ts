@@ -14,14 +14,13 @@ function getCurrentUserId(): string {
 export const updatePreference = tool({
   description: 'Update user preferences based on request or learned behavior',
   parameters: z.object({
-    preference: z.enum(['lunch_time', 'work_hours', 'break_schedule', 'email_settings', 'open_time']),
+    preference: z.enum(['lunch_time', 'work_hours', 'break_schedule', 'email_preferences', 'open_time_preferences']),
     value: z.any().describe('The new value for the preference'),
     reason: z.string().describe('Why this change is being made'),
   }),
   execute: async ({ preference, value, reason }) => {
     const userId = getCurrentUserId();
     const factory = ServiceFactory.getInstance();
-    factory.configure({ userId }, true);
     const preferenceService = factory.getPreferenceService();
     
     try {
@@ -61,7 +60,7 @@ export const updatePreference = tool({
           };
         }
         
-        case 'email_settings': {
+        case 'email_preferences': {
           await preferenceService.updateEmailPreferences(value);
           
           return {
@@ -70,7 +69,7 @@ export const updatePreference = tool({
           };
         }
         
-        case 'open_time': {
+        case 'open_time_preferences': {
           await preferenceService.updateOpenTimePreferences(value);
           
           return {
@@ -100,7 +99,6 @@ export const getPreferences = tool({
   execute: async () => {
     const userId = getCurrentUserId();
     const factory = ServiceFactory.getInstance();
-    factory.configure({ userId }, true);
     const preferenceService = factory.getPreferenceService();
     
     try {

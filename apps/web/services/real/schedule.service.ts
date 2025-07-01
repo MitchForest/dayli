@@ -5,9 +5,6 @@ import {
   CreateTimeBlockInput, 
   UpdateTimeBlockInput 
 } from '../interfaces/schedule.interface';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import type { Database } from '@repo/database/types';
 import { parseISO, format, startOfDay, endOfDay } from 'date-fns';
 
 export class RealScheduleService implements ScheduleService {

@@ -75,12 +75,13 @@ export class MockCalendarService implements ICalendarService {
     const now = new Date();
     const currentHour = now.getHours();
     
-    // Event templates
+    // Event templates with more realistic patterns
     const recurringMeetings = [
       {
         summary: 'Daily Standup',
         description: 'Team sync to discuss daily priorities',
         hour: 9,
+        minute: 0,
         duration: 15,
         recurrence: 'RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR',
         attendees: ['team@company.com']
@@ -89,6 +90,7 @@ export class MockCalendarService implements ICalendarService {
         summary: 'Weekly Team Meeting',
         description: 'Weekly team sync and planning',
         hour: 14,
+        minute: 0,
         duration: 60,
         dayOfWeek: 1, // Monday
         recurrence: 'RRULE:FREQ=WEEKLY;BYDAY=MO',
@@ -98,41 +100,100 @@ export class MockCalendarService implements ICalendarService {
         summary: 'Sprint Planning',
         description: 'Plan upcoming sprint work',
         hour: 10,
-        duration: 120,
+        minute: 0,
+        duration: 90,
         dayOfWeek: 1, // Monday
+        biweekly: true,
         recurrence: 'RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO',
         attendees: ['team@company.com', 'product@company.com']
+      },
+      {
+        summary: '1:1 with Manager',
+        description: 'Weekly check-in',
+        hour: 11,
+        minute: 0,
+        duration: 30,
+        dayOfWeek: 3, // Wednesday
+        recurrence: 'RRULE:FREQ=WEEKLY;BYDAY=WE',
+        attendees: ['manager@company.com']
+      },
+      {
+        summary: 'Sprint Retrospective',
+        description: 'Review sprint and identify improvements',
+        hour: 16,
+        minute: 0,
+        duration: 60,
+        dayOfWeek: 5, // Friday
+        biweekly: true,
+        recurrence: 'RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=FR',
+        attendees: ['team@company.com', 'scrum-master@company.com']
       }
     ];
     
     const oneOffMeetings = [
       {
-        summary: '1:1 with Manager',
-        description: 'Weekly check-in',
-        hour: 11,
-        duration: 30,
-        attendees: ['manager@company.com']
-      },
-      {
         summary: 'Product Review',
         description: 'Review new feature designs',
-        hour: 15,
+        preferredHours: [10, 11, 14, 15],
         duration: 60,
+        preferredDays: [1, 3], // Monday, Wednesday
         attendees: ['design@company.com', 'product@company.com']
       },
       {
         summary: 'Client Call',
         description: 'Quarterly business review',
-        hour: 10,
+        preferredHours: [10, 11, 14],
         duration: 60,
+        preferredDays: [2, 4], // Tuesday, Thursday
         attendees: ['client@external.com', 'sales@company.com']
       },
       {
-        summary: 'All Hands Meeting',
-        description: 'Company-wide update',
-        hour: 16,
+        summary: 'Technical Discussion',
+        description: 'Architecture planning',
+        preferredHours: [14, 15, 16],
+        duration: 45,
+        preferredDays: [2, 4], // Tuesday, Thursday (focus days need some meetings too)
+        attendees: ['architect@company.com']
+      },
+      {
+        summary: 'Interview - Engineering Candidate',
+        description: 'Technical interview',
+        preferredHours: [10, 11, 14, 15],
         duration: 60,
-        attendees: ['all@company.com']
+        preferredDays: [1, 3, 5], // Avoid focus days
+        attendees: ['candidate@external.com', 'hr@company.com']
+      },
+      {
+        summary: 'Budget Planning',
+        description: 'Q2 budget review',
+        preferredHours: [9, 10, 11],
+        duration: 90,
+        preferredDays: [1], // Monday - planning day
+        attendees: ['finance@company.com', 'manager@company.com']
+      },
+      {
+        summary: 'Quick Sync',
+        description: 'Alignment on project status',
+        preferredHours: [9, 10, 11, 14, 15, 16],
+        duration: 30,
+        preferredDays: [1, 2, 3, 4, 5], // Any day
+        attendees: ['colleague@company.com']
+      },
+      {
+        summary: 'Vendor Demo',
+        description: 'Tool evaluation',
+        preferredHours: [14, 15],
+        duration: 45,
+        preferredDays: [3, 4], // Mid-week
+        attendees: ['vendor@external.com', 'it@company.com']
+      },
+      {
+        summary: 'Team Building',
+        description: 'Virtual coffee chat',
+        preferredHours: [15, 16],
+        duration: 30,
+        preferredDays: [5], // Friday
+        attendees: ['team@company.com']
       }
     ];
     
@@ -142,133 +203,192 @@ export class MockCalendarService implements ICalendarService {
       targetDate.setDate(targetDate.getDate() + dayOffset);
       targetDate.setHours(0, 0, 0, 0);
       
+      // Check if this is a weekend
+      const dayOfWeek = targetDate.getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        continue; // Skip weekends
+      }
+      
+      // Track occupied time slots to avoid too many conflicts
+      const occupiedSlots: Array<{start: Date, end: Date}> = [];
+      
       // Add recurring meetings
       recurringMeetings.forEach((meeting, index) => {
         // Check if this meeting occurs on this day
-        const dayOfWeek = targetDate.getDay();
         if (meeting.dayOfWeek !== undefined && meeting.dayOfWeek !== dayOfWeek) {
           return; // Skip if not the right day
         }
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
-          return; // Skip weekends for daily meetings
+        
+        // Check if it's a biweekly meeting and if it's the right week
+        if (meeting.biweekly) {
+          const weekNumber = Math.floor((targetDate.getTime() - new Date(2024, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
+          if (weekNumber % 2 !== 0) return; // Skip odd weeks for biweekly meetings
         }
         
         const eventTime = new Date(targetDate);
-        eventTime.setHours(meeting.hour, 0, 0, 0);
+        eventTime.setHours(meeting.hour, meeting.minute || 0, 0, 0);
         
         const endTime = new Date(eventTime);
         endTime.setMinutes(endTime.getMinutes() + meeting.duration);
         
-        const eventId = `recurring_${index}_${dayOffset}_${Math.random().toString(36).substr(2, 9)}`;
-        
-        const event: CalendarEvent = {
-          kind: 'calendar#event',
-          etag: `"${Math.random().toString(36).substr(2, 9)}"`,
-          id: eventId,
-          status: 'confirmed',
-          htmlLink: `https://calendar.google.com/event?eid=${eventId}`,
-          created: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-          updated: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          summary: meeting.summary,
-          description: meeting.description,
-          creator: {
-            email: 'user@example.com',
-            displayName: 'You'
-          },
-          organizer: {
-            email: 'user@example.com',
-            displayName: 'You'
-          },
-          start: {
-            dateTime: eventTime.toISOString(),
-            timeZone: this.userTimezone
-          },
-          end: {
-            dateTime: endTime.toISOString(),
-            timeZone: this.userTimezone
-          },
-          recurrence: meeting.recurrence ? [meeting.recurrence] : undefined,
-          attendees: meeting.attendees.map(email => ({
-            email,
-            displayName: email.split('@')[0],
-            responseStatus: 'accepted' as const
-          })),
-          reminders: {
-            useDefault: false,
-            overrides: [
-              { method: 'popup', minutes: 10 }
-            ]
-          }
-        };
-        
-        this.events.set(eventId, event);
-      });
-      
-      // Add 1-3 one-off meetings per day
-      const meetingCount = Math.floor(Math.random() * 3) + 1;
-      for (let i = 0; i < meetingCount; i++) {
-        const meetingTemplate = oneOffMeetings[Math.floor(Math.random() * oneOffMeetings.length)]!;
-        
-        const eventTime = new Date(targetDate);
-        eventTime.setHours(
-          meetingTemplate.hour + Math.floor(Math.random() * 2),
-          Math.random() > 0.5 ? 0 : 30,
-          0,
-          0
+        // Check for conflicts with existing meetings
+        const hasConflict = occupiedSlots.some(slot => 
+          (eventTime >= slot.start && eventTime < slot.end) ||
+          (endTime > slot.start && endTime <= slot.end)
         );
         
-        const endTime = new Date(eventTime);
-        endTime.setMinutes(endTime.getMinutes() + meetingTemplate.duration);
-        
-        const eventId = `oneoff_${dayOffset}_${i}_${Math.random().toString(36).substr(2, 9)}`;
-        
-        const event: CalendarEvent = {
-          kind: 'calendar#event',
-          etag: `"${Math.random().toString(36).substr(2, 9)}"`,
-          id: eventId,
-          status: 'confirmed',
-          htmlLink: `https://calendar.google.com/event?eid=${eventId}`,
-          created: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-          updated: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000).toISOString(),
-          summary: meetingTemplate.summary,
-          description: meetingTemplate.description,
-          creator: {
-            email: meetingTemplate.attendees[0] || 'user@example.com',
-            displayName: meetingTemplate.attendees[0]?.split('@')[0] || 'You'
-          },
-          organizer: {
-            email: meetingTemplate.attendees[0] || 'user@example.com',
-            displayName: meetingTemplate.attendees[0]?.split('@')[0] || 'You'
-          },
-          start: {
-            dateTime: eventTime.toISOString(),
-            timeZone: this.userTimezone
-          },
-          end: {
-            dateTime: endTime.toISOString(),
-            timeZone: this.userTimezone
-          },
-          attendees: [
-            {
+        if (!hasConflict) {
+          occupiedSlots.push({ start: eventTime, end: endTime });
+          
+          const eventId = `recurring_${index}_${dayOffset}_${Math.random().toString(36).substr(2, 9)}`;
+          
+          const event: CalendarEvent = {
+            kind: 'calendar#event',
+            etag: `"${Math.random().toString(36).substr(2, 9)}"`,
+            id: eventId,
+            status: 'confirmed',
+            htmlLink: `https://calendar.google.com/event?eid=${eventId}`,
+            created: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+            updated: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+            summary: meeting.summary,
+            description: meeting.description,
+            creator: {
               email: 'user@example.com',
-              displayName: 'You',
-              responseStatus: 'accepted'
+              displayName: 'You'
             },
-            ...meetingTemplate.attendees.map(email => ({
+            organizer: {
+              email: 'user@example.com',
+              displayName: 'You'
+            },
+            start: {
+              dateTime: eventTime.toISOString(),
+              timeZone: this.userTimezone
+            },
+            end: {
+              dateTime: endTime.toISOString(),
+              timeZone: this.userTimezone
+            },
+            recurrence: meeting.recurrence ? [meeting.recurrence] : undefined,
+            attendees: meeting.attendees.map(email => ({
               email,
               displayName: email.split('@')[0],
               responseStatus: 'accepted' as const
-            }))
-          ],
-          reminders: {
-            useDefault: false,
-            overrides: [
-              { method: 'popup', minutes: 10 }
-            ]
-          }
-        };
+            })),
+            reminders: {
+              useDefault: false,
+              overrides: [
+                { method: 'popup', minutes: 10 }
+              ]
+            }
+          };
+          
+          this.events.set(eventId, event);
+        }
+      });
+      
+      // Add 1-2 one-off meetings per day (reduced from 1-3)
+      const meetingCount = dayOffset === 0 ? 2 : Math.floor(Math.random() * 2) + 1; // Today gets 2, others get 1-2
+      
+      // Filter meetings by preferred day
+      const dayMeetings = oneOffMeetings.filter(m => 
+        !m.preferredDays || m.preferredDays.includes(dayOfWeek)
+      );
+      
+      // Monday gets more meetings, Friday gets fewer
+      let adjustedMeetingCount = meetingCount;
+      if (dayOfWeek === 1) adjustedMeetingCount = Math.min(3, meetingCount + 1); // Monday
+      if (dayOfWeek === 5) adjustedMeetingCount = Math.max(1, meetingCount - 1); // Friday
+      
+      const usedMeetingIndices = new Set<number>();
+      
+      for (let i = 0; i < adjustedMeetingCount && usedMeetingIndices.size < dayMeetings.length; i++) {
+        let meetingIndex: number;
+        do {
+          meetingIndex = Math.floor(Math.random() * dayMeetings.length);
+        } while (usedMeetingIndices.has(meetingIndex));
         
-        this.events.set(eventId, event);
+        usedMeetingIndices.add(meetingIndex);
+        const meetingTemplate = dayMeetings[meetingIndex]!;
+        
+        // Try to find a non-conflicting time slot
+        let scheduled = false;
+        const shuffledHours = [...meetingTemplate.preferredHours].sort(() => Math.random() - 0.5);
+        
+        for (const hour of shuffledHours) {
+          const eventTime = new Date(targetDate);
+          eventTime.setHours(hour, Math.random() > 0.5 ? 0 : 30, 0, 0);
+          
+          const endTime = new Date(eventTime);
+          endTime.setMinutes(endTime.getMinutes() + meetingTemplate.duration);
+          
+          // Check for conflicts
+          const hasConflict = occupiedSlots.some(slot => 
+            (eventTime >= slot.start && eventTime < slot.end) ||
+            (endTime > slot.start && endTime <= slot.end) ||
+            (slot.start >= eventTime && slot.start < endTime)
+          );
+          
+          if (!hasConflict) {
+            occupiedSlots.push({ start: eventTime, end: endTime });
+            
+            const eventId = `oneoff_${dayOffset}_${i}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            const event: CalendarEvent = {
+              kind: 'calendar#event',
+              etag: `"${Math.random().toString(36).substr(2, 9)}"`,
+              id: eventId,
+              status: 'confirmed',
+              htmlLink: `https://calendar.google.com/event?eid=${eventId}`,
+              created: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+              updated: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000).toISOString(),
+              summary: meetingTemplate.summary,
+              description: meetingTemplate.description,
+              creator: {
+                email: meetingTemplate.attendees[0] || 'user@example.com',
+                displayName: meetingTemplate.attendees[0]?.split('@')[0] || 'You'
+              },
+              organizer: {
+                email: meetingTemplate.attendees[0] || 'user@example.com',
+                displayName: meetingTemplate.attendees[0]?.split('@')[0] || 'You'
+              },
+              start: {
+                dateTime: eventTime.toISOString(),
+                timeZone: this.userTimezone
+              },
+              end: {
+                dateTime: endTime.toISOString(),
+                timeZone: this.userTimezone
+              },
+              attendees: [
+                {
+                  email: 'user@example.com',
+                  displayName: 'You',
+                  responseStatus: 'accepted'
+                },
+                ...meetingTemplate.attendees.map(email => ({
+                  email,
+                  displayName: email.split('@')[0],
+                  responseStatus: 'accepted' as const
+                }))
+              ],
+              reminders: {
+                useDefault: false,
+                overrides: [
+                  { method: 'popup', minutes: 10 }
+                ]
+              }
+            };
+            
+            this.events.set(eventId, event);
+            scheduled = true;
+            break;
+          }
+        }
+        
+        // If we couldn't find a non-conflicting slot, that's okay - skip this meeting
+        if (!scheduled) {
+          i--; // Try another meeting template
+        }
       }
     }
   }

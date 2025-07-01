@@ -14,19 +14,19 @@ import { format, addDays, subDays } from 'date-fns';
 
 export function useSchedule() {
   const { user, supabase } = useAuth();
-  const { getSchedule, setSchedule } = useScheduleStore();
+  const { getSchedule, setSchedule, refreshTrigger } = useScheduleStore();
   const currentDate = useSimpleScheduleStore((state) => state.currentDate);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchScheduleForDate = useCallback(async (date: Date) => {
+  const fetchScheduleForDate = useCallback(async (date: Date, forceRefresh = false) => {
     if (!user || !supabase) return null;
 
     const dateString = format(date, 'yyyy-MM-dd');
     
-    // Check if we already have this schedule
+    // Check if we already have this schedule (unless forcing refresh)
     const existingSchedule = getSchedule(dateString);
-    if (existingSchedule) return existingSchedule;
+    if (existingSchedule && !forceRefresh) return existingSchedule;
 
     try {
       const dailySchedule = await getDailySchedule(user.id, dateString, supabase);
@@ -96,7 +96,7 @@ export function useSchedule() {
     }
   }, [user, supabase, getSchedule, setSchedule]);
 
-  const fetchAdjacentSchedules = useCallback(async (centerDate: Date) => {
+  const fetchAdjacentSchedules = useCallback(async (centerDate: Date, forceRefresh = false) => {
     setLoading(true);
     setError(null);
     try {
@@ -107,7 +107,7 @@ export function useSchedule() {
         addDays(centerDate, 1)
       ];
       
-      await Promise.all(datesToFetch.map(date => fetchScheduleForDate(date)));
+      await Promise.all(datesToFetch.map(date => fetchScheduleForDate(date, forceRefresh)));
     } catch (e: any) {
       console.error('Failed to fetch schedules:', e);
       setError('Failed to load surrounding schedules.');
@@ -122,6 +122,13 @@ export function useSchedule() {
       fetchAdjacentSchedules(currentDate);
     }
   }, [currentDate, user, supabase, fetchAdjacentSchedules]);
+
+  // Refetch when refresh is triggered
+  useEffect(() => {
+    if (user && supabase && currentDate && refreshTrigger > 0) {
+      fetchAdjacentSchedules(currentDate, true);
+    }
+  }, [refreshTrigger, currentDate, user, supabase, fetchAdjacentSchedules]);
 
   return { loading, error };
 } 

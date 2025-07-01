@@ -3,313 +3,212 @@ import type { TablesInsert } from '@repo/database/types';
 type TaskInsert = TablesInsert<'tasks'>;
 
 export class MockTaskService {
-  generateBacklogTasks(userId: string): Omit<TaskInsert, 'user_id'>[] {
-    const tasks: Omit<TaskInsert, 'user_id'>[] = [
-      // Strategic tasks (HIGH PRIORITY)
+  generateBacklogTasks(userId: string): TaskInsert[] {
+    const taskTemplates = [
+      // High priority technical tasks
       {
-        title: "Review Q1 OKRs and update team goals",
-        description: "Analyze Q1 progress and set priorities for Q2",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "high",
-        estimated_minutes: 120
+        title: 'Review and merge critical security PR',
+        description: 'Security patch for authentication vulnerability needs immediate review',
+        priority: 'high',
+        estimatedMinutes: 45,
+        source: 'manual' as const,
+        tags: ['security', 'urgent', 'code-review']
       },
       {
-        title: "Prepare board presentation for next week",
-        description: "Create slides covering product roadmap and financial projections",
-        source: "email",
-        status: "backlog",
-        completed: false,
-        priority: "high",
-        estimated_minutes: 180
+        title: 'Fix production database performance issue',
+        description: 'Users reporting slow queries on the dashboard, needs investigation',
+        priority: 'high',
+        estimatedMinutes: 120,
+        source: 'manual' as const,
+        tags: ['production', 'performance', 'database']
       },
       {
-        title: "Define success metrics for new feature launch",
-        description: "Work with product team to establish KPIs",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "high",
-        estimated_minutes: 90
+        title: 'Prepare for client demo tomorrow',
+        description: 'Set up demo environment and test all features for important client presentation',
+        priority: 'high',
+        estimatedMinutes: 90,
+        source: 'calendar' as const,
+        tags: ['client', 'demo', 'urgent']
       },
       
-      // Development tasks (MIX OF HIGH/MEDIUM)
+      // Medium priority development tasks
       {
-        title: "Code review for PR #234",
-        description: "Review authentication flow changes",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 45
+        title: 'Implement user feedback form',
+        description: 'Add feedback collection form to gather user insights on new features',
+        priority: 'medium',
+        estimatedMinutes: 180,
+        source: 'manual' as const,
+        tags: ['feature', 'frontend', 'user-experience']
       },
       {
-        title: "Fix production bug in auth flow",
-        description: "Users reporting intermittent login failures",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "high",
-        estimated_minutes: 120
+        title: 'Refactor authentication module',
+        description: 'Clean up auth code and improve error handling based on code review feedback',
+        priority: 'medium',
+        estimatedMinutes: 240,
+        source: 'manual' as const,
+        tags: ['refactoring', 'backend', 'auth']
       },
       {
-        title: "Implement new API endpoint for dashboard",
-        description: "Add aggregation endpoint for performance metrics",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 240
+        title: 'Write unit tests for payment service',
+        description: 'Increase test coverage for payment processing module to 80%',
+        priority: 'medium',
+        estimatedMinutes: 150,
+        source: 'manual' as const,
+        tags: ['testing', 'quality', 'backend']
       },
       {
-        title: "Refactor legacy payment processing code",
-        description: "Modernize payment module to use new SDK",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "low",
-        estimated_minutes: 360
-      },
-      
-      // Communication tasks (MOSTLY MEDIUM)
-      {
-        title: "Reply to Sarah about project timeline",
-        description: "Provide updated estimates for Phase 2 deliverables",
-        source: "email",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 30
+        title: 'Update API documentation',
+        description: 'Document new endpoints and update examples for v2 API',
+        priority: 'medium',
+        estimatedMinutes: 90,
+        source: 'manual' as const,
+        tags: ['documentation', 'api']
       },
       {
-        title: "Schedule 1:1 with new team member",
-        description: "Welcome John and discuss onboarding plan",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "high",
-        estimated_minutes: 60
-      },
-      {
-        title: "Send weekly status update to stakeholders",
-        description: "Summarize progress on key initiatives",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 45
-      },
-      {
-        title: "Follow up with vendor about contract renewal",
-        description: "Negotiate better terms for cloud services",
-        source: "email",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 60
+        title: 'Optimize image loading performance',
+        description: 'Implement lazy loading and WebP format for better page speed',
+        priority: 'medium',
+        estimatedMinutes: 120,
+        source: 'manual' as const,
+        tags: ['performance', 'frontend', 'optimization']
       },
       
-      // Administrative tasks (MOSTLY LOW)
+      // Email-originated tasks
       {
-        title: "Submit expense report for conference",
-        description: "Include receipts from last week's tech conference",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "low",
-        estimated_minutes: 30
+        title: 'Respond to partner integration proposal',
+        description: 'Review technical requirements from potential partner and provide feedback',
+        priority: 'medium',
+        estimatedMinutes: 60,
+        source: 'email' as const,
+        tags: ['partnership', 'planning', 'email-followup']
       },
       {
-        title: "Update team documentation wiki",
-        description: "Add new onboarding procedures and API docs",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "low",
-        estimated_minutes: 90
+        title: 'Schedule architecture review meeting',
+        description: 'Set up meeting to discuss microservices migration plan with team',
+        priority: 'medium',
+        estimatedMinutes: 30,
+        source: 'email' as const,
+        tags: ['meeting', 'architecture', 'planning']
       },
       {
-        title: "Complete annual security training",
-        description: "Due by end of month",
-        source: "email",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 60
-      },
-      {
-        title: "Review and approve team PTO requests",
-        description: "Check coverage for upcoming holidays",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 30
+        title: 'Review contract for new vendor',
+        description: 'Legal sent over SaaS vendor contract for technical review',
+        priority: 'medium',
+        estimatedMinutes: 45,
+        source: 'email' as const,
+        tags: ['vendor', 'legal', 'review']
       },
       
-      // Research and analysis (MEDIUM PRIORITY)
+      // Low priority but important tasks
       {
-        title: "Research competitor pricing strategies",
-        description: "Analyze top 5 competitors' pricing models",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 180
+        title: 'Research new monitoring tools',
+        description: 'Evaluate alternatives to current APM solution for better cost efficiency',
+        priority: 'low',
+        estimatedMinutes: 120,
+        source: 'manual' as const,
+        tags: ['research', 'devops', 'tooling']
       },
       {
-        title: "Analyze user feedback from last release",
-        description: "Compile insights from support tickets and reviews",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 120
+        title: 'Clean up old feature flags',
+        description: 'Remove feature flags for launched features from last quarter',
+        priority: 'low',
+        estimatedMinutes: 60,
+        source: 'manual' as const,
+        tags: ['cleanup', 'maintenance', 'backend']
       },
       {
-        title: "Investigate new ML framework for recommendations",
-        description: "POC for improving recommendation accuracy",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "low",
-        estimated_minutes: 240
-      },
-      
-      // Planning tasks (HIGH/MEDIUM)
-      {
-        title: "Create project plan for mobile app redesign",
-        description: "Define milestones and resource allocation",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "high",
-        estimated_minutes: 180
+        title: 'Update team wiki with learnings',
+        description: 'Document lessons learned from recent production incident',
+        priority: 'low',
+        estimatedMinutes: 45,
+        source: 'manual' as const,
+        tags: ['documentation', 'knowledge-sharing']
       },
       {
-        title: "Draft Q2 hiring plan",
-        description: "Identify key roles and budget requirements",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "high",
-        estimated_minutes: 120
-      },
-      {
-        title: "Plan team offsite agenda",
-        description: "Organize activities and sessions for team building",
-        source: "email",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 90
+        title: 'Organize team knowledge sharing session',
+        description: 'Prepare presentation on new TypeScript features for team learning',
+        priority: 'low',
+        estimatedMinutes: 90,
+        source: 'manual' as const,
+        tags: ['team', 'learning', 'presentation']
       },
       
-      // Customer-related tasks (HIGH PRIORITY)
+      // Recurring maintenance tasks
       {
-        title: "Call enterprise client about renewal",
-        description: "Discuss expansion opportunities",
-        source: "email",
-        status: "backlog",
-        completed: false,
-        priority: "high",
-        estimated_minutes: 60
+        title: 'Weekly dependency updates',
+        description: 'Review and update npm dependencies for security patches',
+        priority: 'low',
+        estimatedMinutes: 30,
+        source: 'manual' as const,
+        tags: ['maintenance', 'security', 'dependencies']
       },
       {
-        title: "Prepare demo for potential partner",
-        description: "Customize demo for healthcare use case",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "high",
-        estimated_minutes: 120
-      },
-      {
-        title: "Respond to customer escalation",
-        description: "Address concerns about recent service disruption",
-        source: "email",
-        status: "backlog",
-        completed: false,
-        priority: "high",
-        estimated_minutes: 45
+        title: 'Review and close stale GitHub issues',
+        description: 'Clean up issue tracker by closing outdated or resolved issues',
+        priority: 'low',
+        estimatedMinutes: 45,
+        source: 'manual' as const,
+        tags: ['maintenance', 'github', 'cleanup']
       },
       
-      // Personal development (LOW PRIORITY)
+      // Personal development
       {
-        title: "Complete online course on system design",
-        description: "Finish remaining 3 modules",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "low",
-        estimated_minutes: 180
+        title: 'Complete online course module',
+        description: 'Finish next module in advanced React patterns course',
+        priority: 'low',
+        estimatedMinutes: 90,
+        source: 'manual' as const,
+        tags: ['learning', 'personal-development', 'react']
       },
       {
-        title: "Prepare talk for engineering meetup",
-        description: "Topic: Scaling microservices in production",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "low",
-        estimated_minutes: 240
-      },
-      
-      // Maintenance tasks (LOW/MEDIUM)
-      {
-        title: "Update dependencies in main repository",
-        description: "Security patches and version bumps",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 90
-      },
-      {
-        title: "Clean up old feature flags",
-        description: "Remove flags for features launched >6 months ago",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "low",
-        estimated_minutes: 60
-      },
-      {
-        title: "Archive completed project repositories",
-        description: "Move inactive repos to cold storage",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "low",
-        estimated_minutes: 45
-      },
-      
-      // Process improvements (MEDIUM)
-      {
-        title: "Optimize CI/CD pipeline performance",
-        description: "Reduce build times by 30%",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 240
-      },
-      {
-        title: "Implement automated testing for edge cases",
-        description: "Increase test coverage to 90%",
-        source: "manual",
-        status: "backlog",
-        completed: false,
-        priority: "medium",
-        estimated_minutes: 360
+        title: 'Read engineering blog posts',
+        description: 'Catch up on saved articles about system design',
+        priority: 'low',
+        estimatedMinutes: 60,
+        source: 'manual' as const,
+        tags: ['learning', 'reading', 'system-design']
       }
     ];
     
-    // Shuffle tasks to create variety
-    const shuffled = [...tasks].sort(() => Math.random() - 0.5);
+    // Generate 30-40 tasks with some variation
+    const tasks: TaskInsert[] = [];
+    const now = new Date();
     
-    // Return 30-40 random tasks with a good mix of priorities
-    const taskCount = Math.floor(Math.random() * 10) + 30;
-    return shuffled.slice(0, taskCount);
+    // Add each template 1-2 times with slight variations
+    taskTemplates.forEach((template, index) => {
+      const copies = index < 8 ? 2 : 1; // More copies of high/medium priority tasks
+      
+      for (let i = 0; i < copies; i++) {
+        const daysAgo = Math.floor(Math.random() * 14); // Tasks from last 2 weeks
+        const createdAt = new Date(now);
+        createdAt.setDate(createdAt.getDate() - daysAgo);
+        
+        // Add some variation to estimated time
+        const timeVariation = 0.8 + Math.random() * 0.4; // 80% to 120% of original
+        const estimatedMinutes = Math.round(template.estimatedMinutes * timeVariation);
+        
+        // Occasionally mark some tasks as completed (for past days)
+        const isCompleted = daysAgo > 3 && Math.random() < 0.3;
+        
+        const task: TaskInsert = {
+          user_id: userId,
+          title: i === 0 ? template.title : `${template.title} (Follow-up)`,
+          description: template.description,
+          priority: template.priority as 'high' | 'medium' | 'low',
+          status: isCompleted ? 'completed' : 'backlog',
+          completed: isCompleted,
+          estimated_minutes: estimatedMinutes,
+          source: template.source,
+          email_id: template.source === 'email' ? null : null, // We don't have real email IDs yet
+          created_at: createdAt.toISOString(),
+          updated_at: createdAt.toISOString()
+        };
+        
+        tasks.push(task);
+      }
+    });
+    
+    // Shuffle tasks to mix priorities
+    return tasks.sort(() => Math.random() - 0.5);
   }
 } 

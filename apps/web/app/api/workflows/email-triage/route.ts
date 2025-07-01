@@ -61,13 +61,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Run the workflow
-    const workflow = createEmailTriageWorkflow();
+    const workflow = createEmailTriageWorkflow(supabase);
     const result = await workflow.invoke({
       userId: user.id,
       blockId,
       emails,
-      decisions: [],
-      stats: null,
+      decisions: {},
     });
 
     return NextResponse.json({

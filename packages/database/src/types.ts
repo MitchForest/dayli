@@ -36,6 +36,48 @@ export type Database = {
         }
         Relationships: []
       }
+      email_backlog: {
+        Row: {
+          created_at: string | null
+          days_in_backlog: number | null
+          email_id: string
+          from_email: string
+          id: string
+          importance: string | null
+          last_reviewed_at: string | null
+          snippet: string | null
+          subject: string
+          urgency: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          days_in_backlog?: number | null
+          email_id: string
+          from_email: string
+          id?: string
+          importance?: string | null
+          last_reviewed_at?: string | null
+          snippet?: string | null
+          subject: string
+          urgency?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          days_in_backlog?: number | null
+          email_id?: string
+          from_email?: string
+          id?: string
+          importance?: string | null
+          last_reviewed_at?: string | null
+          snippet?: string | null
+          subject?: string
+          urgency?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       emails: {
         Row: {
           action_type: string | null
@@ -147,6 +189,54 @@ export type Database = {
           full_name?: string | null
           id?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      task_backlog: {
+        Row: {
+          created_at: string | null
+          deferred_until: string | null
+          description: string | null
+          estimated_minutes: number | null
+          id: string
+          priority: number | null
+          source: string | null
+          source_id: string | null
+          tags: string[] | null
+          title: string
+          updated_at: string | null
+          urgency: number | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          deferred_until?: string | null
+          description?: string | null
+          estimated_minutes?: number | null
+          id?: string
+          priority?: number | null
+          source?: string | null
+          source_id?: string | null
+          tags?: string[] | null
+          title: string
+          updated_at?: string | null
+          urgency?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          deferred_until?: string | null
+          description?: string | null
+          estimated_minutes?: number | null
+          id?: string
+          priority?: number | null
+          source?: string | null
+          source_id?: string | null
+          tags?: string[] | null
+          title?: string
+          updated_at?: string | null
+          urgency?: number | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -361,9 +451,11 @@ export type Database = {
       user_preferences: {
         Row: {
           add_meeting_buffer: boolean | null
+          break_schedule: Json | null
           created_at: string | null
           deep_work_duration_hours: number | null
           deep_work_preference: string | null
+          email_preferences: Json | null
           evening_triage_duration_minutes: number | null
           evening_triage_time: string | null
           focus_blocks: Json | null
@@ -374,6 +466,7 @@ export type Database = {
           meeting_windows: Json | null
           morning_triage_duration_minutes: number | null
           morning_triage_time: string | null
+          open_time_preferences: Json | null
           protect_deep_work: boolean | null
           show_busy_during_triage: boolean | null
           target_deep_work_blocks: number | null
@@ -386,9 +479,11 @@ export type Database = {
         }
         Insert: {
           add_meeting_buffer?: boolean | null
+          break_schedule?: Json | null
           created_at?: string | null
           deep_work_duration_hours?: number | null
           deep_work_preference?: string | null
+          email_preferences?: Json | null
           evening_triage_duration_minutes?: number | null
           evening_triage_time?: string | null
           focus_blocks?: Json | null
@@ -399,6 +494,7 @@ export type Database = {
           meeting_windows?: Json | null
           morning_triage_duration_minutes?: number | null
           morning_triage_time?: string | null
+          open_time_preferences?: Json | null
           protect_deep_work?: boolean | null
           show_busy_during_triage?: boolean | null
           target_deep_work_blocks?: number | null
@@ -411,9 +507,11 @@ export type Database = {
         }
         Update: {
           add_meeting_buffer?: boolean | null
+          break_schedule?: Json | null
           created_at?: string | null
           deep_work_duration_hours?: number | null
           deep_work_preference?: string | null
+          email_preferences?: Json | null
           evening_triage_duration_minutes?: number | null
           evening_triage_time?: string | null
           focus_blocks?: Json | null
@@ -424,6 +522,7 @@ export type Database = {
           meeting_windows?: Json | null
           morning_triage_duration_minutes?: number | null
           morning_triage_time?: string | null
+          open_time_preferences?: Json | null
           protect_deep_work?: boolean | null
           show_busy_during_triage?: boolean | null
           target_deep_work_blocks?: number | null
@@ -658,35 +757,14 @@ export const Constants = {
   },
 } as const
 
-// Add convenience type exports
-export type Task = Database['public']['Tables']['tasks']['Row'];
-export type TaskInsert = TablesInsert<'tasks'>;
-export type TaskUpdate = TablesUpdate<'tasks'>;
+// Add these type aliases for compatibility
+export type QueryResult<T> = { data: T | null; error: string | null };
 
-export type Email = Database['public']['Tables']['emails']['Row'];
-export type EmailInsert = TablesInsert<'emails'>;
-export type EmailUpdate = TablesUpdate<'emails'>;
-
-export type TimeBlock = Database['public']['Tables']['time_blocks']['Row'];
+// Table type aliases
+export type DailySchedule = Tables<'daily_schedules'>;
+export type DailyScheduleInsert = TablesInsert<'daily_schedules'>;
+export type TimeBlock = Tables<'time_blocks'>;
 export type TimeBlockInsert = TablesInsert<'time_blocks'>;
 export type TimeBlockUpdate = TablesUpdate<'time_blocks'>;
-
-export type DailySchedule = Database['public']['Tables']['daily_schedules']['Row'];
-export type DailyScheduleInsert = TablesInsert<'daily_schedules'>;
-export type DailyScheduleUpdate = TablesUpdate<'daily_schedules'>;
-
-export type UserPreferences = Database['public']['Tables']['user_preferences']['Row'];
-export type UserPreferencesInsert = TablesInsert<'user_preferences'>;
-export type UserPreferencesUpdate = TablesUpdate<'user_preferences'>;
-
-// Query result types
-export interface QueryResult<T> {
-  data: T | null;
-  error: string | null;
-}
-
-export interface QueryListResult<T> {
-  data: T[] | null;
-  error: string | null;
-  count?: number;
-}
+export type Task = Tables<'tasks'>;
+export type Email = Tables<'emails'>;

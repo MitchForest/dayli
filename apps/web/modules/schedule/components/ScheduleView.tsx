@@ -5,6 +5,7 @@ import { motion, useAnimation, useMotionValue, PanInfo } from 'framer-motion';
 import { useSimpleScheduleStore } from '../store/simpleScheduleStore';
 import { useUserPreferences } from '@/modules/settings/hooks/useUserPreferences';
 import { useSchedule } from '../hooks/useSchedule';
+import { useScheduleSubscription } from '../hooks/useScheduleSubscription';
 import { TimeGridDay } from './TimeGridDay';
 import { TimeLabel } from './TimeLabel';
 import { CurrentTimeIndicator } from './CurrentTimeIndicator';
@@ -31,6 +32,9 @@ export function ScheduleView() {
   
   // Fetch schedule data - this ensures data is loaded
   const { loading } = useSchedule();
+  
+  // Enable real-time updates
+  useScheduleSubscription();
   
   // Set preferences when loaded
   useEffect(() => {

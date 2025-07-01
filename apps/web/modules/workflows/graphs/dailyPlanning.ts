@@ -1,11 +1,11 @@
 import { StateGraph, END } from '@langchain/langgraph';
 import { createChatModel, parseJSONResponse } from '../utils/openai';
 import { DailyPlanningStateType, GeneratedBlock } from '../types/workflow.types';
-import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@repo/database/types';
 
-// Create the workflow
-export function createDailyPlanningWorkflow() {
+// Create the workflow with supabase client as parameter
+export function createDailyPlanningWorkflow(supabase: SupabaseClient<Database>) {
   const model = createChatModel({ temperature: 0.3 });
 
   // Initialize state graph without schema - LangGraph will infer types
@@ -23,12 +23,7 @@ export function createDailyPlanningWorkflow() {
 
   // Node: Fetch user context (simplified - no RAG for MVP)
   workflow.addNode('fetchUserContext', async (state: DailyPlanningStateType) => {
-    // Create Supabase client
-    const supabase = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-
+    // Use the passed supabase client
     // Fetch user preferences
     const { data: preferences } = await supabase
       .from('user_preferences')
@@ -54,11 +49,7 @@ export function createDailyPlanningWorkflow() {
 
   // Node: Analyze existing meetings
   workflow.addNode('analyzeMeetings', async (state: DailyPlanningStateType) => {
-    const supabase = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-
+    // Use the passed supabase client
     // Fetch existing meetings for the day
     const { data: meetings } = await supabase
       .from('time_blocks')
@@ -146,11 +137,7 @@ export function createDailyPlanningWorkflow() {
 
   // Node: Save to database
   workflow.addNode('saveSchedule', async (state: DailyPlanningStateType) => {
-    const supabase = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-
+    // Use the passed supabase client
     // Create daily schedule
     const { data: schedule, error: scheduleError } = await supabase
       .from('daily_schedules')

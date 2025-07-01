@@ -48,11 +48,9 @@ export const createTimeBlock = tool({
   }),
   execute: async ({ type, title, startTime, endTime, date }) => {
     const targetDate = date || format(new Date(), 'yyyy-MM-dd');
-    const userId = getCurrentUserId();
     
-    // Get service from factory
+    // Get service from factory - it's already configured
     const factory = ServiceFactory.getInstance();
-    factory.configure({ userId }, true); // Using mock for now
     const scheduleService = factory.getScheduleService();
     
     // Check for conflicts
@@ -89,9 +87,7 @@ export const moveTimeBlock = tool({
     newEndTime: z.string().optional().describe('New end time in HH:MM format'),
   }),
   execute: async ({ blockId, newStartTime, newEndTime }) => {
-    const userId = getCurrentUserId();
     const factory = ServiceFactory.getInstance();
-    factory.configure({ userId }, true);
     const scheduleService = factory.getScheduleService();
     
     // Get the existing block
@@ -143,9 +139,7 @@ export const deleteTimeBlock = tool({
     reason: z.string().optional(),
   }),
   execute: async ({ blockId, reason }) => {
-    const userId = getCurrentUserId();
     const factory = ServiceFactory.getInstance();
-    factory.configure({ userId }, true);
     const scheduleService = factory.getScheduleService();
     
     // Get the block details before deleting
@@ -173,9 +167,7 @@ export const assignTaskToBlock = tool({
     blockId: z.string(),
   }),
   execute: async ({ taskId, blockId }) => {
-    const userId = getCurrentUserId();
     const factory = ServiceFactory.getInstance();
-    factory.configure({ userId }, true);
     const taskService = factory.getTaskService();
     const scheduleService = factory.getScheduleService();
     
@@ -220,9 +212,7 @@ export const completeTask = tool({
     taskId: z.string(),
   }),
   execute: async ({ taskId }) => {
-    const userId = getCurrentUserId();
     const factory = ServiceFactory.getInstance();
-    factory.configure({ userId }, true);
     const taskService = factory.getTaskService();
     
     const task = await taskService.getTask(taskId);
@@ -256,9 +246,7 @@ export const getSchedule = tool({
   }),
   execute: async ({ date }) => {
     const targetDate = date || format(new Date(), 'yyyy-MM-dd');
-    const userId = getCurrentUserId();
     const factory = ServiceFactory.getInstance();
-    factory.configure({ userId }, true);
     const scheduleService = factory.getScheduleService();
     
     const blocks = await scheduleService.getScheduleForDate(targetDate);
@@ -278,9 +266,7 @@ export const getUnassignedTasks = tool({
   description: 'Get all tasks that are not yet scheduled',
   parameters: z.object({}),
   execute: async () => {
-    const userId = getCurrentUserId();
     const factory = ServiceFactory.getInstance();
-    factory.configure({ userId }, true);
     const taskService = factory.getTaskService();
     
     const tasks = await taskService.getUnassignedTasks();

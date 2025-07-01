@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { date } = await request.json();
-    const workflow = createDailyPlanningWorkflow();
+    const workflow = createDailyPlanningWorkflow(supabase);
 
     // Get initial state
     const initialState = {
