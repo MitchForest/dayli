@@ -3,8 +3,15 @@
  */
 
 import React, { memo } from 'react';
-import { formatTimeLabel } from '../canvas/utils/date-utils';
 import { HOUR_HEIGHT, TIME_LABEL_WIDTH, CANVAS_COLORS, TYPOGRAPHY } from '../constants/grid-constants';
+
+// Simple helper to format hour as 12-hour time label
+const formatTimeLabel = (hour: number): string => {
+  if (hour === 0) return '12 AM';
+  if (hour === 12) return '12 PM';
+  if (hour < 12) return `${hour} AM`;
+  return `${hour - 12} PM`;
+};
 
 interface TimeLabelProps {
   hour: number;

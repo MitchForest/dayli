@@ -1,12 +1,12 @@
 import { useCallback } from 'react';
 import { useScheduleStore } from '../store/scheduleStore';
-import { useCanvasStore } from '../canvas/CanvasStore';
+import { useSimpleScheduleStore } from '../store/simpleScheduleStore';
 import { format } from 'date-fns';
 import type { DailyTask } from '../types/schedule.types';
 
 export function useTaskActions() {
   const { toggleTaskComplete, getSchedule } = useScheduleStore();
-  const currentDate = useCanvasStore(state => state.currentDate);
+  const currentDate = useSimpleScheduleStore(state => state.currentDate);
   
   const completeTask = useCallback((taskId: string) => {
     const dateString = format(currentDate, 'yyyy-MM-dd');

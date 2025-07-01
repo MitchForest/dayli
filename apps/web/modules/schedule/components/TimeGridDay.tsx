@@ -6,12 +6,20 @@ import React, { memo, useMemo } from 'react';
 import { GridHour } from './GridHour';
 import { useSimpleScheduleStore } from '../store/simpleScheduleStore';
 import { HOUR_HEIGHT, CANVAS_COLORS } from '../constants/grid-constants';
-import { parseTime } from '../canvas/utils/date-utils';
 import type { UserPreferencesTyped } from '@/modules/settings/types/preferences.types';
 import { DeepWorkBlock, MeetingBlock, EmailTriageBlock, BreakBlock } from './blocks';
 import { useScheduleStore } from '../store/scheduleStore';
 import { format, addDays } from 'date-fns';
 import { calculateBlockLayout, getBlockLayoutStyle, type LayoutBlock } from '../utils/blockLayout';
+
+// Simple helper to parse 24-hour time format (e.g., "08:00" -> { hour: 8, minute: 0 })
+const parseTime = (timeStr: string) => {
+  const [hourStr, minuteStr] = timeStr.split(':');
+  return {
+    hour: parseInt(hourStr || '0', 10),
+    minute: parseInt(minuteStr || '0', 10)
+  };
+};
 
 interface TimeGridDayProps {
   dayOffset: number; // Days from current date (-1, 0, 1)
