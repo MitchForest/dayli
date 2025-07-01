@@ -46,11 +46,14 @@ function generateId(): string {
 
 function generateTasks(count: number, source: DailyTask['source'] = 'ai'): DailyTask[] {
   const shuffled = [...TASK_TITLES].sort(() => 0.5 - Math.random());
-  return shuffled.slice(0, count).map(title => ({
+  const sources: DailyTask['source'][] = ['email', 'calendar', 'ai'];
+  
+  return shuffled.slice(0, count).map((title, index) => ({
     id: generateId(),
     title,
     completed: false,
-    source,
+    // Mix up the sources for variety, but prefer the passed source
+    source: index === 0 ? source : sources[Math.floor(Math.random() * sources.length)],
   }));
 }
 

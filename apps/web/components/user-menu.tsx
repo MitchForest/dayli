@@ -19,17 +19,34 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export function UserMenu() {
   const { user, profile, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
 
   const userInitial = String(profile?.full_name || user?.email || 'U').charAt(0).toUpperCase();
   const userName = String(profile?.full_name || user?.email?.split('@')[0] || 'User');
+  const avatarUrl = (profile?.avatar_url as string) || user?.user_metadata?.avatar_url || '';
+  
+  // Debug avatar URL
+  console.log('Avatar URL:', avatarUrl);
+  console.log('Profile:', profile);
+  console.log('User metadata:', user?.user_metadata);
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.push('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   return (
-    <div className="fixed top-6 right-6 z-50">
+    <div className="fixed bottom-6 left-6 z-50">
       <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
         <DropdownMenuTrigger asChild>
           <Button
@@ -38,17 +55,30 @@ export function UserMenu() {
           >
             <Avatar className="h-12 w-12">
               <AvatarImage 
-                src={(profile?.avatar_url as string) || user?.user_metadata?.avatar_url} 
+                src={avatarUrl} 
                 alt={userName}
+                onError={(e) => {
+                  console.error('Avatar image failed to load:', e);
+                  console.log('Attempted URL:', avatarUrl);
+                }}
               />
-              <AvatarFallback className="bg-primary text-primary-foreground text-lg font-medium">
+              <AvatarFallback className="bg-blue-500 text-white text-lg font-medium">
                 {userInitial}
               </AvatarFallback>
             </Avatar>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56" align="end" forceMount>
-          <div className="flex items-center justify-start gap-2 p-2">
+        <DropdownMenuContent className="w-64" align="start" side="top" forceMount>
+          <div className="flex items-center gap-3 p-3">
+            <Avatar className="h-10 w-10">
+              <AvatarImage 
+                src={avatarUrl} 
+                alt={userName}
+              />
+              <AvatarFallback className="bg-blue-500 text-white font-medium">
+                {userInitial}
+              </AvatarFallback>
+            </Avatar>
             <div className="flex flex-col space-y-1 leading-none">
               <p className="font-medium">{userName}</p>
               {user?.email && (
@@ -57,37 +87,27 @@ export function UserMenu() {
             </div>
           </div>
           <DropdownMenuSeparator />
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Sun className="mr-2 h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-              <Moon className="absolute mr-2 h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-              <span>Theme</span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
-                <DropdownMenuRadioItem value="light">
-                  <Sun className="mr-2 h-4 w-4" />
-                  <span>Light</span>
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="dark">
-                  <Moon className="mr-2 h-4 w-4" />
-                  <span>Dark</span>
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="system">
-                  <Monitor className="mr-2 h-4 w-4" />
-                  <span>System</span>
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+          <DropdownMenuItem 
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="cursor-pointer"
+          >
+            {theme === 'dark' ? (
+              <Sun className="mr-2 h-4 w-4" />
+            ) : (
+              <Moon className="mr-2 h-4 w-4" />
+            )}
+            <span>Theme</span>
+          </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link href="/settings" className="cursor-pointer">
               <Settings className="mr-2 h-4 w-4" />
               <span>Settings</span>
             </Link>
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={signOut} className="cursor-pointer text-destructive">
+          <DropdownMenuItem 
+            onClick={handleSignOut} 
+            className="cursor-pointer text-destructive focus:text-destructive"
+          >
             <LogOut className="mr-2 h-4 w-4" />
             <span>Sign out</span>
           </DropdownMenuItem>

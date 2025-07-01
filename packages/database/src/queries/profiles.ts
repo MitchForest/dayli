@@ -1,4 +1,3 @@
-import { supabase } from '../client';
 import type { QueryResult, QueryListResult, QueryOptions } from '../types';
 import type { Database } from '../database.types';
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -37,36 +36,15 @@ export interface UserProfileUpdate {
   privacy_settings?: Record<string, unknown>;
 }
 
-/**
- * Get current user's profile
- */
-export async function getCurrentUserProfile(): Promise<QueryResult<UserProfile>> {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return { data: null, error: 'No authenticated user' };
-    }
+// NOTE: These functions are commented out as they need to be refactored
+// to accept a Supabase client parameter instead of using a global client
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('auth_user_id', user.id)
-      .single();
-
-    if (error && error.code === 'PGRST116') {
-      // No user profile found - this is OK, they might need to complete onboarding
-      return { data: null, error: null };
-    }
-
-    if (error) {
-      return { data: null, error: error.message };
-    }
-
-    return { data, error: null };
-  } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : 'Unknown error' };
-  }
-}
+// /**
+//  * Get current user's profile
+//  */
+// export async function getCurrentUserProfile(): Promise<QueryResult<UserProfile>> {
+//   // Implementation needs refactoring
+// }
 
 /**
  * Get a user profile by user ID
@@ -103,126 +81,37 @@ export async function getProfile(
   }
 }
 
-/**
- * Get a user profile by username
- */
-export async function getUserProfileByUsername(username: string): Promise<QueryResult<UserProfile>> {
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('username', username)
-      .single();
+// /**
+//  * Get a user profile by username
+//  */
+// export async function getUserProfileByUsername(username: string): Promise<QueryResult<UserProfile>> {
+//   // Implementation needs refactoring
+// }
 
-    if (error) {
-      return { data: null, error: error.message };
-    }
+// /**
+//  * Update current user's profile
+//  */
+// export async function updateProfile(userId: string, updates: Partial<Profile>): Promise<Profile | null> {
+//   // Implementation needs refactoring
+// }
 
-    return { data, error: null };
-  } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : 'Unknown error' };
-  }
-}
+// /**
+//  * Create a new user profile
+//  */
+// export async function createProfile(profile: Omit<Profile, 'created_at' | 'updated_at'>): Promise<Profile | null> {
+//   // Implementation needs refactoring
+// }
 
-/**
- * Update current user's profile
- */
-export async function updateProfile(userId: string, updates: Partial<Profile>): Promise<Profile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .update(updates)
-    .eq('id', userId)
-    .select()
-    .single();
+// /**
+//  * Search user profiles with optional filters and pagination
+//  */
+// export async function searchUserProfiles(options: QueryOptions = {}): Promise<QueryListResult<UserProfile>> {
+//   // Implementation needs refactoring
+// }
 
-  if (error) {
-    console.error('Error updating profile:', error);
-    return null;
-  }
-
-  return data;
-}
-
-/**
- * Create a new user profile
- */
-export async function createProfile(profile: Omit<Profile, 'created_at' | 'updated_at'>): Promise<Profile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .insert(profile)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error creating profile:', error);
-    return null;
-  }
-
-  return data;
-}
-
-/**
- * Search user profiles with optional filters and pagination
- */
-export async function searchUserProfiles(options: QueryOptions = {}): Promise<QueryListResult<UserProfile>> {
-  try {
-    let query = supabase.from('profiles').select('*', { count: 'exact' });
-
-    // Only show non-private profiles or current user's profile
-    const currentUser = await supabase.auth.getUser();
-    if (currentUser.data.user) {
-      query = query.or(`is_private.eq.false,auth_user_id.eq.${currentUser.data.user.id}`);
-    } else {
-      query = query.eq('is_private', false);
-    }
-
-    // Apply search filter
-    if (options.search) {
-      query = query.or(`username.ilike.%${options.search}%,display_name.ilike.%${options.search}%`);
-    }
-
-    // Apply sorting
-    if (options.sortBy) {
-      query = query.order(options.sortBy, { ascending: options.sortOrder === 'asc' });
-    } else {
-      query = query.order('created_at', { ascending: false });
-    }
-
-    // Apply pagination
-    if (options.limit) {
-      const offset = options.offset || (options.page ? (options.page - 1) * options.limit : 0);
-      query = query.range(offset, offset + options.limit - 1);
-    }
-
-    const { data, error, count } = await query;
-
-    if (error) {
-      return { data: null, error: error.message, count: 0 };
-    }
-
-    return { data, error: null, count: count || 0 };
-  } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : 'Unknown error', count: 0 };
-  }
-}
-
-/**
- * Check if username is available
- */
-export async function isUsernameAvailable(username: string): Promise<QueryResult<boolean>> {
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('username', username)
-      .maybeSingle();
-
-    if (error) {
-      return { data: null, error: error.message };
-    }
-
-    return { data: data === null, error: null };
-  } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : 'Unknown error' };
-  }
-} 
+// /**
+//  * Check if username is available
+//  */
+// export async function isUsernameAvailable(username: string): Promise<QueryResult<boolean>> {
+//   // Implementation needs refactoring
+// } 

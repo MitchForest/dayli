@@ -26,10 +26,11 @@
   "dependencies": {
     "@repo/database": "*",
     "@repo/shared": "*",
+    "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.50.0",
     "react": "^19.1.0",
-    "zustand": "^5.0.2",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "zustand": "^5.0.2"
   },
   "peerDependencies": {
     "@tauri-apps/api": "^2.1.1"
@@ -39,4 +40,4 @@
       "optional": true
     }
   }
-} 
+}

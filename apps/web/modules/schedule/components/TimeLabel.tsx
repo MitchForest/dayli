@@ -1,22 +1,36 @@
-import React from 'react';
-import { cn } from '@/lib/utils';
+/**
+ * TimeLabel component - displays hour labels on the left side
+ */
+
+import React, { memo } from 'react';
+import { formatTimeLabel } from '../canvas/utils/date-utils';
+import { HOUR_HEIGHT, TIME_LABEL_WIDTH, CANVAS_COLORS, TYPOGRAPHY } from '../constants/grid-constants';
 
 interface TimeLabelProps {
-  time: string;
-  className?: string;
-  style?: React.CSSProperties;
+  hour: number;
 }
 
-export function TimeLabel({ time, className, style }: TimeLabelProps) {
+export const TimeLabel = memo(({ hour }: TimeLabelProps) => {
   return (
-    <div 
-      className={cn(
-        "text-xs text-muted-foreground font-medium pr-4 text-right",
-        className
-      )}
-      style={style}
+    <div
+      className="absolute flex items-start justify-end pr-3"
+      style={{
+        top: `${hour * HOUR_HEIGHT}px`,
+        height: `${HOUR_HEIGHT}px`,
+        width: `${TIME_LABEL_WIDTH}px`,
+      }}
     >
-      {time}
+      <span
+        style={{
+          ...TYPOGRAPHY.timeLabel,
+          color: hour % 3 === 0 ? CANVAS_COLORS.timeLabelHour : CANVAS_COLORS.timeLabel,
+          marginTop: hour === 0 ? '2px' : '-6px', // Give 12 AM more space, align others with hour line
+        }}
+      >
+        {formatTimeLabel(hour)}
+      </span>
     </div>
   );
-} 
+});
+
+TimeLabel.displayName = 'TimeLabel'; 

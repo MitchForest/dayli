@@ -33,6 +33,83 @@ export interface Database {
           updated_at?: string;
         };
       };
+      user_preferences: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          work_start_time: string | null;
+          work_end_time: string | null;
+          work_days: string[] | null;
+          lunch_start_time: string | null;
+          lunch_duration_minutes: number | null;
+          target_deep_work_blocks: number | null;
+          deep_work_duration_hours: number | null;
+          deep_work_preference: string | null;
+          morning_triage_time: string | null;
+          morning_triage_duration_minutes: number | null;
+          evening_triage_time: string | null;
+          evening_triage_duration_minutes: number | null;
+          meeting_windows: unknown | null;
+          focus_blocks: unknown | null;
+          protect_deep_work: boolean | null;
+          show_busy_during_triage: boolean | null;
+          add_meeting_buffer: boolean | null;
+          meeting_buffer_minutes: number | null;
+          timezone: string | null;
+          created_at: string | null;
+          updated_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string | null;
+          work_start_time?: string | null;
+          work_end_time?: string | null;
+          work_days?: string[] | null;
+          lunch_start_time?: string | null;
+          lunch_duration_minutes?: number | null;
+          target_deep_work_blocks?: number | null;
+          deep_work_duration_hours?: number | null;
+          deep_work_preference?: string | null;
+          morning_triage_time?: string | null;
+          morning_triage_duration_minutes?: number | null;
+          evening_triage_time?: string | null;
+          evening_triage_duration_minutes?: number | null;
+          meeting_windows?: unknown | null;
+          focus_blocks?: unknown | null;
+          protect_deep_work?: boolean | null;
+          show_busy_during_triage?: boolean | null;
+          add_meeting_buffer?: boolean | null;
+          meeting_buffer_minutes?: number | null;
+          timezone?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string | null;
+          work_start_time?: string | null;
+          work_end_time?: string | null;
+          work_days?: string[] | null;
+          lunch_start_time?: string | null;
+          lunch_duration_minutes?: number | null;
+          target_deep_work_blocks?: number | null;
+          deep_work_duration_hours?: number | null;
+          deep_work_preference?: string | null;
+          morning_triage_time?: string | null;
+          morning_triage_duration_minutes?: number | null;
+          evening_triage_time?: string | null;
+          evening_triage_duration_minutes?: number | null;
+          meeting_windows?: unknown | null;
+          focus_blocks?: unknown | null;
+          protect_deep_work?: boolean | null;
+          show_busy_during_triage?: boolean | null;
+          add_meeting_buffer?: boolean | null;
+          meeting_buffer_minutes?: number | null;
+          timezone?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+      };
     };
     Views: {
       [_ in never]: never;
@@ -44,4 +121,4 @@ export interface Database {
       [_ in never]: never;
     };
   };
-} 
+}

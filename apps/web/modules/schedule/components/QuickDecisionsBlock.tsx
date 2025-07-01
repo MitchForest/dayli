@@ -2,6 +2,8 @@ import React from 'react';
 import { TimeBlock } from './TimeBlock';
 import { TIME_BLOCK_GRADIENTS } from '@/lib/constants';
 import { Zap } from 'lucide-react';
+import { EmailQueue } from '@/modules/email/components/EmailQueue';
+import { useScheduleStore } from '@/stores';
 import type { TimeBlock as TimeBlockType } from '../types/schedule.types';
 import type { TimeGridPosition } from '../utils/timeGrid';
 
@@ -12,6 +14,7 @@ interface QuickDecisionsBlockProps {
 }
 
 export function QuickDecisionsBlock({ block, gridPosition, style }: QuickDecisionsBlockProps) {
+  const { processEmailFromBlock } = useScheduleStore();
   const emailCount = block.emailQueue?.length || 0;
   
   return (
@@ -28,15 +31,16 @@ export function QuickDecisionsBlock({ block, gridPosition, style }: QuickDecisio
         <div className="flex items-center gap-2">
           <Zap className="h-3.5 w-3.5 text-warning" />
           <span className="text-xs text-muted-foreground">
-            {emailCount} quick decisions
+            {emailCount} quick {emailCount === 1 ? 'decision' : 'decisions'}
           </span>
         </div>
-        {emailCount > 0 && block.emailQueue && (
-          <div className="text-xs text-muted-foreground">
-            <div>Now: {block.emailQueue.filter(e => e.decision === 'now').length}</div>
-            <div>Tomorrow: {block.emailQueue.filter(e => e.decision === 'tomorrow').length}</div>
-            <div>Never: {block.emailQueue.filter(e => e.decision === 'never').length}</div>
-          </div>
+        
+        {block.emailQueue && block.emailQueue.length > 0 && (
+          <EmailQueue
+            emails={block.emailQueue}
+            onDecision={processEmailFromBlock}
+            compact={true}
+          />
         )}
       </div>
     </TimeBlock>

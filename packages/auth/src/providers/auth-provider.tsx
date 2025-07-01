@@ -1,50 +1,60 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getProfile } from '@repo/database/queries';
 import type { AuthContextType } from '../types';
 import type { User } from '@supabase/supabase-js';
 import type { Database } from '@repo/database/database.types';
 
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// Create the Supabase client outside the component to ensure single instance
+export const supabaseClient = createBrowserClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+interface AuthContextValue extends AuthContextType {
+  supabase: SupabaseClient<Database>;
+}
+
+export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const supabase = useMemo(() =>
-    createBrowserClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    ),
-  []);
-
   useEffect(() => {
     const fetchSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        const currentProfile = await getProfile(session.user.id, supabase);
-        if (currentProfile) {
-          setProfile(currentProfile);
+      try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          const currentProfile = await getProfile(session.user.id, supabaseClient);
+          if (currentProfile) {
+            setProfile(currentProfile);
+          }
         }
+      } catch (error) {
+        console.error('Error fetching session:', error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(
       async (_event, session) => {
         setUser(session?.user ?? null);
         if (session?.user) {
-          const existingProfile = await getProfile(session.user.id, supabase);
+          const existingProfile = await getProfile(session.user.id, supabaseClient);
           if (existingProfile) {
             setProfile(existingProfile);
           } else {
-            const { data: newProfile, error } = await supabase
+            const { data: newProfile, error } = await supabaseClient
               .from('profiles')
               .insert({
                 id: session.user.id,
@@ -64,37 +74,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           setProfile(null);
         }
+        setLoading(false);
       }
     );
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, []);
 
   const signInWithGoogle = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        scopes: 'openid profile email',
-      },
-    });
-  };
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login';
+    try {
+      const { error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          scopes: 'openid profile email',
+        },
+      });
+      if (error) {
+        console.error('Error signing in with Google:', error);
+      }
+    } catch (error) {
+      console.error('Error in signInWithGoogle:', error);
     }
   };
 
-  const value: AuthContextType = {
+  const signOut = async () => {
+    try {
+      const { error } = await supabaseClient.auth.signOut();
+      if (error) {
+        console.error('Error signing out:', error);
+        throw error;
+      }
+      // Clear local state
+      setUser(null);
+      setProfile(null);
+    } catch (error) {
+      console.error('Error in signOut:', error);
+      throw error;
+    }
+  };
+
+  const value: AuthContextValue = {
     user,
     profile,
     loading,
     signInWithGoogle,
     signOut,
+    supabase: supabaseClient,
   };
 
   return (

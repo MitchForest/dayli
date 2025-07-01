@@ -1,2 +1,3 @@
 export * from './profiles';
-export * from './auth'; 
+export * from './auth';
+export * from './preferences'; 

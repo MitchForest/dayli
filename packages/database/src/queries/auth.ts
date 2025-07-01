@@ -1,13 +1,13 @@
-import { supabase } from '../client';
 import type { QueryResult } from '../types';
-import type { User } from '@supabase/supabase-js';
+import type { User, SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../database.types';
 
 /**
  * Sign out the current user
  */
-export async function signOut(): Promise<QueryResult<boolean>> {
+export async function signOut(client: SupabaseClient<Database>): Promise<QueryResult<boolean>> {
   try {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await client.auth.signOut();
 
     if (error) {
       return { data: null, error: error.message };
@@ -22,9 +22,9 @@ export async function signOut(): Promise<QueryResult<boolean>> {
 /**
  * Get the current authenticated user
  */
-export async function getCurrentUser(): Promise<QueryResult<User>> {
+export async function getCurrentUser(client: SupabaseClient<Database>): Promise<QueryResult<User>> {
   try {
-    const { data: { user }, error } = await supabase.auth.getUser();
+    const { data: { user }, error } = await client.auth.getUser();
 
     if (error) {
       return { data: null, error: error.message };
@@ -43,9 +43,9 @@ export async function getCurrentUser(): Promise<QueryResult<User>> {
 /**
  * Sign in with OAuth provider (Google or GitHub)
  */
-export async function signInWithOAuth(provider: 'google' | 'github') {
+export async function signInWithOAuth(provider: 'google' | 'github', client: SupabaseClient<Database>) {
   try {
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await client.auth.signInWithOAuth({
       provider,
       options: {
         redirectTo: `${window.location.origin}/dashboard`,

@@ -19,8 +19,13 @@ export const useEmailStore = create<EmailStore>((set, get) => ({
     const { emailQueue } = get();
     const email = emailQueue.find(e => e.id === emailId);
     
-    if (!email) return;
+    if (!email) {
+      // Email not in the store's queue - it's in a time block
+      // The schedule store will handle removing it from the time blocks
+      return;
+    }
     
+    // Email was in the store's queue
     const processedEmail = { ...email, decision };
     
     set({

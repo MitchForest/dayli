@@ -8,6 +8,7 @@ import { EmailBlock } from './EmailBlock';
 import { BreakBlock } from './BreakBlock';
 import { QuickDecisionsBlock } from './QuickDecisionsBlock';
 import { CurrentTimeIndicator } from './CurrentTimeIndicator';
+import { DailyStats } from './DailyStats';
 import { generateHourLabels, getTimeGridPosition } from '../utils/timeGrid';
 import type { TimeBlock } from '../types/schedule.types';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,6 +21,9 @@ function DayScheduleSkeleton({ className }: { className?: string }) {
   const hourLabels = generateHourLabels();
   return (
     <div className={cn("relative", className)}>
+      {/* Skeleton for stats */}
+      <Skeleton className="h-32 mb-6" />
+      
       <div 
         className="grid gap-0 relative"
         style={{
@@ -31,9 +35,7 @@ function DayScheduleSkeleton({ className }: { className?: string }) {
           {hourLabels.map((label, index) => (
             <TimeLabel
               key={label}
-              time={label}
-              className="sticky left-0 bg-background"
-              style={{ gridRow: index * 4 + 1 }}
+              hour={index + 8}
             />
           ))}
         </div>
@@ -130,6 +132,9 @@ export function DaySchedule({ className }: DayScheduleProps) {
   
   return (
     <div className={cn("relative", className)}>
+      {/* Daily Stats */}
+      <DailyStats schedule={schedule} />
+      
       {/* Schedule Grid */}
       <div 
         className="grid gap-0 relative"
@@ -143,11 +148,7 @@ export function DaySchedule({ className }: DayScheduleProps) {
           {hourLabels.map((label, index) => (
             <TimeLabel
               key={label}
-              time={label}
-              className="sticky left-0 bg-background"
-              style={{
-                gridRow: index * 4 + 1, // Each hour spans 4 rows (15-minute increments)
-              }}
+              hour={index + 8}
             />
           ))}
         </div>

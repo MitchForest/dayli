@@ -7,6 +7,7 @@ interface ScheduleStore {
   toggleTaskComplete: (taskId: string) => void;
   updateTimeBlock: (blockId: string, updates: Partial<TimeBlock>) => void;
   updateStats: () => void;
+  processEmailFromBlock: (emailId: string, decision: 'now' | 'tomorrow' | 'never') => void;
 }
 
 export const useScheduleStore = create<ScheduleStore>((set, get) => ({
@@ -49,14 +50,43 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
     set({ schedule: updatedSchedule });
   },
   
+  processEmailFromBlock: (emailId, decision) => {
+    const { schedule } = get();
+    if (!schedule) return;
+    
+    // Find and remove email from time blocks
+    const updatedTimeBlocks = schedule.timeBlocks.map(block => {
+      if (block.emailQueue) {
+        const hasEmail = block.emailQueue.some(e => e.id === emailId);
+        if (hasEmail) {
+          return {
+            ...block,
+            emailQueue: block.emailQueue.filter(e => e.id !== emailId)
+          };
+        }
+      }
+      return block;
+    });
+    
+    // Update schedule with removed email and increment processed count
+    set({
+      schedule: {
+        ...schedule,
+        timeBlocks: updatedTimeBlocks,
+        stats: {
+          ...schedule.stats,
+          emailsProcessed: schedule.stats.emailsProcessed + 1
+        }
+      }
+    });
+  },
+  
   updateStats: () => {
     const { schedule } = get();
     if (!schedule) return;
     
     const tasksCompleted = schedule.dailyTasks.filter(task => task.completed).length;
-    const emailsProcessed = schedule.timeBlocks
-      .filter(block => block.type === 'email' || block.type === 'quick-decisions')
-      .reduce((count, block) => count + (block.emailQueue?.length || 0), 0);
+    const emailsProcessed = schedule.stats.emailsProcessed; // Keep existing count
     const focusMinutes = schedule.timeBlocks
       .filter(block => block.type === 'focus')
       .reduce((total, block) => {

@@ -2,25 +2,22 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@repo/database/client';
+import { useAuth } from '@repo/auth/hooks';
 
 export default function Home() {
   const router = useRouter();
+  const { user, loading } = useAuth();
 
   useEffect(() => {
-    // Check if user is authenticated
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session) {
+    // Redirect based on auth status
+    if (!loading) {
+      if (user) {
         router.push('/focus');
       } else {
         router.push('/login');
       }
-    };
-
-    checkAuth();
-  }, [router]);
+    }
+  }, [user, loading, router]);
 
   return (
     <div className="flex min-h-screen items-center justify-center">
