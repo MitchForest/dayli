@@ -5,8 +5,7 @@
   "exports": {
     "./client": "./src/client.ts",
     "./types": "./src/types.ts",
-    "./queries": "./src/queries/index.ts",
-    "./database.types": "./src/database.types.ts"
+    "./queries": "./src/queries/index.ts"
   },
   "scripts": {
     "build": "tsc",
@@ -14,7 +13,7 @@
     "check-types": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "generate-types": "supabase gen types typescript --local > src/database.types.ts"
+    "generate-types": "supabase gen types typescript --project-id krgqhfjugnrvtnkoabwd > src/types.ts"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",

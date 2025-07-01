@@ -56,7 +56,7 @@ export interface CanvasState {
 export const useCanvasStore = create<CanvasState>()(
   subscribeWithSelector((set, get) => ({
     viewport: { width: 0, height: 0 },
-    camera: { x: 0, y: -20, scale: 1 },
+    camera: { x: 0, y: 0, scale: 1 },
     cameraAnimation: null,
     shouldRender: true,
     currentDate: getToday(),
@@ -175,7 +175,11 @@ export const useCanvasStore = create<CanvasState>()(
       }
       
       // Calculate Y position (show target hour near top of viewport)
-      const targetY = Math.max(0, targetHour * HOUR_HEIGHT);
+      let targetY = Math.max(0, targetHour * HOUR_HEIGHT);
+      
+      // Ensure we don't show empty space at the bottom
+      const maxY = Math.max(0, 24 * HOUR_HEIGHT - viewport.height);
+      targetY = Math.min(targetY, maxY);
       
       if (animated) {
         // Simple fast animation
@@ -267,7 +271,10 @@ export const useCanvasStore = create<CanvasState>()(
       const timeParts = (preferences.work_start_time || '08:00').split(':').map(Number);
       const hours = timeParts[0] || 8;
       const targetY = hours * HOUR_HEIGHT - viewport.height / 3; // Show some context above
-      const constrainedY = Math.max(0, targetY);
+      
+      // Ensure we don't show empty space at the bottom
+      const maxY = Math.max(0, 24 * HOUR_HEIGHT - viewport.height);
+      const constrainedY = Math.max(0, Math.min(targetY, maxY));
       
       if (animated) {
         // Simple fast animation

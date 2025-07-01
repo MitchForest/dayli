@@ -1,5 +1,4 @@
-import type { QueryResult, QueryListResult, QueryOptions } from '../types';
-import type { Database } from '../database.types';
+import type { Database } from '../types';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];

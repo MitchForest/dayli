@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../database.types';
+import type { Database } from '../types';
 
 type UserPreferences = Database['public']['Tables']['user_preferences']['Row'];
 type UserPreferencesInsert = Database['public']['Tables']['user_preferences']['Insert'];

@@ -45,6 +45,9 @@ export const useUserPreferences = () => {
             {
               user_id: user.id,
               ...DEFAULT_PREFERENCES,
+              // Convert typed arrays to JSON for database
+              meeting_windows: DEFAULT_PREFERENCES.meeting_windows as any,
+              focus_blocks: DEFAULT_PREFERENCES.focus_blocks as any,
             },
             supabase
           );
@@ -77,6 +80,9 @@ export const useUserPreferences = () => {
         {
           user_id: user.id,
           ...data,
+          // Convert typed arrays to JSON for database
+          meeting_windows: data.meeting_windows as any,
+          focus_blocks: data.focus_blocks as any,
         },
         supabase
       );

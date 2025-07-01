@@ -6,11 +6,27 @@
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": [".next/**", "!.next/cache/**"],
-      "env": ["NODE_ENV", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY"]
+      "env": [
+        "NODE_ENV", 
+        "NEXT_PUBLIC_SUPABASE_URL", 
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY", 
+        "SUPABASE_URL", 
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_SERVICE_KEY",
+        "OPEN_AI_KEY"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"],
-      "env": ["NODE_ENV", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY"]
+      "env": [
+        "NODE_ENV", 
+        "NEXT_PUBLIC_SUPABASE_URL", 
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY", 
+        "SUPABASE_URL", 
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_SERVICE_KEY",
+        "OPEN_AI_KEY"
+      ]
     },
     "check-types": {
       "dependsOn": ["^check-types"]

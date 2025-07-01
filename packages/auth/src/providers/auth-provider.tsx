@@ -6,7 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getProfile } from '@repo/database/queries';
 import type { AuthContextType } from '../types';
 import type { User } from '@supabase/supabase-js';
-import type { Database } from '@repo/database/database.types';
+import type { Database } from '@repo/database/types';
 
 // Create the Supabase client outside the component to ensure single instance
 export const supabaseClient = createBrowserClient<Database>(

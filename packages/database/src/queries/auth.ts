@@ -1,6 +1,5 @@
-import type { QueryResult } from '../types';
+import type { Database, QueryResult } from '../types';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../database.types';
 
 /**
  * Sign out the current user

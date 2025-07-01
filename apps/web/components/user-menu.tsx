@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTheme } from 'next-themes';
-import { LogOut, Settings, Moon, Sun, Monitor } from 'lucide-react';
+import { LogOut, Settings, Moon, Sun } from 'lucide-react';
 import { useAuth } from '@repo/auth/hooks';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -11,11 +11,6 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';

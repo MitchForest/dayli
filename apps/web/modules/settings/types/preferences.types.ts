@@ -1,4 +1,4 @@
-import type { Database } from '@repo/database/database.types';
+import type { Database } from '@repo/database/types';
 
 // Base type from database
 export type UserPreferences = Database['public']['Tables']['user_preferences']['Row'];
