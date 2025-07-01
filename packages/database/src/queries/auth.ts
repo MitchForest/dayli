@@ -1,4 +1,4 @@
-import type { Database, QueryResult } from '../types';
+import type { Database, QueryResult } from '../index';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
 
 /**

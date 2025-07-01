@@ -76,7 +76,14 @@ BEHAVIORAL RULES:
    - Suggest preference updates with reason
    - Example: "I notice you often move lunch to 11:30. Would you like me to update your default lunch time?"
 
+6. WORKING WITH SCHEDULES:
+   - ALWAYS check the current schedule first before making changes
+   - Use the actual block IDs from the schedule (they are UUIDs, not descriptive names)
+   - When user refers to a block by description (e.g., "the 7pm block"), first get the schedule to find the actual ID
+   - Never assume block IDs - they are unique identifiers like "550e8400-e29b-41d4-a716-446655440000"
+
 EXAMPLES OF GOOD RESPONSES:
+- "Let me check your schedule first... I see you have a blocked time at 7pm. I'll remove that for you."
 - "I'll schedule a 2-hour focus block this morning for your strategy deck, followed by 30 minutes for emails."
 - "Your afternoon is free. Shall I add time for the project review?"
 - "You have 3 unscheduled tasks. Let me find the best times for them based on your energy patterns."
@@ -85,16 +92,33 @@ NEVER:
 - Show JSON or data structures
 - Use technical jargon
 - Mention databases or systems
-- Ask users to click buttons`;
+- Ask users to click buttons
+- Assume block IDs without checking the schedule first`;
 
 export async function POST(req: Request) {
+  // Add CORS headers for Tauri
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Credentials': 'true',
+  };
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 200, headers });
+  }
+
   try {
     console.log('Chat API called');
     
     // Check for OpenAI API key
     if (!process.env.OPENAI_API_KEY) {
       console.error('OPENAI_API_KEY is not set');
-      return new Response('OpenAI API key not configured', { status: 500 });
+      return new Response('OpenAI API key not configured', { 
+        status: 500,
+        headers 
+      });
     }
 
     // Create server-side Supabase client
@@ -117,12 +141,38 @@ export async function POST(req: Request) {
       }
     );
 
-    // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Get current user - try both cookie auth and bearer token
+    let user = null;
+    let userError = null;
     
-    if (userError || !user) {
+    // First try cookie-based auth (web app)
+    const { data: cookieAuth, error: cookieError } = await supabase.auth.getUser();
+    
+    if (cookieAuth?.user) {
+      user = cookieAuth.user;
+    } else {
+      // If no cookie auth, try bearer token (desktop app)
+      const authHeader = req.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        const { data: tokenAuth, error: tokenError } = await supabase.auth.getUser(token);
+        
+        if (tokenAuth?.user) {
+          user = tokenAuth.user;
+        } else {
+          userError = tokenError || cookieError;
+        }
+      } else {
+        userError = cookieError;
+      }
+    }
+    
+    if (!user) {
       console.error('Auth error:', userError);
-      return new Response('Unauthorized', { status: 401 });
+      return new Response('Unauthorized', { 
+        status: 401,
+        headers 
+      });
     }
 
     // Configure ServiceFactory with Supabase client BEFORE setting up the global user ID
@@ -161,14 +211,36 @@ export async function POST(req: Request) {
         maxSteps: 5, // Allow multi-step operations
         system: systemPrompt,
         temperature: 0.7,
-        onStepFinish: async ({ toolCalls }) => {
-          // This callback fires after each tool execution
-          // Could be used to update UI with progress
-          console.log('Tool executed:', toolCalls?.map(tc => tc.toolName));
+        onStepFinish: async ({ toolCalls, toolResults }) => {
+          // Log tool execution results for debugging
+          if (toolCalls && toolCalls.length > 0) {
+            console.log('Tools executed:', toolCalls.map(tc => ({
+              name: tc.toolName,
+              args: tc.args
+            })));
+          }
+          if (toolResults && toolResults.length > 0) {
+            console.log('Tool results:', toolResults.map(tr => ({
+              toolName: tr.toolName,
+              result: tr.result
+            })));
+          }
+        },
+        onError: (error) => {
+          console.error('Stream error:', error);
         },
       });
 
-      return result.toDataStreamResponse();
+      // Add headers to the streaming response
+      const response = result.toDataStreamResponse();
+      Object.entries(headers).forEach(([key, value]) => {
+        response.headers.set(key, value);
+      });
+      
+      return response;
+    } catch (streamError) {
+      console.error('Stream creation error:', streamError);
+      throw streamError;
     } finally {
       // Restore original function
       (global as Record<string, unknown>).getCurrentUserId = undefined;
@@ -186,9 +258,24 @@ export async function POST(req: Request) {
     
     return new Response(JSON.stringify(errorResponse), { 
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 
+        'Content-Type': 'application/json',
+        ...headers
+      }
     });
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+    },
+  });
 }
 
 // Type declaration for global context

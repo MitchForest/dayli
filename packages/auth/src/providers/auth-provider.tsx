@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getProfile } from '@repo/database/queries';
@@ -8,19 +8,28 @@ import type { AuthContextType } from '../types';
 import type { User } from '@supabase/supabase-js';
 import type { Database } from '@repo/database/types';
 
-// Create the Supabase client outside the component to ensure single instance
-export const supabaseClient = createBrowserClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
 interface AuthContextValue extends AuthContextType {
   supabase: SupabaseClient<Database>;
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+interface AuthProviderProps {
+  children: React.ReactNode;
+  supabaseClient?: SupabaseClient<Database>;
+}
+
+export function AuthProvider({ children, supabaseClient: customClient }: AuthProviderProps) {
+  // Use custom client if provided, otherwise create default
+  const supabaseClient = useMemo(() => {
+    if (customClient) return customClient;
+    
+    return createBrowserClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+  }, [customClient]);
+
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [supabaseClient]);
 
   const signInWithGoogle = async () => {
     try {

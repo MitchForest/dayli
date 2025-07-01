@@ -2,58 +2,75 @@
 
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { Coffee, Clock } from 'lucide-react';
 
 interface BreakBlockProps {
+  id: string;
   title: string;
   startTime: string;
   endTime: string;
-  duration: number; // in minutes
-  type?: 'lunch' | 'coffee' | 'other';
+  duration: number;
+  type?: 'lunch' | 'coffee' | 'break';
   className?: string;
   style?: React.CSSProperties;
 }
 
 export function BreakBlock({ 
-  title, 
+  id,
+  title,
   startTime, 
-  endTime, 
+  endTime,
   duration,
-  type = 'other',
+  type = 'break',
   className,
   style
 }: BreakBlockProps) {
-  // Calculate height based on duration (4px per minute = 60px per 15min block)
-  const height = Math.max(40, (duration / 15) * 30);
+  // Calculate height based on duration
+  const baseHeight = Math.max(40, (duration / 15) * 30);
   
   const getIcon = () => {
     switch(type) {
       case 'lunch': return '🍽️';
       case 'coffee': return '☕';
-      default: return '☕';
+      default: return <Coffee size={16} className="text-green-700" />;
     }
   };
-  
+
   return (
     <div
+      data-block-id={id}
       className={cn(
-        "rounded-md border border-yellow-500/20",
-        "bg-gradient-to-br from-yellow-100 to-yellow-200",
-        "hover:from-yellow-200 hover:to-yellow-300",
-        "transition-all duration-200 cursor-pointer",
-        "shadow-sm hover:shadow-md",
-        "overflow-hidden",
+        "rounded-md border border-green-500/20",
+        "bg-gradient-to-br from-green-100 to-green-200",
+        "transition-all duration-200",
+        "shadow-sm overflow-hidden",
         className
       )}
-      style={{ height: `${height}px`, ...style }}
+      style={{
+        ...style,
+        height: `${baseHeight}px`
+      }}
     >
       <div className="p-2 h-full flex flex-col">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-yellow-800">
-          <span className="text-base">{getIcon()}</span>
-          <span>{startTime} - {endTime}</span>
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-green-900">
+            {getIcon()}
+            <span>{startTime} - {endTime}</span>
+          </div>
         </div>
-        <div className="text-sm font-semibold text-yellow-900 mt-0.5 truncate">
+        
+        {/* Title */}
+        <div className="text-sm font-semibold text-green-900 mt-0.5 truncate">
           {title}
         </div>
+        
+        {/* Duration */}
+        {baseHeight > 60 && (
+          <div className="text-xs text-green-700 mt-1">
+            {duration} minutes
+          </div>
+        )}
       </div>
     </div>
   );

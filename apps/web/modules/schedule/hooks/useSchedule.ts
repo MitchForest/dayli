@@ -3,14 +3,13 @@ import { useAuth } from '@repo/auth/hooks';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useSimpleScheduleStore } from '../store/simpleScheduleStore';
 import {
-  getDailySchedule,
   getTimeBlocksForSchedule,
   getTasksForTimeBlock,
   getEmailsForTimeBlock,
 } from '@repo/database/queries';
 import type { DailySchedule, TimeBlock as AppTimeBlock } from '../types/schedule.types';
-import type { TimeBlock as DbTimeBlock, Task as DbTask, Email as DbEmail } from '@repo/database/types';
-import { format, addDays, subDays } from 'date-fns';
+import type { TimeBlock as DbTimeBlock, Task as DbTask, Email as DbEmail } from '@repo/database';
+import { format, addDays, subDays, startOfDay, endOfDay } from 'date-fns';
 
 export function useSchedule() {
   const { user, supabase } = useAuth();
@@ -29,22 +28,25 @@ export function useSchedule() {
     if (existingSchedule && !forceRefresh) return existingSchedule;
 
     try {
-      const dailySchedule = await getDailySchedule(user.id, dateString, supabase);
-      if (!dailySchedule) {
-        // Create empty schedule if none exists
-        const emptySchedule: DailySchedule = {
-          date: dateString,
-          timeBlocks: [],
-          dailyTasks: [],
-          stats: { emailsProcessed: 0, tasksCompleted: 0, focusMinutes: 0 },
-        };
-        setSchedule(dateString, emptySchedule);
-        return emptySchedule;
+      // Skip daily_schedules and fetch time blocks directly
+      const startOfDayDate = startOfDay(date);
+      const endOfDayDate = endOfDay(date);
+
+      const { data: dbTimeBlocks, error: blocksError } = await supabase
+        .from('time_blocks')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('start_time', startOfDayDate.toISOString())
+        .lte('start_time', endOfDayDate.toISOString())
+        .order('start_time', { ascending: true });
+
+      if (blocksError) {
+        console.error('Error fetching time blocks:', blocksError);
+        throw blocksError;
       }
 
-      const dbTimeBlocks = await getTimeBlocksForSchedule(dailySchedule.id, supabase);
       const blocksWithDetails = await Promise.all(
-        dbTimeBlocks.map(async (block: DbTimeBlock) => {
+        (dbTimeBlocks || []).map(async (block: DbTimeBlock) => {
           const tasks = await getTasksForTimeBlock(block.id, supabase);
           const emails = await getEmailsForTimeBlock(block.id, supabase);
           return { ...block, tasks, emails };
@@ -56,9 +58,16 @@ export function useSchedule() {
         timeBlocks: blocksWithDetails.map(block => {
           const getBlockType = (type: DbTimeBlock['type']): AppTimeBlock['type'] => {
             const typeMap: Record<string, AppTimeBlock['type']> = {
-              'focus': 'focus', 'meeting': 'meeting', 'email': 'email', 'break': 'break', 'quick-decisions': 'quick-decisions'
+              'work': 'work',
+              'meeting': 'meeting', 
+              'email': 'email', 
+              'break': 'break',
+              'blocked': 'blocked',
+              // Map legacy types
+              'focus': 'work',
+              'quick-decisions': 'email'
             };
-            return typeMap[type || 'focus'] || 'focus';
+            return typeMap[type || 'work'] || 'work';
           };
           return {
             id: block.id,

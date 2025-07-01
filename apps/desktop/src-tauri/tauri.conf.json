@@ -4,9 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.dayli.desktop",
   "build": {
-    "frontendDist": "../src",
-    "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "bun run ../start-server.js",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "",
     "beforeBuildCommand": ""
   },
   "app": {
@@ -18,19 +17,13 @@
         "resizable": true,
         "fullscreen": false,
         "center": true,
-        "url": "index.html"
+        "url": "http://localhost:3000",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
       }
     ],
     "security": {
       "csp": null,
-      "dangerousDisableAssetCspModification": true,
-      "dangerousRemoteDomainIpcAccess": [
-        {
-          "domain": "localhost:3000",
-          "windows": ["main"],
-          "enableTauriAPI": true
-        }
-      ]
+      "dangerousDisableAssetCspModification": true
     }
   },
   "plugins": {

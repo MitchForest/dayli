@@ -5,7 +5,7 @@
 **Sprint Number**: 03.02  
 **Epic**: Epic 3 - AI-First Chat & Intelligent Workflows  
 **Duration**: 2 days  
-**Status**: NOT STARTED
+**Status**: IN PROGRESS
 
 ### Sprint Goal
 Build an intelligent LangGraph workflow that adapts to any schedule state - whether empty, partially filled, or needing optimization. This workflow will be the brain behind dayli's scheduling, making smart decisions about when to place tasks, how to protect breaks, and how to optimize existing schedules.
@@ -23,10 +23,240 @@ The workflow should handle ANY state gracefully - from "I have nothing scheduled
 ## Prerequisites from Sprint 03.01
 
 Before starting this sprint, verify:
-- [ ] All CRUD tools are working (createTimeBlock, moveTimeBlock, etc.)
-- [ ] Chat endpoint successfully calls tools with `streamText`
-- [ ] Database migrations for backlogs are complete
-- [ ] Basic tool execution shows in the UI
+- [x] All CRUD tools are working (createTimeBlock, moveTimeBlock, etc.) - VERIFIED
+- [x] Chat endpoint successfully calls tools with `streamText` - VERIFIED
+- [x] Database migrations for backlogs are complete - VERIFIED (task_backlog table exists)
+- [x] Basic tool execution shows in the UI - VERIFIED (in ChatPanel.tsx)
+
+## Implementation Plan (Executor Analysis)
+
+### Investigation Findings
+1. **Existing Workflow Pattern**: Found `dailyPlanning.ts` and `emailTriage.ts` using LangGraph with StateGraph
+2. **Tool Integration**: All schedule tools properly implemented in `schedule-tools.ts`
+3. **Database Schema**: 
+   - `task_backlog` table exists with priority/urgency fields
+   - `user_preferences` has new JSONB fields for break_schedule, open_time_preferences
+4. **Service Architecture**: ServiceFactory pattern in place for data abstraction
+5. **Type System**: Strong typing throughout with proper interfaces
+
+### Technical Approach
+
+#### Step 1: Create the Adaptive Scheduling Workflow
+- **Files**: Create `apps/web/modules/workflows/graphs/adaptiveScheduling.ts`
+- **Pattern**: Follow existing LangGraph workflow patterns from `dailyPlanning.ts`
+- **Details**: 
+  - Implement state interface with all required fields
+  - Create nodes: fetchData, analyzeState, determineStrategy, fullPlanning, partialPlanning, optimization, taskAssignment, protectBreaks, validateSchedule, generateSummary
+  - Use conditional edges for strategy routing
+  - Ensure proper TypeScript typing throughout
+
+#### Step 2: Create Workflow Tools Integration
+- **Files**: Create `apps/web/modules/ai/tools/workflow-tools.ts`
+- **Pattern**: Follow existing tool patterns from `schedule-tools.ts` using AI SDK's `tool` function
+- **Details**: 
+  - Create `scheduleDay` tool that invokes the workflow
+  - Create `confirmScheduleChanges` tool for applying proposed changes
+  - Store proposals in memory with TTL
+  - Return confirmation IDs for two-step process
+
+#### Step 3: Create Helper Functions
+- **Files**: Create `apps/web/modules/workflows/utils/scheduleHelpers.ts`
+- **Pattern**: Pure utility functions similar to existing utils
+- **Details**: 
+  - Time parsing/formatting functions
+  - Gap finding algorithm
+  - Conflict detection
+  - Schedule analysis helpers
+  - Summary generation
+
+#### Step 4: Create Calendar Protection Service (Mock)
+- **Files**: Create `apps/web/modules/schedule/services/calendarProtection.ts`
+- **Pattern**: Service class with interface for future Google Calendar integration
+- **Details**: 
+  - Mock implementation that simulates calendar blocking
+  - Prepared interface for real implementation in Sprint 03.05
+  - Auto-decline logic placeholder
+
+#### Step 5: Update Tool Exports
+- **Files**: Update `apps/web/modules/ai/tools/index.ts`
+- **Pattern**: Add new tool exports alongside existing ones
+- **Details**: Export scheduleDay and confirmScheduleChanges
+
+#### Step 6: Integrate with Chat Endpoint
+- **Files**: Update `apps/web/app/api/chat/route.ts`
+- **Pattern**: Add new tools to the tools object
+- **Details**: Import and include workflow tools in the tool registry
+
+### Database Operations
+- No new migrations needed - all required tables exist
+- Will use existing `time_blocks`, `task_backlog`, and `user_preferences` tables
+- Preference JSONB fields already support break_schedule and open_time_preferences
+
+### Type Definitions
+```typescript
+// New types to create in workflow file
+interface SchedulingState {
+  userId: string;
+  date: string;
+  currentSchedule: TimeBlock[];
+  unassignedTasks: Task[];
+  taskBacklog: TaskBacklog[];
+  userPreferences: UserPreferences;
+  ragContext?: RAGContext; // Optional for now
+  strategy?: "full" | "partial" | "optimize" | "task_only";
+  proposedChanges: ScheduleChange[];
+  messages: BaseMessage[];
+}
+
+interface ScheduleChange {
+  action: "create" | "move" | "delete" | "assign";
+  description: string;
+  details: any; // Will be properly typed based on action
+}
+
+interface TimeGap {
+  startTime: string;
+  endTime: string;
+  duration: number; // in minutes
+}
+
+interface RAGContext {
+  patterns?: any[]; // Placeholder for Sprint 03.04
+  recentDecisions?: any[];
+}
+```
+
+### UI/UX Implementation
+- Text-based summaries of proposed changes (no visual preview)
+- Streaming progress updates via onStepFinish
+- Clear indication of which strategy was selected
+- Natural language explanations of all changes
+
+## Questions Requiring Clarification - WITH REVIEWER GUIDANCE
+
+### 1. RAG Context Interface
+**Finding**: Sprint doc mentions RAG context will be populated in Sprint 03.04
+**Question**: Should I create a placeholder RAGContext interface now or leave it as `any`?
+**Recommendation**: Create minimal interface with optional fields:
+```typescript
+interface RAGContext {
+  patterns?: UserPattern[];
+  recentDecisions?: Decision[];
+  similarDays?: DayContext[];
+}
+```
+This can be expanded in Sprint 03.04 without breaking changes.
+
+**✅ REVIEWER GUIDANCE**: Your recommendation is correct. Create the minimal interface exactly as shown. Define the sub-types as empty interfaces for now:
+```typescript
+interface UserPattern {}
+interface Decision {}
+interface DayContext {}
+```
+This provides type safety while allowing Sprint 03.04 to expand them without breaking changes.
+
+### 2. Calendar Protection Implementation
+**Finding**: Need to auto-decline meetings during protected time
+**Question**: Should this be a full mock or just interface definitions?
+**Recommendation**: Create a mock service that:
+- Simulates calendar event creation
+- Logs auto-decline actions
+- Returns mock calendar event IDs
+- Has full interface ready for Google Calendar API
+
+**✅ REVIEWER GUIDANCE**: Your recommendation is perfect. Create a full mock implementation that:
+1. Logs all actions to console with `[MOCK CALENDAR]` prefix
+2. Returns realistic mock data (event IDs like `mock_event_${Date.now()}`)
+3. Simulates delays with `await new Promise(resolve => setTimeout(resolve, 100))`
+4. Implements the full interface that Sprint 03.05 will use
+5. Add TODO comments at each method indicating what the real implementation will do
+
+### 3. Proposed Changes Storage
+**Finding**: Need to store proposals between tool calls
+**Question**: In-memory Map or database storage?
+**Recommendation**: Use in-memory Map with 5-minute TTL:
+```typescript
+const proposalStore = new Map<string, {
+  changes: ScheduleChange[];
+  timestamp: Date;
+  userId: string;
+}>();
+```
+Simple, fast, and sufficient for MVP. Can migrate to Redis/DB later if needed.
+
+**✅ REVIEWER GUIDANCE**: Correct approach. Additionally:
+1. Create a cleanup function that runs every minute to remove expired entries
+2. Use crypto.randomUUID() for confirmation IDs
+3. Add a maximum store size limit (100 entries) to prevent memory leaks
+4. Log when proposals expire for debugging
+
+### 4. Error Recovery Strategy
+**Finding**: Workflow needs graceful failure handling
+**Question**: Full rollback or partial success on errors?
+**Recommendation**: Partial success with clear reporting:
+- Continue processing remaining changes
+- Track failed changes separately
+- Return summary indicating successes and failures
+- Let user decide whether to retry failed changes
+
+**✅ REVIEWER GUIDANCE**: Good recommendation. Enhance it with:
+1. Wrap each change execution in try-catch
+2. Categorize errors: 
+   - Recoverable (retry automatically once)
+   - Non-recoverable (skip and report)
+3. Include error details in the summary
+4. Store failed changes separately so user can retry specific ones
+5. Never leave the schedule in an inconsistent state
+
+### 5. Strategy Determination Logic
+**Finding**: Need smart routing based on schedule state
+**Question**: Should strategy determination use LLM or rule-based logic?
+**Recommendation**: Hybrid approach:
+- Rule-based for clear cases (empty schedule → full planning)
+- LLM for ambiguous cases (partially filled with complex constraints)
+- This balances speed with intelligence
+
+**✅ REVIEWER GUIDANCE**: Excellent approach. Implement like this:
+```typescript
+// First try rules
+if (state.currentSchedule.length === 0) return "full";
+if (state.currentSchedule.length >= 8 && state.unassignedTasks.length === 0) return "optimize";
+if (state.unassignedTasks.length > 0 && hasAvailableFocusBlocks(state)) return "task_only";
+
+// Fall back to LLM for complex cases
+return await determineLLMStrategy(state);
+```
+This ensures fast, predictable behavior for common cases while maintaining flexibility.
+
+### 6. Lunch Break Timing
+**Finding**: User preferences have lunch_start_time but workflow needs to handle conflicts
+**Question**: If lunch time is occupied, how far should we move it?
+**Recommendation**: 
+- Try ±30 minutes first
+- Then ±1 hour
+- If still no space, ask user for preference
+- Never skip lunch entirely
+
+**✅ REVIEWER GUIDANCE**: Perfect approach. Additionally:
+1. Always prefer moving lunch later rather than earlier
+2. Check user's calendar patterns from previous days (when RAG is available)
+3. If moving lunch, ensure at least 30 minutes gap from adjacent meetings
+4. Add a comment in the summary explaining why lunch was moved
+5. Store the lunch move decision for future learning (prepare the data structure even if RAG isn't ready)
+
+## Success Criteria
+- [ ] All TypeScript types properly defined (no `any` except where necessary)
+- [ ] Zero lint errors/warnings
+- [ ] Follows existing LangGraph patterns
+- [ ] Proper error handling at each node
+- [ ] Workflow completes in <3 seconds
+- [ ] Lunch break always protected
+- [ ] Natural language summaries
+- [ ] Confirmation flow working
+- [ ] High-priority backlog tasks included
+- [ ] All strategies (full/partial/optimize/task_only) implemented
+- [ ] Time helper functions have unit tests
+- [ ] Mock calendar protection service ready for real implementation
 
 ## Key Concepts
 
@@ -908,3 +1138,151 @@ The scheduling workflow from this sprint will be enhanced to automatically creat
 ---
 
 **Remember**: This workflow is the brain of dayli's scheduling. It should feel intelligent and adaptive, not rigid or rule-based. Test with various schedule states to ensure it handles edge cases gracefully. 
+
+## Reviewer Guidance - Additional Implementation Notes
+
+### Critical Implementation Details
+
+#### 1. Import Organization
+Ensure clean imports following the existing pattern:
+```typescript
+// External imports first
+import { StateGraph, END } from "@langchain/langgraph";
+import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
+import { ChatOpenAI } from "@langchain/openai";
+import { z } from "zod";
+import { format, addHours, addMinutes } from "date-fns";
+
+// Internal imports grouped by feature
+import { scheduleService } from "@/services/factory/service.factory";
+import { TimeBlock, Task, TaskBacklog, UserPreferences } from "@/modules/schedule/types/schedule.types";
+import { getCurrentUserId } from "@/lib/utils";
+```
+
+#### 2. Error Handling Pattern
+Every node should follow this pattern:
+```typescript
+async function someNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
+  try {
+    // Node logic here
+    return { /* updates */ };
+  } catch (error) {
+    console.error(`[adaptiveScheduling] Error in someNode:`, error);
+    return {
+      messages: [
+        ...state.messages,
+        new AIMessage(`Error in scheduling: ${error.message}. Continuing with partial results.`)
+      ]
+    };
+  }
+}
+```
+
+#### 3. Time Utility Functions
+Fix the circular reference in the helper functions:
+```typescript
+import { addHours as dateFnsAddHours, addMinutes as dateFnsAddMinutes } from "date-fns";
+
+export function addHours(date: Date, hours: number): Date {
+  return dateFnsAddHours(date, hours);
+}
+```
+
+#### 4. Testing Requirements
+Create a test file `adaptiveScheduling.test.ts` that covers:
+- Each strategy path (full, partial, optimize, task_only)
+- Lunch break protection scenarios
+- Error recovery
+- Time parsing edge cases
+- Proposal storage and retrieval
+
+#### 5. Performance Optimization
+1. Use `Promise.all()` for parallel data fetching in fetchDataNode
+2. Implement caching for user preferences (they don't change during workflow)
+3. Add timing logs for each node to ensure <3 second completion
+4. Limit the number of proposed changes to 20 to prevent UI overload
+
+#### 6. Type Safety Enhancements
+Replace the `any` in ScheduleChange details with a discriminated union:
+```typescript
+type ScheduleChangeDetails = 
+  | { action: "create"; type: BlockType; title: string; startTime: string; endTime: string; }
+  | { action: "move"; blockId: string; newStartTime: string; newEndTime: string; }
+  | { action: "delete"; blockId: string; }
+  | { action: "assign"; taskId: string; blockId: string; };
+
+interface ScheduleChange {
+  action: "create" | "move" | "delete" | "assign";
+  description: string;
+  details: ScheduleChangeDetails;
+}
+```
+
+#### 7. Workflow Debugging
+Add a debug mode that can be enabled via environment variable:
+```typescript
+const DEBUG_WORKFLOW = process.env.NEXT_PUBLIC_DEBUG_WORKFLOW === 'true';
+
+if (DEBUG_WORKFLOW) {
+  workflow.beforeNode = async (nodeName, state) => {
+    console.log(`[WORKFLOW] Entering ${nodeName}`, {
+      scheduleCount: state.currentSchedule.length,
+      changesCount: state.proposedChanges.length,
+      strategy: state.strategy
+    });
+  };
+}
+```
+
+#### 8. Summary Generation Enhancement
+Make summaries more conversational:
+- Use "your" instead of "the" (e.g., "your lunch break" not "the lunch break")
+- Add time context (e.g., "this morning" instead of just times)
+- Include total hours scheduled
+- Mention if this gives a good work-life balance
+
+#### 9. Integration Points
+Ensure these files are updated:
+1. `apps/web/modules/ai/tools/index.ts` - Export both new tools
+2. `apps/web/app/api/chat/route.ts` - Import and include in tools object
+3. Create `apps/web/modules/workflows/utils/index.ts` for clean exports
+
+#### 10. Mock Calendar Service Structure
+```typescript
+export class MockCalendarProtectionService implements ICalendarProtectionService {
+  async protectTimeBlock(block: TimeBlock, userId: string): Promise<CalendarEvent> {
+    console.log(`[MOCK CALENDAR] Protecting time block:`, block);
+    await this.simulateApiDelay();
+    
+    // TODO: In Sprint 03.05, this will create actual Google Calendar events
+    return {
+      id: `mock_event_${Date.now()}`,
+      status: 'confirmed',
+      htmlLink: `https://calendar.google.com/mock/${Date.now()}`
+    };
+  }
+  
+  private async simulateApiDelay(): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+```
+
+### Final Review Checklist
+Before marking this sprint complete:
+1. Run `bun run lint` - must show 0 errors, 0 warnings
+2. Run `bun run typecheck` - must show 0 errors  
+3. Test all 5 scenarios in the Testing Guide
+4. Verify workflow completes in <3 seconds
+5. Ensure natural language summaries read well
+6. Confirm lunch protection works in all cases
+7. Check that high-priority backlog items are included
+
+### Common Pitfalls to Avoid
+1. Don't use `any` types except in the RAGContext placeholder
+2. Don't forget to handle timezone differences
+3. Don't create blocks that overlap
+4. Don't modify the existing schedule directly - only propose changes
+5. Don't skip error handling in any node
+
+Remember: This is the brain of dayli. Make it smart, but keep it simple and maintainable. Good luck! 🚀 

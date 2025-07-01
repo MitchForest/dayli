@@ -418,4 +418,15 @@
   }
 }
 
+/* Completed block styling */
+@layer components {
+  .block-completed {
+    @apply opacity-70 transition-opacity duration-300;
+  }
+  
+  .block-completed:hover {
+    @apply opacity-85;
+  }
+}
+
 

@@ -11,11 +11,12 @@ export interface TimeBlock {
   id: string;
   startTime: string; // "9:00 AM"
   endTime: string; // "11:00 AM"
-  type: 'focus' | 'meeting' | 'email' | 'quick-decisions' | 'break';
+  type: 'work' | 'meeting' | 'email' | 'break' | 'blocked';
   title: string;
   tasks: DailyTask[];
   emailQueue?: EmailDecision[]; // For email blocks
   source?: 'calendar' | 'ai' | 'manual';
+  metadata?: Record<string, any>; // For meeting details, etc.
 }
 
 export interface DailySchedule {

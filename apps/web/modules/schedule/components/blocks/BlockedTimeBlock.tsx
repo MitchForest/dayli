@@ -2,61 +2,65 @@
 
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { Lock, Clock } from 'lucide-react';
 
 interface BlockedTimeBlockProps {
+  id: string;
   title: string;
   startTime: string;
   endTime: string;
-  duration: number; // in minutes
+  duration: number;
   reason?: string;
   className?: string;
   style?: React.CSSProperties;
 }
 
 export function BlockedTimeBlock({ 
-  title, 
+  id,
+  title,
   startTime, 
-  endTime, 
+  endTime,
   duration,
   reason,
   className,
   style
 }: BlockedTimeBlockProps) {
-  // Calculate height based on duration (4px per minute = 60px per 15min block)
-  const height = Math.max(40, (duration / 15) * 30);
-  
+  // Calculate height based on duration
+  const baseHeight = Math.max(40, (duration / 15) * 30);
+
   return (
     <div
+      data-block-id={id}
       className={cn(
-        "rounded-md border border-gray-400/20",
-        "bg-gray-50",
-        "transition-all duration-200 cursor-pointer",
-        "shadow-sm hover:shadow-md",
-        "overflow-hidden",
+        "rounded-md border border-gray-300",
+        "bg-gradient-to-br from-gray-100 to-gray-200",
+        "transition-all duration-200",
+        "shadow-sm overflow-hidden group",
+        "opacity-75",
         className
       )}
-      style={{ 
-        height: `${height}px`,
-        backgroundImage: `repeating-linear-gradient(
-          45deg,
-          transparent,
-          transparent 10px,
-          rgba(0, 0, 0, 0.02) 10px,
-          rgba(0, 0, 0, 0.02) 20px
-        )`,
-        ...style
+      style={{
+        ...style,
+        height: `${baseHeight}px`
       }}
     >
       <div className="p-2 h-full flex flex-col">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600">
-          <span className="text-base">🚫</span>
-          <span>{startTime} - {endTime}</span>
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+            <Lock size={16} className="text-gray-600" />
+            <span>{startTime} - {endTime}</span>
+          </div>
         </div>
-        <div className="text-sm font-semibold text-gray-700 mt-0.5 truncate">
+        
+        {/* Title */}
+        <div className="text-sm font-semibold text-gray-800 mt-0.5 truncate">
           {title}
         </div>
-        {reason && (
-          <div className="text-xs text-gray-500 mt-auto truncate">
+        
+        {/* Reason */}
+        {reason && baseHeight > 60 && (
+          <div className="text-xs text-gray-600 mt-1 truncate">
             {reason}
           </div>
         )}

@@ -494,6 +494,44 @@ export default function SettingsPage() {
 **Issue**: Time parsing errors  
 **Solution**: Use consistent time format (HH:MM) and add validation in tool parameters
 
+## UI Block Enhancements
+
+### Streamlined Block UI Improvements
+
+Based on user feedback, we're implementing minimal but high-impact UI improvements to blocks:
+
+#### 1. Meeting Blocks
+- **Add video link support**: Show "Join Call" button when expanded if meeting has video link
+- **Simple metadata structure**:
+  ```typescript
+  interface MeetingMetadata {
+    attendeeCount?: number;
+    videoLink?: string;
+    location?: string; // Only physical locations
+  }
+  ```
+
+#### 2. Work/Focus Blocks  
+- **Keep tasks simple**: Just show title, source icon, and completion state
+- **Expandable view**: Show first 2-3 tasks when collapsed, all when expanded
+- **One-click complete**: Satisfying checkmark animation
+
+#### 3. Email Blocks
+- **Minimal preview**: "12 emails to process" (maybe "3 urgent" if categorized)
+- **Keep current triage flow**: Click to start interactive triage
+
+#### 4. Universal Improvements
+- **All blocks expandable**: Consistent interaction pattern
+- **Smooth animations**: Expand/collapse with spring animation
+- **Completed state**: Fade to 70% opacity when done
+- **Hover states**: Subtle elevation on hover
+
+### Implementation Priority
+1. Make all blocks expandable (currently only DeepWork)
+2. Add video link to meeting blocks with "Join Call" button
+3. Polish animations and hover states
+4. Update completed block styling
+
 ## Success Criteria
 
 1. **All CRUD operations work through chat** - No buttons needed
@@ -504,6 +542,7 @@ export default function SettingsPage() {
 6. **Database migrations run cleanly** - All new tables created
 7. **Zero errors in console** - Clean implementation
 8. **Response time < 2s** - Fast tool execution
+9. **Enhanced block UI** - All blocks expandable with essential info visible
 
 ## Next Sprint Preview
 

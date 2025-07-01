@@ -27,7 +27,7 @@ export class MockScheduleService implements ScheduleService {
       userId: this.userId,
       startTime: this.parseTimeToDate('09:00', today),
       endTime: this.parseTimeToDate('11:00', today),
-      type: 'focus',
+      type: 'work',
       title: 'Deep Work Session',
       description: 'Focus on strategy deck',
       source: 'ai',

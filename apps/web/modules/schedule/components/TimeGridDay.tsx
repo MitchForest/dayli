@@ -7,7 +7,7 @@ import { GridHour } from './GridHour';
 import { useSimpleScheduleStore } from '../store/simpleScheduleStore';
 import { HOUR_HEIGHT, CANVAS_COLORS } from '../constants/grid-constants';
 import type { UserPreferencesTyped } from '@/modules/settings/types/preferences.types';
-import { DeepWorkBlock, MeetingBlock, EmailTriageBlock, BreakBlock } from './blocks';
+import { WorkBlock, MeetingBlock, EmailBlock, BreakBlock, BlockedTimeBlock } from './blocks';
 import { useScheduleStore } from '../store/scheduleStore';
 import { format, addDays } from 'date-fns';
 import { calculateBlockLayout, getBlockLayoutStyle, type LayoutBlock } from '../utils/blockLayout';
@@ -66,6 +66,14 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
     return hours * HOUR_HEIGHT + (minutes / 60) * HOUR_HEIGHT;
   };
   
+  // Helper to determine break type
+  const getBreakType = (title: string): 'lunch' | 'coffee' | 'other' => {
+    const lowerTitle = title.toLowerCase();
+    if (lowerTitle.includes('lunch')) return 'lunch';
+    if (lowerTitle.includes('coffee') || lowerTitle.includes('break')) return 'coffee';
+    return 'other';
+  };
+  
   return (
     <div 
       className="relative bg-card h-full w-full"
@@ -96,6 +104,7 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
             const layoutStyles = getBlockLayoutStyle(block, viewportWidth - 48); // Subtract time label width
             
             const commonProps = {
+              id: block.id,
               title: block.title,
               startTime: block.startTime,
               endTime: block.endTime,
@@ -110,17 +119,12 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
             };
             
             switch (block.type) {
-              case 'focus':
+              case 'work':
                 return (
-                  <DeepWorkBlock
+                  <WorkBlock
                     key={block.id}
                     {...commonProps}
-                    id={block.id}
-                    tasks={block.tasks}
-                    capacity={3}
-                    onAddTask={() => {}}
-                    onToggleTask={() => {}}
-                    onRemoveTask={() => {}}
+                    tasks={block.tasks || []}
                   />
                 );
               case 'meeting':
@@ -128,15 +132,18 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
                   <MeetingBlock
                     key={block.id}
                     {...commonProps}
-                    attendees={[]} // TODO: Get from metadata
+                    attendees={block.metadata?.attendeeCount ? [`${block.metadata.attendeeCount} attendees`] : []}
+                    videoLink={block.metadata?.videoLink}
+                    location={block.metadata?.location}
                   />
                 );
               case 'email':
                 return (
-                  <EmailTriageBlock
+                  <EmailBlock
                     key={block.id}
                     {...commonProps}
                     blockId={block.id}
+                    onComplete={() => {}}
                   />
                 );
               case 'break':
@@ -144,7 +151,16 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
                   <BreakBlock
                     key={block.id}
                     {...commonProps}
-                    type={block.title.toLowerCase().includes('lunch') ? 'lunch' : 'other'}
+                    type={block.metadata?.breakType === 'lunch' ? 'lunch' : 
+                          block.metadata?.breakType === 'coffee' ? 'coffee' : 'break'}
+                  />
+                );
+              case 'blocked':
+                return (
+                  <BlockedTimeBlock
+                    key={block.id}
+                    {...commonProps}
+                    reason={block.metadata?.reason}
                   />
                 );
               default:

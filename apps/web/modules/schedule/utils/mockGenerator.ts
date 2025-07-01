@@ -80,7 +80,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '9:00 AM',
           endTime: '11:00 AM',
-          type: 'focus',
+          type: 'work',
           title: 'Deep Work Block',
           tasks: generateTasks(2),
         },
@@ -113,7 +113,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '1:00 PM',
           endTime: '3:00 PM',
-          type: 'focus',
+          type: 'work',
           title: 'Afternoon Focus',
           tasks: generateTasks(2),
         },
@@ -121,7 +121,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '3:00 PM',
           endTime: '3:30 PM',
-          type: 'quick-decisions',
+          type: 'email',
           title: 'Quick Email Decisions',
           tasks: [],
           emailQueue: generateEmails(5),
@@ -130,7 +130,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '3:30 PM',
           endTime: '5:00 PM',
-          type: 'focus',
+          type: 'work',
           title: 'Final Focus Block',
           tasks: generateTasks(1),
         },
@@ -158,7 +158,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '11:00 AM',
           endTime: '12:00 PM',
-          type: 'focus',
+          type: 'work',
           title: 'Urgent Tasks',
           tasks: generateTasks(3),
         },
@@ -191,7 +191,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '3:00 PM',
           endTime: '5:00 PM',
-          type: 'focus',
+          type: 'work',
           title: 'Project Work',
           tasks: generateTasks(2),
         },
@@ -203,7 +203,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '9:00 AM',
           endTime: '12:00 PM',
-          type: 'focus',
+          type: 'work',
           title: 'Morning Deep Work',
           tasks: generateTasks(3),
         },
@@ -219,7 +219,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '1:00 PM',
           endTime: '4:00 PM',
-          type: 'focus',
+          type: 'work',
           title: 'Afternoon Deep Work',
           tasks: generateTasks(3),
         },
@@ -227,7 +227,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '4:00 PM',
           endTime: '4:30 PM',
-          type: 'quick-decisions',
+          type: 'email',
           title: 'Email Triage',
           tasks: [],
           emailQueue: generateEmails(6),
@@ -236,7 +236,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '4:30 PM',
           endTime: '5:00 PM',
-          type: 'focus',
+          type: 'work',
           title: 'Wrap-up',
           tasks: generateTasks(1),
         },
@@ -257,7 +257,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '10:00 AM',
           endTime: '11:30 AM',
-          type: 'focus',
+          type: 'work',
           title: 'Priority Tasks',
           tasks: generateTasks(2),
         },
@@ -265,7 +265,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '11:30 AM',
           endTime: '12:00 PM',
-          type: 'quick-decisions',
+          type: 'email',
           title: 'Quick Responses',
           tasks: [],
           emailQueue: generateEmails(5),
@@ -291,7 +291,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '2:00 PM',
           endTime: '4:00 PM',
-          type: 'focus',
+          type: 'work',
           title: 'Project Work',
           tasks: generateTasks(2),
         },
@@ -312,7 +312,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '9:00 AM',
           endTime: '11:00 AM',
-          type: 'focus',
+          type: 'work',
           title: 'Morning Focus',
           tasks: generateTasks(2),
         },
@@ -336,7 +336,7 @@ function generateTimeBlocks(scenario: MockScenario): TimeBlock[] {
           id: generateId(),
           startTime: '1:00 PM',
           endTime: '2:30 PM',
-          type: 'focus',
+          type: 'work',
           title: 'Afternoon Work',
           tasks: generateTasks(1),
         },
@@ -369,7 +369,7 @@ export function generateMockSchedule(scenario: MockScenario = 'typical_day'): Da
   
   // Extract all tasks from time blocks
   const allTasks = timeBlocks
-    .filter(block => block.type === 'focus')
+    .filter(block => block.type === 'work')
     .flatMap(block => block.tasks);
   
   // Ensure we have 3-7 tasks
@@ -379,7 +379,7 @@ export function generateMockSchedule(scenario: MockScenario = 'typical_day'): Da
   const emailsProcessed = 0;
   const tasksCompleted = 0;
   const focusMinutes = timeBlocks
-    .filter(block => block.type === 'focus')
+    .filter(block => block.type === 'work')
     .reduce((total, block) => {
       const start = new Date(`2024-01-01 ${block.startTime}`);
       const end = new Date(`2024-01-01 ${block.endTime}`);

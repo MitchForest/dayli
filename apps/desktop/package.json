@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "node src/start-server.js & bun tauri dev",
+    "dev": "tauri dev",
     "build": "bun tauri build",
     "preview": "bun tauri preview",
     "build:tauri": "tauri build",

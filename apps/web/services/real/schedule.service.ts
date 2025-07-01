@@ -113,20 +113,36 @@ export class RealScheduleService implements ScheduleService {
   }
 
   async getScheduleForDate(date: string): Promise<TimeBlock[]> {
-    const startOfDayDate = startOfDay(parseISO(date));
-    const endOfDayDate = endOfDay(parseISO(date));
+    try {
+      const startOfDayDate = startOfDay(parseISO(date));
+      const endOfDayDate = endOfDay(parseISO(date));
 
-    const { data, error } = await this.supabase
-      .from('time_blocks')
-      .select()
-      .eq('user_id', this.userId)
-      .gte('start_time', startOfDayDate.toISOString())
-      .lte('start_time', endOfDayDate.toISOString())
-      .order('start_time', { ascending: true });
+      console.log('Fetching schedule for date:', date, {
+        userId: this.userId,
+        start: startOfDayDate.toISOString(),
+        end: endOfDayDate.toISOString()
+      });
 
-    if (error) throw new Error(`Failed to get schedule: ${error.message}`);
+      const { data, error } = await this.supabase
+        .from('time_blocks')
+        .select()
+        .eq('user_id', this.userId)
+        .gte('start_time', startOfDayDate.toISOString())
+        .lte('start_time', endOfDayDate.toISOString())
+        .order('start_time', { ascending: true });
 
-    return data.map((block: any) => this.mapToTimeBlock(block));
+      if (error) {
+        console.error('Supabase error in getScheduleForDate:', error);
+        throw new Error(`Failed to get schedule: ${error.message}`);
+      }
+
+      console.log('Retrieved time blocks:', data?.length || 0);
+
+      return (data || []).map((block: any) => this.mapToTimeBlock(block));
+    } catch (error) {
+      console.error('Error in getScheduleForDate:', error);
+      throw error;
+    }
   }
 
   async getScheduleForDateRange(startDate: string, endDate: string): Promise<TimeBlock[]> {

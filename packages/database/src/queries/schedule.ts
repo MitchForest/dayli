@@ -1,14 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { 
-  Database, 
-  DailySchedule, 
+import type {
+  Database,
+  DailySchedule,
   DailyScheduleInsert,
-  TimeBlock, 
+  TimeBlock,
   TimeBlockInsert,
   TimeBlockUpdate,
   Task,
   Email
-} from '../types';
+} from '../index';
 
 /**
  * Get or create a daily schedule for a specific date

@@ -401,6 +401,14 @@ async function handleMockData() {
       
       // Add meetings first (they have priority)
       for (const event of dayEvents) {
+        // Generate video link for most meetings (80% chance)
+        const hasVideoLink = Math.random() < 0.8;
+        const videoLink = hasVideoLink 
+          ? event.summary.toLowerCase().includes('standup') || event.summary.toLowerCase().includes('sync')
+            ? `https://meet.google.com/${event.id.substring(0, 10)}`
+            : `https://zoom.us/j/${Math.floor(Math.random() * 1000000000)}`
+          : undefined;
+        
         const block: TimeBlockInsert = {
           user_id: userId,
           daily_schedule_id: schedule.id,
@@ -412,8 +420,9 @@ async function handleMockData() {
           source: 'calendar',
           calendar_event_id: event.id,
           metadata: {
-            attendees: event.attendees,
-            location: event.location,
+            attendeeCount: event.attendees?.length || 1,
+            videoLink: videoLink,
+            location: !hasVideoLink && Math.random() < 0.3 ? 'Conference Room B' : undefined,
           },
         };
         
@@ -533,7 +542,7 @@ async function handleMockData() {
           daily_schedule_id: schedule.id,
           start_time: morningFocusStart,
           end_time: morningFocusEnd,
-          type: 'focus',
+          type: 'work',
           title: dayOffset < 0 ? 'Deep Work Session' : 'Focus Time',
           description: dayOffset < 0 ? 'Worked on project deliverables' : 'Reserved for important work',
           source: 'ai',
@@ -702,7 +711,7 @@ async function handleMockData() {
               daily_schedule_id: schedule.id,
               start_time: afternoonStart,
               end_time: afternoonEnd,
-              type: 'focus',
+              type: 'work',
               title: 'Afternoon Deep Work',
               description: 'Continued project work',
               source: 'ai',
@@ -933,12 +942,12 @@ async function handleMockData() {
       } else {
         // For past days, assign some tasks to work/focus blocks
         if (dayOffset < 0 && insertedTasks) {
-          const workBlocks = dayBlocks.filter(b => b.type === 'focus' || b.type === 'work');
+          const workBlocks = dayBlocks.filter(b => b.type === 'work');
           const { data: insertedBlocks } = await supabase
             .from('time_blocks')
             .select('id, type, title')
             .eq('daily_schedule_id', schedule.id)
-            .in('type', ['focus', 'work']);
+            .in('type', ['work']);
           
           if (insertedBlocks && insertedBlocks.length > 0) {
             // Assign tasks intelligently based on block type
@@ -947,7 +956,7 @@ async function handleMockData() {
             
             insertedBlocks.forEach((block) => {
               // Focus blocks get 2-3 tasks, work blocks get 1-2
-              const tasksPerBlock = block.type === 'focus' 
+              const tasksPerBlock = block.type === 'work' 
                 ? Math.floor(Math.random() * 2) + 2 
                 : Math.floor(Math.random() * 2) + 1;
               
@@ -986,8 +995,8 @@ Summary:
 - Emails: ${emails.length} (with backlog entries)
 - Tasks: ${tasks.length} (with backlog entries)
 - Schedules: 5 weekdays (-3 to +3 from today)
-- Past days have tasks assigned to focus blocks
-- Today and future days have empty focus blocks for AI planning
+- Past days have tasks assigned to work blocks
+- Today and future days have empty work blocks for AI planning
     `);
     
   } catch (error) {

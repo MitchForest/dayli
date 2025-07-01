@@ -6,7 +6,7 @@ export interface TimeBlock {
   dailyScheduleId?: string;
   startTime: Date;
   endTime: Date;
-  type: 'focus' | 'email' | 'break' | 'meeting' | 'blocked';
+  type: 'work' | 'email' | 'break' | 'meeting' | 'blocked';
   title: string;
   description?: string;
   source?: string;
@@ -17,7 +17,7 @@ export interface TimeBlock {
 }
 
 export interface CreateTimeBlockInput {
-  type: 'focus' | 'email' | 'break' | 'meeting' | 'blocked';
+  type: 'work' | 'email' | 'break' | 'meeting' | 'blocked';
   title: string;
   startTime: string; // HH:MM format
   endTime: string; // HH:MM format
@@ -32,7 +32,7 @@ export interface UpdateTimeBlockInput {
   endTime?: string;
   title?: string;
   description?: string;
-  type?: 'focus' | 'email' | 'break' | 'meeting' | 'blocked';
+  type?: 'work' | 'email' | 'break' | 'meeting' | 'blocked';
 }
 
 export interface ScheduleService extends BaseService {

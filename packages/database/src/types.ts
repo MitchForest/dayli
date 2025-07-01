@@ -756,15 +756,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
-// Add these type aliases for compatibility
-export type QueryResult<T> = { data: T | null; error: string | null };
-
-// Table type aliases
-export type DailySchedule = Tables<'daily_schedules'>;
-export type DailyScheduleInsert = TablesInsert<'daily_schedules'>;
-export type TimeBlock = Tables<'time_blocks'>;
-export type TimeBlockInsert = TablesInsert<'time_blocks'>;
-export type TimeBlockUpdate = TablesUpdate<'time_blocks'>;
-export type Task = Tables<'tasks'>;
-export type Email = Tables<'emails'>;
