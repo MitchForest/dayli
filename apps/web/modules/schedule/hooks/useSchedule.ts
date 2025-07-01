@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@repo/auth/hooks';
 import { useScheduleStore } from '../store/scheduleStore';
-import { useCanvasStore } from '../canvas/CanvasStore';
+import { useSimpleScheduleStore } from '../store/simpleScheduleStore';
 import {
   getDailySchedule,
   getTimeBlocksForSchedule,
@@ -15,7 +15,7 @@ import { format, addDays, subDays } from 'date-fns';
 export function useSchedule() {
   const { user, supabase } = useAuth();
   const { getSchedule, setSchedule } = useScheduleStore();
-  const currentDate = useCanvasStore((state) => state.currentDate);
+  const currentDate = useSimpleScheduleStore((state) => state.currentDate);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,11 +23,24 @@ export function useSchedule() {
     if (!user || !supabase) return null;
 
     const dateString = format(date, 'yyyy-MM-dd');
-    if (getSchedule(dateString)) return getSchedule(dateString);
+    
+    // Check if we already have this schedule
+    const existingSchedule = getSchedule(dateString);
+    if (existingSchedule) return existingSchedule;
 
     try {
       const dailySchedule = await getDailySchedule(user.id, dateString, supabase);
-      if (!dailySchedule) return null;
+      if (!dailySchedule) {
+        // Create empty schedule if none exists
+        const emptySchedule: DailySchedule = {
+          date: dateString,
+          timeBlocks: [],
+          dailyTasks: [],
+          stats: { emailsProcessed: 0, tasksCompleted: 0, focusMinutes: 0 },
+        };
+        setSchedule(dateString, emptySchedule);
+        return emptySchedule;
+      }
 
       const dbTimeBlocks = await getTimeBlocksForSchedule(dailySchedule.id, supabase);
       const blocksWithDetails = await Promise.all(
@@ -87,7 +100,13 @@ export function useSchedule() {
     setLoading(true);
     setError(null);
     try {
-      const datesToFetch = [centerDate, subDays(centerDate, 1), addDays(centerDate, 1)];
+      // Always fetch current day and adjacent days
+      const datesToFetch = [
+        subDays(centerDate, 1),
+        centerDate,
+        addDays(centerDate, 1)
+      ];
+      
       await Promise.all(datesToFetch.map(date => fetchScheduleForDate(date)));
     } catch (e: any) {
       console.error('Failed to fetch schedules:', e);
@@ -97,8 +116,9 @@ export function useSchedule() {
     }
   }, [fetchScheduleForDate]);
 
+  // Fetch schedules whenever the current date changes
   useEffect(() => {
-    if (user && supabase) {
+    if (user && supabase && currentDate) {
       fetchAdjacentSchedules(currentDate);
     }
   }, [currentDate, user, supabase, fetchAdjacentSchedules]);

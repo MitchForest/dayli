@@ -2,34 +2,31 @@
 
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { ChatPanel } from '@/modules/chat/components/ChatPanel';
-import { ScheduleCanvas } from '@/modules/schedule/components/ScheduleCanvas';
-import { DateNavigator } from '@/modules/schedule/components/DateNavigator';
-import { UserMenu } from '@/components/user-menu';
+import { SchedulePanel } from '@/modules/schedule/components/SchedulePanel';
 
 export default function FocusPage() {
   return (
-    <div className="relative h-screen w-screen overflow-hidden">
-      {/* Panel Layout */}
-      <PanelGroup direction="horizontal">
-        <Panel defaultSize={67} minSize={50} className="relative overflow-hidden">
-          <ScheduleCanvas />
+    <div className="h-screen w-screen overflow-hidden bg-background">
+      <PanelGroup direction="horizontal" className="h-full">
+        <Panel 
+          defaultSize={67} 
+          minSize={50} 
+          className="h-full"
+        >
+          <SchedulePanel />
         </Panel>
-        <PanelResizeHandle className="w-[2px] bg-border" />
+        
+        <PanelResizeHandle className="w-1 bg-border hover:bg-border/80 transition-colors" />
+        
         <Panel
           defaultSize={33}
-          minSize={5}
+          minSize={20}
           maxSize={50}
-          className="relative overflow-hidden"
+          className="h-full"
         >
-          <div className="h-full bg-card border-l border-border">
-            <ChatPanel />
-          </div>
+          <ChatPanel />
         </Panel>
       </PanelGroup>
-      
-      {/* Floating UI Elements - On top of both panels */}
-      <DateNavigator />
-      <UserMenu />
     </div>
   );
 } 

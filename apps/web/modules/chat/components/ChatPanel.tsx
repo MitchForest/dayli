@@ -7,7 +7,7 @@ import { ChatInput } from './ChatInput';
 
 export function ChatPanel() {
   return (
-    <div className="h-full flex flex-col bg-card relative">
+    <div className="h-full flex flex-col bg-card border-l border-border">
       <ChatHeader />
       <MessageList />
       <ChatInput />

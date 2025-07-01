@@ -36,69 +36,67 @@ export function UserMenu() {
   };
 
   return (
-    <div className="fixed bottom-6 left-6 z-50">
-      <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            className="relative h-12 w-12 rounded-full p-0 hover:ring-2 hover:ring-primary/20 transition-all"
-          >
-            <Avatar className="h-12 w-12">
-              <AvatarImage 
-                src={avatarUrl} 
-                alt={userName}
-              />
-              <AvatarFallback className="bg-blue-500 text-white text-lg font-medium">
-                {userInitial}
-              </AvatarFallback>
-            </Avatar>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-64" align="start" side="top" forceMount>
-          <div className="flex items-center gap-3 p-3">
-            <Avatar className="h-10 w-10">
-              <AvatarImage 
-                src={avatarUrl} 
-                alt={userName}
-              />
-              <AvatarFallback className="bg-blue-500 text-white font-medium">
-                {userInitial}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex flex-col space-y-1 leading-none">
-              <p className="font-medium">{userName}</p>
-              {user?.email && (
-                <p className="text-xs text-muted-foreground">{user.email}</p>
-              )}
-            </div>
-          </div>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem 
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="cursor-pointer"
-          >
-            {theme === 'dark' ? (
-              <Sun className="mr-2 h-4 w-4" />
-            ) : (
-              <Moon className="mr-2 h-4 w-4" />
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className="relative h-12 w-12 rounded-full p-0 hover:ring-2 hover:ring-primary/20 transition-all"
+        >
+          <Avatar className="h-12 w-12">
+            <AvatarImage 
+              src={avatarUrl} 
+              alt={userName}
+            />
+            <AvatarFallback className="bg-blue-500 text-white text-lg font-medium">
+              {userInitial}
+            </AvatarFallback>
+          </Avatar>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-64" align="start" side="top" forceMount>
+        <div className="flex items-center gap-3 p-3">
+          <Avatar className="h-10 w-10">
+            <AvatarImage 
+              src={avatarUrl} 
+              alt={userName}
+            />
+            <AvatarFallback className="bg-blue-500 text-white font-medium">
+              {userInitial}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col space-y-1 leading-none">
+            <p className="font-medium">{userName}</p>
+            {user?.email && (
+              <p className="text-xs text-muted-foreground">{user.email}</p>
             )}
-            <span>Theme</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href="/settings" className="cursor-pointer">
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Settings</span>
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem 
-            onClick={handleSignOut} 
-            className="cursor-pointer text-destructive focus:text-destructive"
-          >
-            <LogOut className="mr-2 h-4 w-4" />
-            <span>Sign out</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+          </div>
+        </div>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem 
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="cursor-pointer"
+        >
+          {theme === 'dark' ? (
+            <Sun className="mr-2 h-4 w-4" />
+          ) : (
+            <Moon className="mr-2 h-4 w-4" />
+          )}
+          <span>Theme</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/settings" className="cursor-pointer">
+            <Settings className="mr-2 h-4 w-4" />
+            <span>Settings</span>
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem 
+          onClick={handleSignOut} 
+          className="cursor-pointer text-destructive focus:text-destructive"
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          <span>Sign out</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 } 
