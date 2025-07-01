@@ -136,7 +136,7 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
                   <EmailTriageBlock
                     key={block.id}
                     {...commonProps}
-                    emailCount={block.emailQueue?.length || 0}
+                    blockId={block.id}
                   />
                 );
               case 'break':

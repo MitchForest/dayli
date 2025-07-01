@@ -156,7 +156,9 @@ export type Database = {
           created_at: string | null
           description: string | null
           email_id: string | null
+          estimated_minutes: number | null
           id: string
+          priority: string | null
           source: string | null
           status: string | null
           title: string
@@ -168,7 +170,9 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           email_id?: string | null
+          estimated_minutes?: number | null
           id?: string
+          priority?: string | null
           source?: string | null
           status?: string | null
           title: string
@@ -180,7 +184,9 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           email_id?: string | null
+          estimated_minutes?: number | null
           id?: string
+          priority?: string | null
           source?: string | null
           status?: string | null
           title?: string
@@ -439,6 +445,10 @@ export type Database = {
         Args: { "": string } | { "": unknown }
         Returns: unknown
       }
+      get_mock_patterns: {
+        Args: { p_user_id: string }
+        Returns: Json
+      }
       halfvec_avg: {
         Args: { "": number[] }
         Returns: unknown
@@ -647,3 +657,36 @@ export const Constants = {
     Enums: {},
   },
 } as const
+
+// Add convenience type exports
+export type Task = Database['public']['Tables']['tasks']['Row'];
+export type TaskInsert = TablesInsert<'tasks'>;
+export type TaskUpdate = TablesUpdate<'tasks'>;
+
+export type Email = Database['public']['Tables']['emails']['Row'];
+export type EmailInsert = TablesInsert<'emails'>;
+export type EmailUpdate = TablesUpdate<'emails'>;
+
+export type TimeBlock = Database['public']['Tables']['time_blocks']['Row'];
+export type TimeBlockInsert = TablesInsert<'time_blocks'>;
+export type TimeBlockUpdate = TablesUpdate<'time_blocks'>;
+
+export type DailySchedule = Database['public']['Tables']['daily_schedules']['Row'];
+export type DailyScheduleInsert = TablesInsert<'daily_schedules'>;
+export type DailyScheduleUpdate = TablesUpdate<'daily_schedules'>;
+
+export type UserPreferences = Database['public']['Tables']['user_preferences']['Row'];
+export type UserPreferencesInsert = TablesInsert<'user_preferences'>;
+export type UserPreferencesUpdate = TablesUpdate<'user_preferences'>;
+
+// Query result types
+export interface QueryResult<T> {
+  data: T | null;
+  error: string | null;
+}
+
+export interface QueryListResult<T> {
+  data: T[] | null;
+  error: string | null;
+  count?: number;
+}

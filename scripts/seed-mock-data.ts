@@ -303,7 +303,7 @@ async function handleMockData() {
           daily_schedule_id: schedule.id,
           start_time: createLocalTimestamp(scheduleDate, '09:00', userTimezone),
           end_time: createLocalTimestamp(scheduleDate, '11:00', userTimezone),
-          type: 'focus',
+          type: 'work',
           title: 'Deep Work Block',
           source: 'ai',
           metadata: {},
@@ -334,7 +334,7 @@ async function handleMockData() {
           daily_schedule_id: schedule.id,
           start_time: createLocalTimestamp(scheduleDate, '14:00', userTimezone),
           end_time: createLocalTimestamp(scheduleDate, '16:00', userTimezone),
-          type: 'focus',
+          type: 'work',
           title: 'Afternoon Focus',
           source: 'ai',
           metadata: {},
@@ -353,6 +353,21 @@ async function handleMockData() {
         metadata: {},
       });
       
+      // Add blocked time at end of day to prevent late meetings
+      await supabase.from('time_blocks').insert({
+        user_id: userId,
+        daily_schedule_id: schedule.id,
+        start_time: createLocalTimestamp(scheduleDate, '17:00', userTimezone),
+        end_time: createLocalTimestamp(scheduleDate, '18:00', userTimezone),
+        type: 'blocked',
+        title: 'End of Day Buffer',
+        source: 'ai',
+        metadata: {
+          protected: true,
+          reason: 'Prevent late meetings'
+        },
+      });
+      
       // Add some overlapping blocks for testing
       if (dayOffset === 0) { // Today only
         // Add an overlapping meeting
@@ -367,13 +382,13 @@ async function handleMockData() {
           metadata: {},
         });
         
-        // Add another overlapping focus block
+        // Add another overlapping work block
         await supabase.from('time_blocks').insert({
           user_id: userId,
           daily_schedule_id: schedule.id,
           start_time: createLocalTimestamp(scheduleDate, '14:30', userTimezone),
           end_time: createLocalTimestamp(scheduleDate, '15:30', userTimezone),
-          type: 'focus',
+          type: 'work',
           title: 'Code Review',
           source: 'ai',
           metadata: {},

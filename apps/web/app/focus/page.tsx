@@ -1,32 +1,34 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useRef } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle, ImperativePanelHandle } from 'react-resizable-panels';
+import { useChatStore } from '@/modules/chat/store/chatStore';
 import { ChatPanel } from '@/modules/chat/components/ChatPanel';
 import { SchedulePanel } from '@/modules/schedule/components/SchedulePanel';
+import { DailyPlanningTrigger } from '@/modules/schedule/components/DailyPlanningTrigger';
 
 export default function FocusPage() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const chatPanelRef = useRef<ImperativePanelHandle>(null);
+  const isCollapsed = useChatStore(state => state.isCollapsed);
+  const toggleCollapsed = useChatStore(state => state.toggleCollapsed);
   
-  const handleResize = useCallback((size: number) => {
-    // When dragged below 10%, collapse to 1%
-    if (size < 10 && size > 1.5 && !isCollapsed) {
-      setIsCollapsed(true);
-      requestAnimationFrame(() => {
-        if (chatPanelRef.current) {
-          chatPanelRef.current.resize(1);
-        }
-      });
+  // Handle panel resize
+  const handleResize = (size: number) => {
+    if (size < 5 && !isCollapsed) {
+      toggleCollapsed();
+    } else if (size >= 5 && isCollapsed) {
+      toggleCollapsed();
     }
-  }, [isCollapsed]);
+  };
   
-  const handleExpand = useCallback(() => {
+  // Handle expanding from collapsed state
+  const handleExpand = () => {
     if (isCollapsed && chatPanelRef.current) {
-      setIsCollapsed(false);
+      toggleCollapsed();
+      // Expand to 33% when clicking
       chatPanelRef.current.resize(33);
     }
-  }, [isCollapsed]);
+  };
   
   return (
     <div className="h-screen w-screen overflow-hidden bg-background">
@@ -60,6 +62,9 @@ export default function FocusPage() {
           </div>
         </Panel>
       </PanelGroup>
+      
+      {/* Daily Planning Trigger */}
+      <DailyPlanningTrigger />
     </div>
   );
 } 

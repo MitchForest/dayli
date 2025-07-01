@@ -1,28 +1,62 @@
-import { useCallback } from 'react';
-import { useScheduleStore } from '../store/scheduleStore';
-import { useSimpleScheduleStore } from '../store/simpleScheduleStore';
-import { generateMockSchedule } from '../utils/mockGenerator';
-import { format } from 'date-fns';
+import { useState } from 'react';
+import { useChatStore } from '@/modules/chat/store/chatStore';
+import { useAuth } from '@repo/auth/hooks';
 
 export function useDailyPlanning() {
-  const setSchedule = useScheduleStore(state => state.setSchedule);
-  const currentDate = useSimpleScheduleStore(state => state.currentDate);
+  const [isPlanning, setIsPlanning] = useState(false);
+  const addMessage = useChatStore(state => state.addMessage);
+  const { supabase } = useAuth();
   
-  const triggerDailyPlanning = useCallback(async () => {
-    // Mock implementation - simulate API call
-    await new Promise(resolve => setTimeout(resolve, 3000));
+  const triggerDailyPlanning = async () => {
+    setIsPlanning(true);
     
-    // Generate a new optimized schedule (using focus_day as the optimized version)
-    const optimizedSchedule = generateMockSchedule('focus_day');
-    const dateString = format(currentDate, 'yyyy-MM-dd');
-    
-    // Set the schedule with the current date
-    setSchedule(dateString, optimizedSchedule);
-    
-    return optimizedSchedule;
-  }, [setSchedule, currentDate]);
-  
-  return {
-    triggerDailyPlanning,
+    // Add planning message to chat
+    addMessage({
+      role: 'assistant',
+      content: 'I\'m analyzing your calendar and emails to create the perfect schedule for today...',
+    });
+
+    try {
+      const response = await fetch('/api/workflows/daily-planning', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          date: new Date().toISOString().split('T')[0],
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        addMessage({
+          role: 'assistant',
+          content: `✅ I've created your schedule for today:
+          
+• ${data.schedule.filter((b: any) => b.type === 'work').length} deep work blocks
+• ${data.schedule.filter((b: any) => b.type === 'email').length} email triage sessions
+• Protected time for lunch and breaks
+• Calendar blocked to protect your focus time
+
+Ready to start your day?`,
+        });
+
+        // Refresh the schedule view
+        // TODO: Implement refresh once CanvasStore has the method
+      } else {
+        throw new Error(data.error || 'Failed to generate schedule');
+      }
+    } catch (error) {
+      addMessage({
+        role: 'assistant',
+        content: 'Sorry, I encountered an error while planning your day. Please try again.',
+      });
+      console.error('Daily planning error:', error);
+    } finally {
+      setIsPlanning(false);
+    }
   };
+
+  return { triggerDailyPlanning, isPlanning };
 } 

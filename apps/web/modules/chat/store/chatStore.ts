@@ -4,10 +4,12 @@ import type { ChatMessage, ChatState } from '../types/chat.types';
 
 interface ChatStore extends ChatState {
   commandHistory: string[];
+  isCollapsed: boolean;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
   setLoading: (isLoading: boolean) => void;
   clearMessages: () => void;
   addToHistory: (command: string) => void;
+  toggleCollapsed: () => void;
 }
 
 export const useChatStore = create<ChatStore>()(
@@ -16,6 +18,7 @@ export const useChatStore = create<ChatStore>()(
       messages: [],
       isLoading: false,
       commandHistory: [],
+      isCollapsed: false,
       
       addMessage: (message) => {
         const newMessage: ChatMessage = {
@@ -40,12 +43,17 @@ export const useChatStore = create<ChatStore>()(
           commandHistory: [command, ...state.commandHistory.slice(0, 9)],
         }));
       },
+      
+      toggleCollapsed: () => {
+        set((state) => ({ isCollapsed: !state.isCollapsed }));
+      },
     }),
     {
       name: 'dayli-chat-store',
       partialize: (state) => ({ 
-        commandHistory: state.commandHistory 
-      }), // Only persist command history
+        commandHistory: state.commandHistory,
+        isCollapsed: state.isCollapsed,
+      }), // Persist command history and collapsed state
     }
   )
 ); 

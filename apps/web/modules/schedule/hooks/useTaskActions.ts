@@ -1,13 +1,22 @@
+'use client';
+
 import { useCallback } from 'react';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useSimpleScheduleStore } from '../store/simpleScheduleStore';
 import { format } from 'date-fns';
 import type { DailyTask } from '../types/schedule.types';
+import { createClient } from '@supabase/supabase-js';
+import type { Database, Task } from '@repo/database/types';
 
 export function useTaskActions() {
   const { toggleTaskComplete, getSchedule } = useScheduleStore();
   const currentDate = useSimpleScheduleStore(state => state.currentDate);
   
+  const supabase = createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
   const completeTask = useCallback((taskId: string) => {
     const dateString = format(currentDate, 'yyyy-MM-dd');
     toggleTaskComplete(dateString, taskId);
@@ -41,10 +50,111 @@ export function useTaskActions() {
     
     return { total, completed, percentage };
   }, [getSchedule, currentDate]);
-  
+
+  const toggleTaskCompletion = useCallback(async (taskId: string, completed: boolean) => {
+    const { error } = await supabase
+      .from('tasks')
+      .update({ completed })
+      .eq('id', taskId);
+
+    if (error) {
+      console.error('Error toggling task:', error);
+      throw error;
+    }
+  }, []);
+
+  const addTaskToBlock = useCallback(async (blockId: string, task: Partial<Task>) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    // Create the task
+    const { data: newTask, error: taskError } = await supabase
+      .from('tasks')
+      .insert({
+        title: task.title || 'New Task',
+        description: task.description,
+        priority: task.priority,
+        estimated_minutes: task.estimated_minutes,
+        source: task.source,
+        email_id: task.email_id,
+        user_id: user.id,
+        status: 'scheduled',
+      })
+      .select()
+      .single();
+
+    if (taskError || !newTask) {
+      console.error('Error creating task:', taskError);
+      throw taskError;
+    }
+
+    // Add to time block
+    const { error: linkError } = await supabase
+      .from('time_block_tasks')
+      .insert({
+        time_block_id: blockId,
+        task_id: newTask.id,
+        position: 0,
+      });
+
+    if (linkError) {
+      console.error('Error linking task to block:', linkError);
+      throw linkError;
+    }
+
+    return newTask;
+  }, []);
+
+  const removeTaskFromBlock = useCallback(async (blockId: string, taskId: string) => {
+    // Remove from time block
+    const { error: unlinkError } = await supabase
+      .from('time_block_tasks')
+      .delete()
+      .eq('time_block_id', blockId)
+      .eq('task_id', taskId);
+
+    if (unlinkError) {
+      console.error('Error unlinking task:', unlinkError);
+      throw unlinkError;
+    }
+
+    // Update task status back to backlog
+    const { error: updateError } = await supabase
+      .from('tasks')
+      .update({ status: 'backlog' })
+      .eq('id', taskId);
+
+    if (updateError) {
+      console.error('Error updating task status:', updateError);
+      throw updateError;
+    }
+  }, []);
+
+  const loadTasksForBlock = useCallback(async (blockId: string): Promise<Task[]> => {
+    const { data, error } = await supabase
+      .from('time_block_tasks')
+      .select(`
+        task_id,
+        tasks!inner (*)
+      `)
+      .eq('time_block_id', blockId)
+      .order('position');
+
+    if (error) {
+      console.error('Error loading tasks:', error);
+      return [];
+    }
+
+    return data?.map(d => d.tasks).filter(Boolean) || [];
+  }, []);
+
   return {
     completeTask,
     getTaskById,
     getTaskStats,
+    toggleTaskCompletion,
+    addTaskToBlock,
+    removeTaskFromBlock,
+    loadTasksForBlock,
   };
 } 
