@@ -7,6 +7,5 @@ export interface ChatMessage {
 
 export interface ChatState {
   messages: ChatMessage[];
-  isCollapsed: boolean;
   isLoading: boolean;
 } 

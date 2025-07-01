@@ -850,3 +850,261 @@ Sprint 4 will have:
 - Add loading states for all async operations
 - Consider offline support for future
 - Log workflow execution for debugging 
+
+## Executor Implementation Plan
+
+### Sprint Status: PLANNING
+**Executor**: E  
+**Date**: December 30, 2024
+
+### Investigation Findings
+
+1. **Database Schema**: Verified all required tables exist (tasks, emails, time_blocks, daily_schedules, embeddings with pgvector)
+2. **Chat Integration**: Chat store already implemented with message handling
+3. **Canvas Architecture**: Robust state management with CanvasStore for schedule rendering
+4. **Missing Infrastructure**: No LangGraph setup, no workflow module, no OpenAI integration
+
+### Clarifications from User
+
+1. **Supabase Integration**:
+   - Use Supabase MCP for migrations
+   - Use Supabase CLI with project URL `krgqhfjugnrvtnkoabwd` to regenerate types
+   - Use real Supabase queries (not mock services)
+   - Mock data scripts should populate the database
+
+2. **OpenAI Configuration**:
+   - API key is in `apps/web/.env.local` as `OPENAI_API_KEY`
+   - Use for LangGraph ChatOpenAI model
+
+3. **Authentication Pattern**:
+   - Will use Supabase auth for API routes
+   - Follow existing patterns from other modules
+
+### Detailed Implementation Steps
+
+#### Day 6: Daily Planning Workflow & Infrastructure
+
+**Step 1: Environment Setup & Dependencies**
+- Files: `apps/web/package.json`, `apps/web/.env.local`
+- Add LangGraph dependencies
+- Configure OpenAI API key environment variable
+- Regenerate Supabase types using CLI
+
+**Step 2: Create Workflows Module**
+```
+apps/web/modules/workflows/
+├── graphs/
+│   ├── dailyPlanning.ts
+│   └── emailTriage.ts
+├── nodes/
+│   ├── fetchUserContext.ts
+│   ├── analyzeEmails.ts
+│   └── generateTimeBlocks.ts
+├── types/
+│   └── workflow.types.ts
+└── utils/
+    └── openai.ts
+```
+
+**Step 3: Database Migrations**
+- Create RPC functions using Supabase MCP:
+  - `get_user_patterns(user_id, pattern_type)`
+  - `get_sender_pattern(user_id, sender_email)`
+  - `store_email_patterns(user_id, patterns)`
+- Add seed data script for testing
+
+**Step 4: Implement Daily Planning Workflow**
+- Create LangGraph state machine
+- Integrate with real Supabase queries
+- Handle user preferences properly
+- Create time blocks in database
+
+**Step 5: API Route with Auth**
+- Create `/api/workflows/daily-planning/route.ts`
+- Implement Supabase auth check
+- Stream responses for better UX
+- Error handling with proper status codes
+
+**Step 6: UI Components**
+- `DailyPlanningTrigger.tsx`: Floating action button
+- `ScheduleCanvas.tsx`: Already exists, needs integration
+- Update `DeepWorkBlock.tsx` for task management
+
+#### Day 7: Email Triage & Real-time Updates
+
+**Step 7: Email Triage Workflow**
+- Implement sender pattern analysis
+- Create decision logic with OpenAI
+- Task creation from emails
+- Batch processing support
+
+**Step 8: Email UI Components**
+- `EmailTriageBlock.tsx`: Card-based interface
+- `EmailDecisionCard.tsx`: Swipeable decisions
+- Progress tracking and stats
+
+**Step 9: Task Management**
+- `useTaskManagement.ts` hook
+- CRUD operations for tasks in blocks
+- Optimistic updates for smooth UX
+
+**Step 10: Real-time Integration**
+- Update CanvasStore with Supabase subscriptions
+- Implement `refreshSchedule` method
+- Handle real-time time_blocks updates
+
+### Technical Decisions
+
+1. **State Management**: Use existing zustand stores, extend as needed
+2. **Error Handling**: Toast notifications for user-facing errors, console logs for debugging
+3. **Loading States**: Use existing skeleton components from UI package
+4. **Type Safety**: Leverage regenerated Supabase types, no `any` types
+5. **Performance**: Implement optimistic updates, debounce real-time updates
+
+### Risk Mitigation
+
+1. **OpenAI Rate Limits**: Implement retry logic with exponential backoff
+2. **Database Performance**: Use proper indexes, batch operations where possible
+3. **Real-time Scalability**: Debounce updates, use selective subscriptions
+4. **Error Recovery**: Graceful fallbacks, clear error messages
+
+### Testing Strategy
+
+1. **Seed Data**: Create comprehensive mock data covering edge cases
+2. **Manual Testing**: Test each workflow end-to-end
+3. **Error Scenarios**: Test network failures, API errors, invalid data
+4. **Performance**: Monitor query times, optimize as needed
+
+### Success Metrics
+
+- [ ] LangGraph workflows execute without errors
+- [ ] Real-time updates reflect within 500ms
+- [ ] All TypeScript strict mode checks pass
+- [ ] Zero console errors in development
+- [ ] Smooth UI interactions with loading states
+
+### Next Steps
+
+Awaiting reviewer approval to begin implementation with this plan.
+
+## Reviewer Guidance & Approval
+
+### Sprint Status: APPROVED TO PROCEED
+**Reviewer**: R  
+**Date**: December 30, 2024
+
+### Executor Understanding: CONFIRMED ✅
+
+Excellent investigation and planning! Your understanding is spot-on. Here's my guidance on your implementation plan:
+
+### Technical Guidance
+
+#### 1. Supabase Integration
+- **Approved**: Use real Supabase queries, not mock services
+- **Additional Guidance**: 
+  - For RPC functions, create them as PostgreSQL functions first, then expose via Supabase
+  - Use the Supabase MCP tool's `execute_postgresql` with migration names like `create_rpc_get_user_patterns`
+  - Example RPC function structure:
+    ```sql
+    CREATE OR REPLACE FUNCTION get_user_patterns(
+      p_user_id UUID,
+      p_pattern_type TEXT
+    ) RETURNS JSONB AS $$
+    BEGIN
+      -- Query embeddings table and return patterns
+      RETURN jsonb_build_object(
+        'focus_times', ARRAY['09:00', '14:00'],
+        'avg_duration', 120
+      );
+    END;
+    $$ LANGUAGE plpgsql SECURITY DEFINER;
+    ```
+
+#### 2. LangGraph Architecture
+- **Approved**: Module structure looks perfect
+- **Key Implementation Notes**:
+  - Keep state schemas simple - don't over-engineer
+  - Use structured output from OpenAI (JSON mode) for reliable parsing
+  - Implement proper error boundaries in each node
+  - Log state transitions for debugging
+
+#### 3. Mock Data Strategy
+- **Important**: Since we're in Sprint 3, we need realistic data patterns
+- **Guidance**:
+  - Create at least 3 different "user personas" in seed data
+  - Each persona should have different work patterns (early bird, night owl, meeting-heavy)
+  - Include edge cases: back-to-back meetings, no lunch break, etc.
+
+#### 4. Real-time Updates
+- **Approved**: Supabase subscriptions approach
+- **Performance Tip**: 
+  - Only subscribe to today's time_blocks to reduce noise
+  - Implement a 300ms debounce on updates
+  - Use `REPLICA IDENTITY FULL` on time_blocks table for better change tracking
+
+### Specific Answers to Implementation Questions
+
+1. **Authentication Pattern**
+   - Use the existing `getServerSession` pattern from `packages/auth`
+   - For API routes: Check session at the start, return 401 if missing
+   - No need for complex middleware - keep it simple
+
+2. **OpenAI Integration**
+   - Temperature settings: Use 0.3 for planning (consistency), 0.2 for email triage (accuracy)
+   - Model: `gpt-4-turbo-preview` is correct
+   - Always set response format to JSON when expecting structured data
+
+3. **Error Handling**
+   - For workflow errors: Return partial results if possible
+   - For API errors: Use standard HTTP codes (400, 401, 500)
+   - For UI: Show inline errors, not just toasts
+
+### Critical Implementation Order
+
+**Day 6 Priority**:
+1. First: Get Supabase types regenerated (blocks everything else)
+2. Second: Create RPC functions (needed for workflows)
+3. Third: Basic LangGraph workflow (can use hardcoded data initially)
+4. Fourth: Connect to real data
+
+**Day 7 Priority**:
+1. First: Email triage UI (visual progress important)
+2. Second: Task management hooks
+3. Third: Real-time subscriptions (nice-to-have for MVP)
+
+### MVP Simplifications
+
+To ensure we hit our 2-day timeline:
+1. **Skip for now**: Complex RAG patterns, just use simple queries
+2. **Hardcode**: User preferences (9-5 work, 12pm lunch) if not in DB
+3. **Simplify**: Email decisions to just "now" or "later" (skip "never" for MVP)
+4. **Mock**: Sender patterns - just return random importance scores
+
+### Testing Focus
+
+Given time constraints, prioritize:
+1. **Critical Path**: Can user trigger planning and see schedule?
+2. **Email Flow**: Can user triage at least 5 emails?
+3. **Task Updates**: Can user check off tasks?
+
+Skip extensive edge case testing for MVP.
+
+### Final Notes
+
+- Your plan is solid and well-thought-out
+- The module structure is clean and maintainable
+- Risk mitigation strategies are appropriate
+- Focus on getting the happy path working first
+
+**You are approved to begin implementation!** 🚀
+
+Remember: Make it work first, then make it nice. We can refine in Sprint 4.
+
+### Questions?
+
+If you hit any blockers during implementation:
+1. Try the simple solution first
+2. Document the limitation
+3. Move forward
+
+We'll address technical debt in the polish sprint. 

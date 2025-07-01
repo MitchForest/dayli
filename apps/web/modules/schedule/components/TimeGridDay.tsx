@@ -79,6 +79,7 @@ export const TimeGridDay = memo(({ dayOffset, viewportWidth, preferences }: Time
             
             {/* Deep work block */}
             <DeepWorkBlock
+              id="dw1"
               title="Sprint 01.025 Implementation"
               startTime="9:00"
               endTime="11:00"

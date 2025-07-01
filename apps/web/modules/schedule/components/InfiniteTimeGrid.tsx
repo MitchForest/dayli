@@ -71,15 +71,6 @@ export const InfiniteTimeGrid = memo(() => {
       
       {/* Current time indicator - fixed position */}
       <CurrentTimeIndicator />
-      
-      {/* Debug info (remove in production) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="fixed bottom-4 right-4 bg-card text-card-foreground text-xs p-2 rounded border border-border font-mono">
-          <div>Camera: ({Math.round(camera.x)}, {Math.round(camera.y)})</div>
-          <div>Day: {currentDayOffset} | Render: {shouldRender ? 'Y' : 'N'}</div>
-          <div>Viewport: {viewport.width}x{viewport.height}</div>
-        </div>
-      )}
     </div>
   );
 });
