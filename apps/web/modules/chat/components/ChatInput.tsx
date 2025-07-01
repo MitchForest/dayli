@@ -1,16 +1,24 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '../store/chatStore';
 import { cn } from '@/lib/utils';
+import { useChat } from 'ai/react';
 
 export function ChatInput() {
-  const [input, setInput] = useState('');
   const [historyIndex, setHistoryIndex] = useState(-1);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const { addMessage, setLoading, commandHistory, addToHistory } = useChatStore();
+  const { commandHistory, addToHistory } = useChatStore();
+  
+  // Use AI SDK's useChat hook
+  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+    api: '/api/chat',
+    onError: (error) => {
+      console.error('Chat error:', error);
+    },
+  });
 
   // Focus input on mount and when pressing Cmd+K
   useEffect(() => {
@@ -25,81 +33,58 @@ export function ChatInput() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleSubmit = async (e?: React.FormEvent) => {
-    e?.preventDefault();
+  // Update store when messages change
+  useEffect(() => {
+    const store = useChatStore.getState();
+    // Clear existing messages and add new ones
+    store.clearMessages();
+    messages.forEach(msg => {
+      store.addMessage({
+        content: msg.content,
+        role: msg.role as 'user' | 'assistant',
+        toolInvocations: msg.toolInvocations as any,
+      });
+    });
+    store.setLoading(isLoading);
+  }, [messages, isLoading]);
+
+  const onSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
     
     const trimmedInput = input.trim();
     if (!trimmedInput) return;
 
     // Add to history
     addToHistory(trimmedInput);
-    
-    // Add user message
-    addMessage({
-      content: trimmedInput,
-      role: 'user',
-    });
-
-    // Clear input and reset history index
-    setInput('');
     setHistoryIndex(-1);
 
-    // Check for /commands
-    if (trimmedInput === '/commands') {
-      setTimeout(() => {
-        addMessage({
-          content: '📋 Available Commands:',
-          role: 'assistant',
-        });
-      }, 300);
-      return;
-    }
-
-    // Mock responses
-    setLoading(true);
-    setTimeout(() => {
-      let response = '';
-      
-      if (trimmedInput.toLowerCase().includes('plan my day')) {
-        response = "I'll analyze your calendar and create the perfect schedule...";
-      } else if (trimmedInput.toLowerCase().includes('email')) {
-        response = "I'll help you triage your emails. You have 42 unread messages. Let me categorize them by importance...";
-      } else if (trimmedInput.toLowerCase().includes('schedule')) {
-        response = "✅ Task scheduled successfully!";
-      } else if (trimmedInput.toLowerCase().includes('what\'s next')) {
-        response = "Your next task is 'Review Q1 strategy deck' scheduled for 2:00 PM. You have 45 minutes of focus time before your team standup.";
-      } else {
-        response = `I understand you want to ${trimmedInput.toLowerCase()}. This feature will be available in Sprint 3.`;
-      }
-      
-      addMessage({
-        content: response,
-        role: 'assistant',
-      });
-      setLoading(false);
-    }, 800);
-  };
+    // Submit using AI SDK
+    handleSubmit(e);
+  }, [input, addToHistory, handleSubmit]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit();
+      onSubmit(e as any);
     } else if (e.key === 'ArrowUp' && input === '') {
       e.preventDefault();
       if (historyIndex < commandHistory.length - 1) {
         const newIndex = historyIndex + 1;
         setHistoryIndex(newIndex);
-        setInput(commandHistory[newIndex] || '');
+        const historicCommand = commandHistory[newIndex] || '';
+        // Update input using AI SDK's handler
+        handleInputChange({ target: { value: historicCommand } } as any);
       }
     } else if (e.key === 'ArrowDown' && historyIndex >= 0) {
       e.preventDefault();
       if (historyIndex > 0) {
         const newIndex = historyIndex - 1;
         setHistoryIndex(newIndex);
-        setInput(commandHistory[newIndex] || '');
+        const historicCommand = commandHistory[newIndex] || '';
+        handleInputChange({ target: { value: historicCommand } } as any);
       } else {
         setHistoryIndex(-1);
-        setInput('');
+        handleInputChange({ target: { value: '' } } as any);
       }
     }
   };
@@ -109,13 +94,14 @@ export function ChatInput() {
       <div className="text-xs text-muted-foreground mb-2">
         Type /commands to see list of available commands
       </div>
-      <form onSubmit={handleSubmit} className="flex gap-2">
+      <form onSubmit={onSubmit} className="flex gap-2">
         <textarea
           ref={inputRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           placeholder="Ask me anything..."
+          disabled={isLoading}
           className={cn(
             "flex-1 resize-none rounded-md border border-input bg-background px-3 py-2",
             "text-sm placeholder:text-muted-foreground",
@@ -125,7 +111,7 @@ export function ChatInput() {
           )}
           rows={1}
         />
-        <Button type="submit" size="icon" disabled={!input.trim()}>
+        <Button type="submit" size="icon" disabled={!input.trim() || isLoading}>
           <Send className="h-4 w-4" />
         </Button>
       </form>

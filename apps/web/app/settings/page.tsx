@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function SettingsPage() {
@@ -17,10 +17,23 @@ export default function SettingsPage() {
         
         <h1 className="text-3xl font-semibold mb-8">Settings</h1>
         
-        <div className="bg-card rounded-lg p-8 border border-border text-center">
-          <p className="text-muted-foreground">
-            Settings functionality coming soon...
+        <div className="bg-card rounded-lg p-8 border border-border">
+          <div className="flex items-center gap-3 mb-4">
+            <Bot className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-medium">AI-Managed Preferences</h2>
+          </div>
+          <p className="text-muted-foreground mb-4">
+            Your AI assistant learns and adapts to your preferences automatically.
           </p>
+          <p className="text-sm text-muted-foreground">
+            Just tell me what you&apos;d like to change! For example:
+          </p>
+          <ul className="mt-2 space-y-1 text-sm text-muted-foreground ml-4">
+            <li>• &quot;I prefer lunch at 11:30 now&quot;</li>
+            <li>• &quot;I want to start work at 8:30am&quot;</li>
+            <li>• &quot;Block my calendar during focus time&quot;</li>
+            <li>• &quot;I need longer breaks on Fridays&quot;</li>
+          </ul>
         </div>
       </div>
     </div>
