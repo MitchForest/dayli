@@ -3,6 +3,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { Coffee, Clock } from 'lucide-react';
+import { CELL_HEIGHT, MIN_BLOCK_HEIGHT } from '../../constants/grid-constants';
 
 interface BreakBlockProps {
   id: string;
@@ -25,8 +26,9 @@ export function BreakBlock({
   className,
   style
 }: BreakBlockProps) {
-  // Calculate height based on duration
-  const baseHeight = Math.max(40, (duration / 15) * 30);
+  // Calculate height based on duration, ensuring it's a multiple of CELL_HEIGHT
+  const cells = Math.ceil(duration / 15);
+  const baseHeight = Math.max(cells * CELL_HEIGHT, MIN_BLOCK_HEIGHT);
   
   const getIcon = () => {
     switch(type) {
@@ -42,8 +44,10 @@ export function BreakBlock({
       className={cn(
         "rounded-md border border-green-500/20",
         "bg-gradient-to-br from-green-100 to-green-200",
+        "hover:from-green-200 hover:to-green-300",
         "transition-all duration-200",
-        "shadow-sm overflow-hidden",
+        "shadow-sm hover:shadow-md hover:shadow-green-300/20",
+        "overflow-hidden",
         className
       )}
       style={{

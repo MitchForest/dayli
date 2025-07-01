@@ -4,6 +4,7 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import { Briefcase, Clock, CheckSquare, ChevronRight } from 'lucide-react';
 import { DailyTask } from '../../types/schedule.types';
+import { CELL_HEIGHT, MIN_BLOCK_HEIGHT } from '../../constants/grid-constants';
 import {
   Dialog,
   DialogContent,
@@ -36,8 +37,14 @@ export function WorkBlock({
   const completedCount = tasks.filter(t => t.completed).length;
   const progress = tasks.length > 0 ? (completedCount / tasks.length) * 100 : 0;
   
-  // Calculate height based on duration
-  const baseHeight = Math.max(40, (duration / 15) * 30);
+  // Calculate height based on duration, ensuring it's a multiple of CELL_HEIGHT
+  const cells = Math.ceil(duration / 15);
+  const baseHeight = Math.max(cells * CELL_HEIGHT, MIN_BLOCK_HEIGHT);
+  
+  // Smart content display based on height
+  const showTaskCount = baseHeight >= 60; // 2+ cells
+  const showTaskList = baseHeight >= 90; // 3+ cells
+  const showProgressBar = baseHeight >= 120 && tasks.length > 0; // 4+ cells
 
   return (
     <>
@@ -59,30 +66,52 @@ export function WorkBlock({
         onClick={() => setIsOpen(true)}
       >
         <div className="p-2 h-full flex flex-col">
-          {/* Header */}
+          {/* Header - Always shown */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-medium text-blue-900">
-              <Briefcase size={16} className="text-blue-700" />
+              <Briefcase size={14} className="text-blue-700" />
               <span>{startTime} - {endTime}</span>
             </div>
             <ChevronRight size={14} className="text-blue-600 group-hover:translate-x-0.5 transition-transform" />
           </div>
           
-          {/* Title */}
+          {/* Title - Always shown */}
           <div className="text-sm font-semibold text-blue-900 mt-0.5 truncate">
             {title}
           </div>
           
-          {/* Task count */}
-          {tasks.length > 0 && (
+          {/* Task count - Show if 60px+ */}
+          {showTaskCount && tasks.length > 0 && (
             <div className="flex items-center gap-1 text-xs text-blue-700 mt-1">
               <CheckSquare size={12} />
               <span>{completedCount}/{tasks.length} tasks</span>
             </div>
           )}
           
-          {/* Progress bar */}
-          {tasks.length > 0 && baseHeight > 60 && (
+          {/* Task list preview - Show if 90px+ */}
+          {showTaskList && tasks.length > 0 && (
+            <div className="mt-1 space-y-0.5">
+              {tasks.slice(0, 2).map((task) => (
+                <div
+                  key={task.id}
+                  className={cn(
+                    "text-xs truncate",
+                    task.completed ? "text-blue-600 line-through" : "text-blue-800"
+                  )}
+                >
+                  • {task.title}
+                </div>
+              ))}
+              {tasks.length > 2 && (
+                <div className="text-xs text-blue-600">
+                  +{tasks.length - 2} more
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Progress bar - Show if 120px+ */}
+          {showProgressBar && (
             <div className="mt-auto">
               <div className="h-1.5 bg-blue-300/30 rounded-full overflow-hidden">
                 <div 

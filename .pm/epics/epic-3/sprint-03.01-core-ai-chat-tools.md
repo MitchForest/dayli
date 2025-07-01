@@ -532,6 +532,205 @@ Based on user feedback, we're implementing minimal but high-impact UI improvemen
 3. Polish animations and hover states
 4. Update completed block styling
 
+### Mock Data and UI Fixes
+
+#### Critical Issues to Fix
+
+Based on user feedback, we need to fix fundamental issues with mock data and block display:
+
+##### 1. **Fix Terrible Mock Data**
+
+**Current Issues**:
+- Nonsensical meeting names ("Conflicting Customer Call")
+- Only one 15-minute work block (unrealistic)
+- Too many meetings, not enough variety
+- No demonstration of 3-4 column layout capability
+
+**Fix Implementation**:
+
+```typescript
+// Update MockScheduleService to use proper scenarios
+// services/mock/schedule.service.ts
+private initializeMockData(): void {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const scenario = this.getScenarioForToday(); // Vary by day
+  const schedule = generateMockSchedule(scenario);
+  
+  // Convert generated blocks to TimeBlock format
+  schedule.timeBlocks.forEach(block => {
+    const timeBlock: TimeBlock = {
+      id: `mock-${generateId()}`,
+      userId: this.userId,
+      startTime: this.parseTimeToDate(block.startTime, today),
+      endTime: this.parseTimeToDate(block.endTime, today),
+      type: block.type,
+      title: block.title,
+      description: block.description,
+      source: block.source || 'ai',
+      metadata: block.metadata,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.mockTimeBlocks.set(timeBlock.id, timeBlock);
+  });
+}
+```
+
+**Realistic Meeting Names**:
+- "Weekly Team Standup"
+- "Product Review Meeting"
+- "1:1 with Sarah Chen"
+- "Sprint Planning"
+- "Client Check-in Call"
+- "Engineering Sync"
+- "Design Review"
+- "Quarterly Planning"
+
+**Overlapping Blocks Pattern** (to show 3-4 columns):
+```typescript
+// Example of overlapping meetings
+{
+  id: generateId(),
+  startTime: '09:00',
+  endTime: '10:00',
+  type: 'meeting',
+  title: 'Strategy Review',
+},
+{
+  id: generateId(),
+  startTime: '09:30',
+  endTime: '10:30',
+  type: 'meeting',
+  title: 'Product Sync',
+},
+{
+  id: generateId(),
+  startTime: '10:00',
+  endTime: '11:00',
+  type: 'work',
+  title: 'Code Review',
+}
+```
+
+##### 2. **Fix Block Height and Grid Alignment**
+
+**Critical Issue**: Blocks can overflow their grid cells causing visual bugs.
+
+**Solution**:
+```typescript
+// constants/grid-constants.ts
+export const HOUR_HEIGHT = 120; // 4 × 30px for 15-min cells
+export const CELL_HEIGHT = 30; // 15-minute cell
+export const MIN_BLOCK_HEIGHT = 60; // Minimum 2 cells (30 minutes)
+
+// In block components, ensure height is multiple of CELL_HEIGHT
+const calculateBlockHeight = (duration: number): number => {
+  const cells = Math.ceil(duration / 15); // Number of 15-min cells
+  const height = cells * CELL_HEIGHT;
+  return Math.max(height, MIN_BLOCK_HEIGHT);
+};
+```
+
+##### 3. **Smart Content Display Based on Height**
+
+**Implementation for All Block Components**:
+
+```typescript
+// Example for WorkBlock component
+const WorkBlock = ({ duration, tasks, title, ... }) => {
+  const blockHeight = calculateBlockHeight(duration);
+  const showTaskList = blockHeight >= 90; // 3+ cells
+  const showTaskCount = blockHeight >= 60; // 2+ cells
+  const showProgressBar = blockHeight >= 120 && tasks.length > 0; // 4+ cells
+  
+  return (
+    <div style={{ height: `${blockHeight}px` }}>
+      {/* Always show header with time */}
+      <div className="block-header">
+        <span className="time">{startTime} - {endTime}</span>
+      </div>
+      
+      {/* Always show title */}
+      <div className="block-title truncate">{title}</div>
+      
+      {/* Conditionally show content based on height */}
+      {showTaskCount && tasks.length > 0 && (
+        <div className="task-count">{tasks.length} tasks</div>
+      )}
+      
+      {showTaskList && tasks.length > 0 && (
+        <div className="task-list">
+          {tasks.slice(0, 2).map(task => (
+            <div key={task.id} className="task-item truncate">
+              {task.title}
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {showProgressBar && (
+        <div className="progress-bar">...</div>
+      )}
+    </div>
+  );
+};
+```
+
+**Height-Based Content Rules**:
+- **30-60px (1-2 cells)**: Time + Title only
+- **60-90px (2-3 cells)**: Time + Title + Count/Status
+- **90-120px (3-4 cells)**: Time + Title + 1-2 items
+- **120px+ (4+ cells)**: Full content with progress
+
+##### 4. **Mock Data Scenarios to Implement**
+
+**Typical Day** (balanced):
+```
+09:00-09:30  Email Triage (30 min)
+09:30-11:30  Deep Work: Project Alpha (2 hrs)
+11:30-12:00  Team Standup (30 min)
+12:00-13:00  Lunch Break (1 hr)
+13:00-14:00  Code Review (1 hr) [overlaps with:]
+13:30-14:30  Sprint Planning (1 hr)
+14:30-15:00  Email Response (30 min)
+15:00-16:30  Deep Work: Feature Dev (1.5 hrs)
+16:30-17:00  Daily Wrap-up (30 min)
+```
+
+**Meeting Heavy** (shows columns):
+```
+09:00-10:00  Strategy Review
+09:30-10:30  Product Sync [overlap]
+10:00-11:00  Engineering Standup [overlap]
+10:30-11:30  Design Review [overlap]
+```
+
+##### Implementation Priority
+
+1. **First**: Fix `mockGenerator.ts` with realistic names and patterns
+2. **Second**: Update `MockScheduleService` to use the generator properly
+3. **Third**: Fix block height calculation to align with grid cells
+4. **Fourth**: Implement smart content display in all block components
+5. **Fifth**: Test overlapping blocks for column layout
+
+##### Files to Update
+
+1. `apps/web/modules/schedule/utils/mockGenerator.ts` - Fix meeting names and patterns
+2. `apps/web/services/mock/schedule.service.ts` - Use mock generator
+3. `apps/web/modules/schedule/constants/grid-constants.ts` - Add MIN_BLOCK_HEIGHT
+4. `apps/web/modules/schedule/components/blocks/*.tsx` - All block components
+5. `apps/web/modules/schedule/components/TimeGridDay.tsx` - Ensure proper height calculation
+
+##### Success Criteria for UI Fixes
+
+- [ ] All meeting names are realistic and professional
+- [ ] Blocks never overflow their grid cells
+- [ ] 3-4 column layout visible with overlapping blocks
+- [ ] Short blocks (15-30 min) show only essential info
+- [ ] No text is cut off in any block size
+- [ ] Mock data includes variety of block types and durations
+- [ ] Grid alignment is pixel-perfect
+
 ## Success Criteria
 
 1. **All CRUD operations work through chat** - No buttons needed

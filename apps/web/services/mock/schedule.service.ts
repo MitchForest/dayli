@@ -6,6 +6,8 @@ import {
   UpdateTimeBlockInput 
 } from '../interfaces/schedule.interface';
 import { parseISO, format, startOfDay, endOfDay } from 'date-fns';
+import { generateMockSchedule } from '@/modules/schedule/utils/mockGenerator';
+import type { MockScenario } from '@/lib/constants';
 
 export class MockScheduleService implements ScheduleService {
   readonly serviceName = 'MockScheduleService';
@@ -18,37 +20,43 @@ export class MockScheduleService implements ScheduleService {
     this.initializeMockData();
   }
 
+  private getScenarioForToday(): MockScenario {
+    // Vary scenario by day of week for variety
+    const day = new Date().getDay();
+    const scenarios: MockScenario[] = [
+      'light_day',      // Sunday
+      'meeting_heavy',  // Monday
+      'typical_day',    // Tuesday
+      'focus_day',      // Wednesday
+      'email_heavy',    // Thursday
+      'typical_day',    // Friday
+      'light_day',      // Saturday
+    ];
+    return scenarios[day] || 'typical_day';
+  }
+
   private initializeMockData(): void {
-    // Add some default time blocks for today
     const today = format(new Date(), 'yyyy-MM-dd');
+    const scenario = this.getScenarioForToday();
+    const schedule = generateMockSchedule(scenario);
     
-    const morningBlock: TimeBlock = {
-      id: 'mock-1',
-      userId: this.userId,
-      startTime: this.parseTimeToDate('09:00', today),
-      endTime: this.parseTimeToDate('11:00', today),
-      type: 'work',
-      title: 'Deep Work Session',
-      description: 'Focus on strategy deck',
-      source: 'ai',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    const lunchBlock: TimeBlock = {
-      id: 'mock-2',
-      userId: this.userId,
-      startTime: this.parseTimeToDate('12:00', today),
-      endTime: this.parseTimeToDate('13:00', today),
-      type: 'break',
-      title: 'Lunch Break',
-      source: 'ai',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    this.mockTimeBlocks.set(morningBlock.id, morningBlock);
-    this.mockTimeBlocks.set(lunchBlock.id, lunchBlock);
+    // Convert generated blocks to TimeBlock format
+    schedule.timeBlocks.forEach(block => {
+      const timeBlock: TimeBlock = {
+        id: `mock-${block.id}`,
+        userId: this.userId,
+        startTime: this.parseTimeToDate(block.startTime, today),
+        endTime: this.parseTimeToDate(block.endTime, today),
+        type: block.type,
+        title: block.title,
+        description: undefined,
+        source: block.source || 'ai',
+        metadata: block.metadata,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      this.mockTimeBlocks.set(timeBlock.id, timeBlock);
+    });
   }
 
   private parseTimeToDate(time: string, date: string): Date {

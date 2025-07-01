@@ -142,8 +142,7 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
                   <EmailBlock
                     key={block.id}
                     {...commonProps}
-                    blockId={block.id}
-                    onComplete={() => {}}
+                    emailQueue={block.emailQueue || []}
                   />
                 );
               case 'break':
@@ -151,8 +150,6 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
                   <BreakBlock
                     key={block.id}
                     {...commonProps}
-                    type={block.metadata?.breakType === 'lunch' ? 'lunch' : 
-                          block.metadata?.breakType === 'coffee' ? 'coffee' : 'break'}
                   />
                 );
               case 'blocked':
@@ -160,7 +157,6 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
                   <BlockedTimeBlock
                     key={block.id}
                     {...commonProps}
-                    reason={block.metadata?.reason}
                   />
                 );
               default:

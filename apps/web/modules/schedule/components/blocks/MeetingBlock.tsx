@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Video, MapPin, Users, ExternalLink, ChevronRight, Clock } from 'lucide-react';
+import { CELL_HEIGHT, MIN_BLOCK_HEIGHT } from '../../constants/grid-constants';
 import {
   Dialog,
   DialogContent,
@@ -38,8 +39,13 @@ export function MeetingBlock({
 }: MeetingBlockProps) {
   const [showDetails, setShowDetails] = useState(false);
   
-  // Calculate height based on duration
-  const baseHeight = Math.max(40, (duration / 15) * 30);
+  // Calculate height based on duration, ensuring it's a multiple of CELL_HEIGHT
+  const cells = Math.ceil(duration / 15);
+  const baseHeight = Math.max(cells * CELL_HEIGHT, MIN_BLOCK_HEIGHT);
+  
+  // Smart content display based on height
+  const showAttendees = baseHeight >= 60; // 2+ cells
+  const showLocation = baseHeight >= 90; // 3+ cells
   
   const hasVideoCall = !!videoLink;
   const hasLocation = !!location && !hasVideoCall;
@@ -64,30 +70,47 @@ export function MeetingBlock({
         onClick={() => setShowDetails(true)}
       >
         <div className="p-2 h-full flex flex-col">
-          {/* Header */}
+          {/* Header - Always shown */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-medium text-red-900">
               {hasVideoCall ? (
-                <Video size={16} className="text-red-700" />
+                <Video size={14} className="text-red-700" />
               ) : hasLocation ? (
-                <MapPin size={16} className="text-red-700" />
+                <MapPin size={14} className="text-red-700" />
               ) : (
-                <Users size={16} className="text-red-700" />
+                <Users size={14} className="text-red-700" />
               )}
               <span>{startTime} - {endTime}</span>
             </div>
             <ChevronRight size={14} className="text-red-600 group-hover:translate-x-0.5 transition-transform" />
           </div>
           
-          {/* Title */}
+          {/* Title - Always shown */}
           <div className="text-sm font-semibold text-red-900 mt-0.5 truncate">
             {title}
           </div>
           
-          {/* Attendees preview */}
-          {attendees.length > 0 && baseHeight > 60 && (
+          {/* Attendees preview - Show if 60px+ */}
+          {showAttendees && attendees.length > 0 && (
             <div className="text-xs text-red-700 mt-1 truncate">
               {attendees.length === 1 ? attendees[0] : `${attendees.length} attendees`}
+            </div>
+          )}
+          
+          {/* Location/Video indicator - Show if 90px+ */}
+          {showLocation && (hasVideoCall || hasLocation) && (
+            <div className="text-xs text-red-600 mt-1 flex items-center gap-1">
+              {hasVideoCall ? (
+                <>
+                  <Video size={12} />
+                  <span>Video call</span>
+                </>
+              ) : (
+                <>
+                  <MapPin size={12} />
+                  <span className="truncate">{location}</span>
+                </>
+              )}
             </div>
           )}
         </div>
