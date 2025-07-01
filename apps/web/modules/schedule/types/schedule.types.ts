@@ -2,8 +2,9 @@ export interface DailyTask {
   id: string;
   title: string;
   completed: boolean;
-  source?: 'email' | 'calendar' | 'ai';
+  source?: 'email' | 'calendar' | 'ai' | 'manual';
   emailId?: string;
+  estimatedMinutes?: number;
 }
 
 export interface TimeBlock {
@@ -14,6 +15,7 @@ export interface TimeBlock {
   title: string;
   tasks: DailyTask[];
   emailQueue?: EmailDecision[]; // For email blocks
+  source?: 'calendar' | 'ai' | 'manual';
 }
 
 export interface DailySchedule {

@@ -1053,3 +1053,126 @@ All UI components are ready and polished. The foundation is solid for adding the
 - [x] Show icon when panel is collapsed
 - [ ] Add snap points configuration (react-resizable-panels doesn't support snap points directly)
 - [ ] Test collapsed/expanded behavior 
+
+## Additional Tasks & Critical Fixes
+
+### Critical Issues to Fix
+
+#### 1. Panel Layout - Panels Not Siblings
+**Problem**: Chat panel appears above schedule canvas, not side-by-side
+**Root Cause**: Incorrect JSX structure - panels are not true siblings
+**Fix Required**:
+- Ensure both Panel components are direct children of PanelGroup
+- Remove any wrapper divs between PanelGroup and Panel components
+- Structure should be: PanelGroup > Panel (schedule) > PanelResizeHandle > Panel (chat)
+
+#### 2. Collapsed Panel UI
+**Problem**: Collapsed panel should be completely hidden with floating icon
+**Current**: Shows 40px strip
+**Fix Required**:
+- When collapsed, hide entire panel (width: 0)
+- Show floating PanelRight icon button in middle of right edge
+- No background on the icon button
+- Click to expand restores previous width
+- Icon should float independently of panel
+
+#### 3. Time Parsing & Display
+**Problem**: Blocks showing at wrong times (lunch at 8 AM), using UTC as local
+**Fix Required**:
+- Parse database timestamps correctly (UTC to local timezone)
+- Use consistent time formatting (12-hour with AM/PM)
+- Ensure all time calculations account for timezone
+
+#### 4. Overlapping Blocks
+**Problem**: Concurrent blocks render on top of each other
+**Fix Required**:
+- Implement collision detection algorithm
+- Group overlapping blocks by time
+- Assign columns and calculate width/position
+- Each concurrent block gets fraction of available width
+
+#### 5. Block Height & Readability
+**Problem**: 30-minute blocks too small, text cut off
+**Fix Required**:
+- Increase scale from 20px per 15min to 30px per 15min
+- Update HOUR_HEIGHT to 120px
+- Implement responsive content based on block height:
+  - < 60px: Time and icon only
+  - 60-90px: Add title on same line
+  - > 90px: Full layout with tasks
+
+#### 6. Mock Data Coverage
+**Problem**: Blocks only created for today, not all 7 days
+**Fix Required**:
+- Update seed script to create blocks for all days (-3 to +3 from today)
+- Ensure each day has realistic schedule
+- Remove hardcoded condition limiting to dayOffset === 0
+
+### Implementation Plan
+
+#### Phase 1: Fix Critical Layout Issues
+1. **Fix Panel Structure** (CRITICAL)
+   - Make panels true siblings in PanelGroup
+   - Test horizontal layout works
+
+2. **Fix Collapsed State** (CRITICAL)
+   - Hide panel completely when collapsed
+   - Implement floating icon button
+   - Position in middle of right edge
+
+#### Phase 2: Fix Time & Data Issues
+1. **Fix Time Parsing**
+   - Convert UTC to local timezone
+   - Use moment or date-fns for consistency
+   - Format as "9:00 AM" not "9:00"
+
+2. **Fix Mock Data Script**
+   - Generate blocks for all 7 days
+   - Ensure realistic times (lunch at noon, not 8 AM)
+   - Test all days have data
+
+#### Phase 3: Fix Block Rendering
+1. **Implement Collision Detection**
+   - Detect overlapping blocks
+   - Assign to columns
+   - Calculate positions
+
+2. **Improve Block Heights**
+   - Update constants for better scale
+   - Implement responsive content
+   - Test with various durations
+
+#### Phase 4: Connect Everything
+1. **Wire Task Management**
+   - Connect add/remove to store
+   - Update schedule in real-time
+
+2. **Daily Planning Integration**
+   - Make it actually modify schedule
+   - Clear old AI blocks
+   - Animate new blocks in
+
+### What We're NOT Doing
+- ❌ Block type legend (unnecessary as decided)
+- ❌ Complex animations (focus on functionality)
+- ❌ Perfect responsive design (desktop first)
+
+### Success Criteria
+- [ ] Panels display side-by-side as siblings
+- [ ] Collapsed state shows only floating icon
+- [ ] All blocks show at correct times
+- [ ] No overlapping blocks
+- [ ] 30-min blocks are readable
+- [ ] Mock data exists for all 7 days
+- [ ] Task management connected to store
+- [ ] Daily planning modifies schedule
+
+### Testing Checklist
+- [ ] Panel layout horizontal
+- [ ] Collapse/expand works with floating icon
+- [ ] Times display correctly in local timezone
+- [ ] Concurrent blocks layout side-by-side
+- [ ] All text readable in 30-min blocks
+- [ ] Can navigate to any of 7 days and see blocks
+- [ ] Adding tasks updates the UI
+- [ ] "Plan My Day" changes the schedule 

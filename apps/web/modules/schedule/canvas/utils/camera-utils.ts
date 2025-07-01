@@ -2,7 +2,10 @@
  * Camera utilities for infinite canvas viewport management
  */
 
-import { Point } from './math-utils';
+export interface Point {
+  x: number;
+  y: number;
+}
 
 export interface Camera {
   x: number;

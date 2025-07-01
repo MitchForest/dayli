@@ -4,11 +4,14 @@
 
 import React, { memo, useMemo } from 'react';
 import { GridHour } from './GridHour';
-import { TimeLabel } from './TimeLabel';
-import { HOUR_HEIGHT, TIME_LABEL_WIDTH, CANVAS_COLORS, DAY_SPACING } from '../constants/grid-constants';
+import { useCanvasStore } from '../canvas/CanvasStore';
+import { HOUR_HEIGHT, TIME_LABEL_WIDTH, DAY_SPACING, CANVAS_COLORS } from '../constants/grid-constants';
 import { parseTime } from '../canvas/utils/date-utils';
 import type { UserPreferencesTyped } from '@/modules/settings/types/preferences.types';
-import { DeepWorkBlock, MeetingBlock, EmailTriageBlock, BreakBlock, BlockedTimeBlock } from './blocks';
+import type { DailySchedule } from '../types/schedule.types';
+import { DeepWorkBlock, MeetingBlock, EmailTriageBlock, BreakBlock } from './blocks';
+import { useScheduleStore } from '../store/scheduleStore';
+import { format } from 'date-fns';
 
 interface TimeGridDayProps {
   dayOffset: number; // Days from today
@@ -17,6 +20,16 @@ interface TimeGridDayProps {
 }
 
 export const TimeGridDay = memo(({ dayOffset, viewportWidth, preferences }: TimeGridDayProps) => {
+  const getSchedule = useScheduleStore(state => state.getSchedule);
+  const referenceDate = useCanvasStore(state => state.referenceDate);
+
+  const date = new Date(referenceDate);
+  date.setDate(date.getDate() + dayOffset);
+  const dateString = format(date, 'yyyy-MM-dd');
+  const schedule = getSchedule(dateString);
+
+  const viewport = useCanvasStore(state => state.viewport);
+  
   // Calculate work hours
   const { workStartHour, workEndHour } = useMemo(() => {
     if (!preferences) {
@@ -34,6 +47,19 @@ export const TimeGridDay = memo(({ dayOffset, viewportWidth, preferences }: Time
   
   // Position for this day with spacing
   const dayX = dayOffset * (viewportWidth + DAY_SPACING) + TIME_LABEL_WIDTH;
+  
+  const blocksToRender = schedule?.timeBlocks || [];
+  
+  // Helper to parse time string to hour position
+  const getTimePosition = (timeStr: string) => {
+    // Handle both "HH:MM" and "HH:MM:SS" formats
+    const parts = timeStr.split(':').map(Number);
+    const hours = parts[0] || 0;
+    const minutes = parts[1] || 0;
+    const position = hours * HOUR_HEIGHT + (minutes / 60) * HOUR_HEIGHT;
+    
+    return position;
+  };
   
   return (
     <div
@@ -63,74 +89,65 @@ export const TimeGridDay = memo(({ dayOffset, viewportWidth, preferences }: Time
           />
         ))}
         
-        {/* Sample blocks for today only */}
-        {dayOffset === 0 && (
+        {/* Render actual time blocks from database */}
+        {blocksToRender.length > 0 && (
           <div className="absolute inset-0 pointer-events-none">
-            {/* Morning email triage */}
-            <EmailTriageBlock
-              title="Morning Email Triage"
-              startTime="8:00"
-              endTime="8:30"
-              duration={30}
-              emailCount={15}
-              className="pointer-events-auto"
-              style={{ top: `${8 * HOUR_HEIGHT}px` }}
-            />
-            
-            {/* Deep work block */}
-            <DeepWorkBlock
-              id="dw1"
-              title="Sprint 01.025 Implementation"
-              startTime="9:00"
-              endTime="11:00"
-              duration={120}
-              className="pointer-events-auto"
-              style={{ top: `${9 * HOUR_HEIGHT}px` }}
-            />
-            
-            {/* Meeting */}
-            <MeetingBlock
-              title="Team Standup"
-              startTime="11:00"
-              endTime="11:30"
-              duration={30}
-              attendees={['John', 'Sarah', 'Mike']}
-              className="pointer-events-auto"
-              style={{ top: `${11 * HOUR_HEIGHT}px` }}
-            />
-            
-            {/* Lunch break */}
-            <BreakBlock
-              title="Lunch Break"
-              startTime="12:00"
-              endTime="13:00"
-              duration={60}
-              type="lunch"
-              className="pointer-events-auto"
-              style={{ top: `${12 * HOUR_HEIGHT}px` }}
-            />
-            
-            {/* Blocked time */}
-            <BlockedTimeBlock
-              title="Focus Time - No Meetings"
-              startTime="14:00"
-              endTime="16:00"
-              duration={120}
-              reason="Deep work protection"
-              className="pointer-events-auto"
-              style={{ top: `${14 * HOUR_HEIGHT}px` }}
-            />
-            
-            {/* Afternoon email triage */}
-            <EmailTriageBlock
-              title="Afternoon Email Review"
-              startTime="16:30"
-              endTime="17:00"
-              duration={30}
-              emailCount={8}
-              className="pointer-events-auto"
-              style={{ top: `${16.5 * HOUR_HEIGHT}px` }}
-            />
+            {blocksToRender.map((block) => {
+              const top = getTimePosition(block.startTime);
+              // Calculate duration from start and end times
+              const startParts = block.startTime.split(':').map(Number);
+              const endParts = block.endTime.split(':').map(Number);
+              const startMinutes = (startParts[0] || 0) * 60 + (startParts[1] || 0);
+              const endMinutes = (endParts[0] || 0) * 60 + (endParts[1] || 0);
+              const duration = endMinutes - startMinutes;
+              
+              const commonProps = {
+                title: block.title,
+                startTime: block.startTime,
+                endTime: block.endTime,
+                duration,
+                className: "pointer-events-auto",
+                style: { top: `${top}px` }
+              };
+              
+              switch (block.type) {
+                case 'focus':
+                  return (
+                    <DeepWorkBlock
+                      key={block.id}
+                      {...commonProps}
+                      id={block.id}
+                      tasks={block.tasks}
+                    />
+                  );
+                case 'meeting':
+                  return (
+                    <MeetingBlock
+                      key={block.id}
+                      {...commonProps}
+                      attendees={[]} // TODO: Get from metadata
+                    />
+                  );
+                case 'email':
+                  return (
+                    <EmailTriageBlock
+                      key={block.id}
+                      {...commonProps}
+                      emailCount={block.emailQueue?.length || 0}
+                    />
+                  );
+                case 'break':
+                  return (
+                    <BreakBlock
+                      key={block.id}
+                      {...commonProps}
+                      type={block.title.toLowerCase().includes('lunch') ? 'lunch' : 'other'}
+                    />
+                  );
+                default:
+                  return null;
+              }
+            })}
           </div>
         )}
       </div>

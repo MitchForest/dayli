@@ -82,14 +82,14 @@ export const BLOCK_STYLES = {
 export const ANIMATION = {
   // Spring physics for smooth camera movement
   cameraSpring: {
-    stiffness: 0.8,    // Much higher for instant response
-    damping: 0.95,     // Higher damping to prevent oscillation
-    mass: 0.1,         // Very low mass for lightning fast movement
+    stiffness: 1.0,     // Maximum stiffness for instant response
+    damping: 0.8,       // Balanced damping for quick settle without bounce
+    mass: 0.02,         // Ultra-low mass for lightning fast movement
   },
   // Transition durations
   blockHover: '150ms',
   currentTime: '1000ms',
-  dateNav: '200ms',
+  dateNav: '100ms',    // Faster navigation
 };
 
 // Typography

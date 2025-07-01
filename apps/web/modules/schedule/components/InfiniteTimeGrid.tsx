@@ -4,17 +4,26 @@
 
 import React, { memo } from 'react';
 import { useCanvasStore } from '../canvas/CanvasStore';
+import { useSchedule } from '../hooks/useSchedule';
+import { useScheduleStore } from '../store/scheduleStore';
 import { TimeGridDay } from './TimeGridDay';
 import { TimeLabel } from './TimeLabel';
 import { CurrentTimeIndicator } from './CurrentTimeIndicator';
-import { TIME_LABEL_WIDTH, CANVAS_COLORS } from '../constants/grid-constants';
+import { TIME_LABEL_WIDTH, CANVAS_COLORS, HOUR_HEIGHT } from '../constants/grid-constants';
+import { format, addDays } from 'date-fns';
 
 export const InfiniteTimeGrid = memo(() => {
   const viewport = useCanvasStore(state => state.viewport);
   const camera = useCanvasStore(state => state.camera);
   const getCurrentDayOffset = useCanvasStore(state => state.getCurrentDayOffset);
+  const currentDate = useCanvasStore(state => state.currentDate);
+  const referenceDate = useCanvasStore(state => state.referenceDate);
   const preferences = useCanvasStore(state => state.preferences);
   const shouldRender = useCanvasStore(state => state.shouldRender);
+  const getSchedule = useScheduleStore(state => state.getSchedule);
+  
+  // Fetch schedule data for the current date and adjacent days
+  useSchedule();
   
   // Top and bottom padding to prevent content from being cut off
   const VERTICAL_PADDING = 8;
@@ -31,7 +40,7 @@ export const InfiniteTimeGrid = memo(() => {
   }
   
   return (
-    <div className="absolute inset-0 overflow-hidden bg-background">
+    <div className="relative h-full w-full overflow-hidden bg-background">
       {/* Time labels - fixed on left side */}
       <div 
         className="absolute left-0 top-0 z-20 bg-background"
@@ -50,12 +59,14 @@ export const InfiniteTimeGrid = memo(() => {
       
       {/* Container that moves with camera */}
       <div
-        className="absolute"
+        className="absolute left-0 top-0"
         style={{
           transform: `translate(${-camera.x}px, ${-camera.y}px)`,
           willChange: 'transform',
           paddingTop: `${VERTICAL_PADDING}px`,
           paddingBottom: `${VERTICAL_PADDING}px`,
+          width: '9999px', // Large width to accommodate multiple days
+          height: `${24 * HOUR_HEIGHT + VERTICAL_PADDING * 2}px`,
         }}
       >
         {/* Render visible days */}

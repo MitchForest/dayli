@@ -25,11 +25,6 @@ export function UserMenu() {
   const userInitial = String(profile?.full_name || user?.email || 'U').charAt(0).toUpperCase();
   const userName = String(profile?.full_name || user?.email?.split('@')[0] || 'User');
   const avatarUrl = (profile?.avatar_url as string) || user?.user_metadata?.avatar_url || '';
-  
-  // Debug avatar URL
-  console.log('Avatar URL:', avatarUrl);
-  console.log('Profile:', profile);
-  console.log('User metadata:', user?.user_metadata);
 
   const handleSignOut = async () => {
     try {
@@ -52,10 +47,6 @@ export function UserMenu() {
               <AvatarImage 
                 src={avatarUrl} 
                 alt={userName}
-                onError={(e) => {
-                  console.error('Avatar image failed to load:', e);
-                  console.log('Attempted URL:', avatarUrl);
-                }}
               />
               <AvatarFallback className="bg-blue-500 text-white text-lg font-medium">
                 {userInitial}

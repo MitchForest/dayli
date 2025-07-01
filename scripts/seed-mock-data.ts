@@ -11,6 +11,25 @@ import type {
   DailyScheduleInsert 
 } from '../packages/database/src/types';
 import { parseArgs } from 'util';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+// Load environment variables from apps/web/.env.local
+try {
+  const envPath = join(process.cwd(), 'apps/web/.env.local');
+  const envFile = readFileSync(envPath, 'utf-8');
+  envFile.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...valueParts] = trimmed.split('=');
+      if (key && valueParts.length > 0) {
+        process.env[key] = valueParts.join('=');
+      }
+    }
+  });
+} catch (error) {
+  console.warn('⚠️  Could not load apps/web/.env.local, using existing environment variables');
+}
 
 // Parse command line arguments
 const { values } = parseArgs({
@@ -54,8 +73,12 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   },
 });
 
-async function seedDatabase() {
-  console.log(`🌱 Seeding mock data for user: ${userEmail}`);
+async function handleMockData() {
+  if (clearData) {
+    console.log(`🗑️  Clearing mock data for user: ${userEmail}`);
+  } else {
+    console.log(`🌱 Seeding mock data for user: ${userEmail}`);
+  }
   
   try {
     // 1. Get user by email
@@ -86,17 +109,31 @@ async function seedDatabase() {
     
     // 3. Clear existing data if requested
     if (clearData) {
-      console.log('🗑️  Clearing existing data...');
+      console.log('🗑️  Clearing mock data...');
       
       // Delete in order of dependencies
-      await supabase.from('time_block_tasks').delete().eq('time_block_id', userId);
-      await supabase.from('time_block_emails').delete().eq('time_block_id', userId);
+      // First, get all time blocks for this user
+      const { data: userTimeBlocks } = await supabase
+        .from('time_blocks')
+        .select('id')
+        .eq('user_id', userId);
+      
+      if (userTimeBlocks && userTimeBlocks.length > 0) {
+        const timeBlockIds = userTimeBlocks.map(tb => tb.id);
+        
+        // Delete junction table records for these time blocks
+        await supabase.from('time_block_tasks').delete().in('time_block_id', timeBlockIds);
+        await supabase.from('time_block_emails').delete().in('time_block_id', timeBlockIds);
+      }
+      
+      // Now delete the main tables
       await supabase.from('time_blocks').delete().eq('user_id', userId);
       await supabase.from('daily_schedules').delete().eq('user_id', userId);
       await supabase.from('tasks').delete().eq('user_id', userId);
       await supabase.from('emails').delete().eq('user_id', userId);
       
-      console.log('✅ Existing data cleared');
+      console.log('✅ All mock data cleared successfully');
+      return; // Exit early - don't seed new data
     }
     
     // 4. Generate mock data
@@ -227,8 +264,7 @@ async function seedDatabase() {
         await supabase.from('time_blocks').insert(timeBlock);
       }
       
-      // Add some focus blocks and email triage blocks
-      if (dayOffset >= -1 && dayOffset <= 1) {
+      // Add some focus blocks and email triage blocks for all days
         // Morning email triage
         await supabase.from('time_blocks').insert({
           user_id: userId,
@@ -302,7 +338,6 @@ async function seedDatabase() {
           source: 'ai',
           metadata: {},
         });
-      }
       
       console.log(`✅ Created schedule for ${dateStr} with ${dayEvents.length} meetings`);
     }
@@ -322,8 +357,8 @@ Summary:
   }
 }
 
-// Run the seeder
-seedDatabase().then(() => {
+// Run the script
+handleMockData().then(() => {
   process.exit(0);
 }).catch((error) => {
   console.error('❌ Fatal error:', error);

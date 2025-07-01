@@ -38,12 +38,17 @@ export const CurrentTimeIndicator = memo(() => {
   const VERTICAL_PADDING = 8;
   
   return (
-    <Position
-      x={TIME_LABEL_WIDTH}
-      y={yPosition + VERTICAL_PADDING}
-      width={viewport.width - TIME_LABEL_WIDTH}
-      height={2}
-      zIndex={20}
+    <div
+      className="absolute"
+      style={{
+        top: 0,
+        left: 0,
+        transform: `translate(${TIME_LABEL_WIDTH}px, ${yPosition + VERTICAL_PADDING}px)`,
+        width: viewport.width - TIME_LABEL_WIDTH,
+        height: 2,
+        zIndex: 20,
+        willChange: 'transform',
+      }}
     >
       <div className="relative w-full h-full">
         {/* Large glow effect */}
@@ -78,7 +83,7 @@ export const CurrentTimeIndicator = memo(() => {
           className="absolute -left-2 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-primary shadow-lg shadow-primary/50"
         />
       </div>
-    </Position>
+    </div>
   );
 });
 
