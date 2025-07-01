@@ -52,8 +52,22 @@ export function ScheduleView() {
       updateSize();
     });
     
+    // Update on window resize
     window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    
+    // Also observe the container for size changes (when panels resize)
+    const resizeObserver = new ResizeObserver(() => {
+      updateSize();
+    });
+    
+    if (scrollContainerRef.current) {
+      resizeObserver.observe(scrollContainerRef.current);
+    }
+    
+    return () => {
+      window.removeEventListener('resize', updateSize);
+      resizeObserver.disconnect();
+    };
   }, []);
   
   // Handle animations based on how the date changed

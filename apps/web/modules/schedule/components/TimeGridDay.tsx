@@ -56,10 +56,6 @@ export const TimeGridDay = ({ dayOffset, viewportWidth, preferences }: TimeGridD
   return (
     <div 
       className="relative bg-card h-full w-full"
-      style={{ 
-        borderLeft: `1px solid ${CANVAS_COLORS.gridLineHour}`,
-        borderRight: `1px solid ${CANVAS_COLORS.gridLineHour}`,
-      }}
     >
       {/* Hour blocks */}
       {Array.from({ length: 24 }, (_, hour) => (
