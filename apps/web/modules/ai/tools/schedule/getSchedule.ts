@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const getSchedule = tool({
   description: 'Get the current schedule for a specific date',
@@ -11,6 +12,9 @@ export const getSchedule = tool({
   }),
   execute: async ({ date }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       

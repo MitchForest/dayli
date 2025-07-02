@@ -2,7 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
-import { readEmailContent } from './readEmailContent';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const processEmailToTask = tool({
   description: "Convert an email into a scheduled task",
@@ -13,35 +13,53 @@ export const processEmailToTask = tool({
   }),
   execute: async ({ emailId, taskTitle, schedule }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const taskService = ServiceFactory.getInstance().getTaskService();
       const gmailService = ServiceFactory.getInstance().getGmailService();
       
-      // Read email content
-      const emailResult = await readEmailContent.execute({ 
-        emailId, 
-        includeAttachments: false 
-      }, {} as any);
+      // Read email content directly
+      const email = await gmailService.getMessage(emailId);
       
-      if (!emailResult.success || !emailResult.data) {
+      if (!email) {
         return toolError(
-          'EMAIL_READ_FAILED',
-          'Failed to read email content',
-          emailResult.error
+          'EMAIL_NOT_FOUND',
+          `Email with ID ${emailId} not found`
         );
       }
       
-      const email = emailResult.data;
+      // Extract email details
+      const headers = email.payload?.headers || [];
+      const subject = headers.find(h => h.name === 'Subject')?.value || '';
+      const from = headers.find(h => h.name === 'From')?.value || '';
+      
+      // Extract body
+      let body = '';
+      if (email.payload?.parts) {
+        for (const part of email.payload.parts) {
+          if (part.mimeType === 'text/plain' && part.body?.data) {
+            body = Buffer.from(part.body.data, 'base64').toString('utf-8');
+            break;
+          }
+        }
+      } else if (email.payload?.body?.data) {
+        body = Buffer.from(email.payload.body.data, 'base64').toString('utf-8');
+      }
+      
+      // Extract action items
+      const actionItems = extractActionItems(body);
       
       // Determine task title
       const title = taskTitle || 
-        (email.actionItems && email.actionItems.length > 0 ? email.actionItems[0] : null) ||
-        `Follow up: ${email.subject}`;
+        (actionItems && actionItems.length > 0 ? actionItems[0] : null) ||
+        `Follow up: ${subject}`;
       
       // Create task with email context
       const task = await taskService.createTask({
         title,
-        description: `From: ${email.from}\nSubject: ${email.subject}\n\n---\n\n${email.body.substring(0, 500)}${email.body.length > 500 ? '...' : ''}`,
-        priority: determineTaskPriority(email),
+        description: `From: ${from}\nSubject: ${subject}\n\n---\n\n${body.substring(0, 500)}${body.length > 500 ? '...' : ''}`,
+        priority: determineTaskPriority({ subject, body, from }),
         source: 'email',
         estimatedMinutes: 30, // Default estimate
       });
@@ -82,7 +100,7 @@ export const processEmailToTask = tool({
         },
         emailArchived: true,
         scheduled,
-        emailSubject: email.subject
+        emailSubject: subject
       };
       
       return toolSuccess(result, {
@@ -106,7 +124,7 @@ export const processEmailToTask = tool({
 });
 
 // Helper to determine task priority based on email content
-function determineTaskPriority(email: any): 'high' | 'medium' | 'low' {
+function determineTaskPriority(email: { subject: string; body: string; from: string }): 'high' | 'medium' | 'low' {
   const subject = email.subject.toLowerCase();
   const body = email.body.toLowerCase();
   
@@ -150,4 +168,28 @@ function getTargetDate(schedule: 'today' | 'tomorrow' | 'next_week' | 'backlog')
     default:
       return today.toISOString().substring(0, 10);
   }
+}
+
+// Helper function to extract action items from email body
+function extractActionItems(body: string): string[] {
+  const actionItems: string[] = [];
+  
+  // Common action patterns
+  const patterns = [
+    /(?:please|could you|can you|would you|need to|should|must)\s+([^.!?]+)/gi,
+    /(?:action item|todo|task):\s*([^.!?\n]+)/gi,
+    /(?:by|before|until)\s+(\d{1,2}\/\d{1,2}|\w+ \d{1,2})/gi,
+  ];
+  
+  for (const pattern of patterns) {
+    const matches = body.matchAll(pattern);
+    for (const match of matches) {
+      if (match[1] && match[1].length > 10 && match[1].length < 100) {
+        actionItems.push(match[1].trim());
+      }
+    }
+  }
+  
+  // Deduplicate
+  return [...new Set(actionItems)].slice(0, 5); // Max 5 action items
 } 

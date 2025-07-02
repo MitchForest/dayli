@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const findTasks = tool({
   description: "Search for tasks by various criteria - understands natural language like 'pending', 'todo', 'unscheduled', 'done'",
@@ -14,6 +15,9 @@ export const findTasks = tool({
   }),
   execute: async (params) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const taskService = ServiceFactory.getInstance().getTaskService();
       
       // Map user intent to database values

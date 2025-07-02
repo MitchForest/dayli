@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const updatePreference = tool({
   description: 'Update user preferences for scheduling',
@@ -20,6 +21,9 @@ export const updatePreference = tool({
   }),
   execute: async ({ preference, value }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const factory = ServiceFactory.getInstance();
       const preferenceService = factory.getPreferenceService();
       
@@ -33,7 +37,7 @@ export const updatePreference = tool({
       }
       
       // Update the preference
-      const updates: any = {};
+      const updates: Record<string, string> = {};
       updates[preference] = value;
       await preferenceService.updatePreferences(updates);
       

@@ -2,15 +2,19 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toolSuccess, toolError, toolConfirmation } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const deleteTask = tool({
-  description: "Delete a task (requires confirmation)",
+  description: "Delete a task permanently",
   parameters: z.object({
     taskId: z.string(),
-    confirm: z.boolean().default(false).describe("Set to true to confirm deletion"),
+    skipConfirmation: z.boolean().default(false),
   }),
-  execute: async ({ taskId, confirm }) => {
+  execute: async ({ taskId, skipConfirmation }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const taskService = ServiceFactory.getInstance().getTaskService();
       
       // Get task details first
@@ -23,7 +27,7 @@ export const deleteTask = tool({
       }
       
       // If not confirmed, return confirmation request
-      if (!confirm) {
+      if (!skipConfirmation) {
         const confirmationId = crypto.randomUUID();
         
         return toolConfirmation(

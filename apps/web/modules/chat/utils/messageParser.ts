@@ -22,7 +22,7 @@ export function parseMessageContent(
   const segments: ParsedSegment[] = [];
   
   // First, handle schedule blocks (multi-line format)
-  // Updated pattern to handle various formats
+  // Updated pattern to handle various formats including numbered lists
   const scheduleBlockPatterns = [
     // Format: **7:00 AM - 7:15 AM**: Daily Planning
     /\*\*(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))\s*[-–]\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))\*\*:\s*(.+)/g,
@@ -32,48 +32,180 @@ export function parseMessageContent(
     /^(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))\s*[-–]\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm)):\s*(.+)$/gm,
     // Format: • 2:00 PM - 2:30 PM: Title
     /^[•\-\*]\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))\s*[-–]\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm)):\s*(.+)$/gm,
+    // Format: 1. **Title** (time - time): Description
+    /^\d+\.\s*\*\*([^*]+)\*\*\s*\(\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))\s*[-–]\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))\s*\)(?::\s*(.+))?/gm,
+    // Format: Time - Time\nTitle\nDescription (multiline)
+    /^(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))\s*[-–]\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))\s*\n([^\n]+)(?:\n([^\n]+))?/gm,
   ];
+  
+  // New pattern for numbered list format with **Title**, **Time:**, **Description:**
+  // This handles the format where times are on separate lines
+  const numberedListPattern = /^\d+\.\s*\*\*([^*]+)\*\*\s*\n\s*-\s*\*\*Time:\*\*\s*\n?(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))\s*\n?\s*[-–]\s*\n?(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))\s*(?:\n\s*-\s*\*\*Description:\*\*\s*([^\n]+))?/gm;
   
   const blocks: any[] = [];
   let processedContent = content;
+  const matchedRanges: Array<{start: number, end: number}> = [];
   
-  // Try each pattern
-  for (const pattern of scheduleBlockPatterns) {
-    const matches = Array.from(processedContent.matchAll(pattern));
+  // First try the numbered list pattern
+  const numberedMatches = Array.from(content.matchAll(numberedListPattern));
+  
+  for (const match of numberedMatches) {
+    const title = match[1]?.trim();
+    const startTime = normalizeTime(match[2] || '');
+    const endTime = normalizeTime(match[3] || '');
+    const description = match[4]?.trim();
     
-    for (const match of matches) {
-      let title, startTime, endTime;
+    if (title && startTime && endTime) {
+      const block: any = {
+        id: generateId(),
+        startTime,
+        endTime,
+        title,
+        type: inferBlockType(title)
+      };
       
-      // Handle different capture group orders based on pattern
-      if (match[0].includes('**') && match[0].indexOf(':') < match[0].indexOf('**', 2)) {
-        // Format: **time - time**: Title
-        startTime = normalizeTime(match[1] || '');
-        endTime = normalizeTime(match[2] || '');
-        title = match[3]?.trim() || '';
-      } else if (match[0].startsWith('**')) {
-        // Format: **Title (time)**
-        title = match[1]?.trim() || '';
-        startTime = normalizeTime(match[2] || '');
-        endTime = normalizeTime(match[3] || '');
-      } else {
-        // Format: time - time: Title
-        startTime = normalizeTime(match[1] || '');
-        endTime = normalizeTime(match[2] || '');
-        title = match[3]?.trim() || '';
-      }
+      blocks.push(block);
+      
+      matchedRanges.push({
+        start: match.index!,
+        end: match.index! + match[0].length
+      });
+    }
+  }
+  
+  // If no numbered list matches, try a more flexible approach
+  if (blocks.length === 0) {
+    // Look for numbered items with title and time
+    const flexiblePattern = /\d+\.\s*\*\*([^*]+)\*\*[\s\S]*?(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))\s*[-–]\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))/g;
+    const flexibleMatches = Array.from(content.matchAll(flexiblePattern));
+    
+    for (const match of flexibleMatches) {
+      const title = match[1]?.trim();
+      const startTime = normalizeTime(match[2] || '');
+      const endTime = normalizeTime(match[3] || '');
       
       if (title && startTime && endTime) {
-        blocks.push({
+        const block: any = {
           id: generateId(),
           startTime,
           endTime,
           title,
           type: inferBlockType(title)
+        };
+        
+        blocks.push(block);
+        
+        matchedRanges.push({
+          start: match.index!,
+          end: match.index! + match[0].length
         });
       }
     }
+  }
+  
+  // If we already found blocks, don't try other patterns to avoid duplicates
+  if (blocks.length > 0) {
+    // Remove all matched schedule blocks from the content
+    if (matchedRanges.length > 0) {
+      // Sort ranges by start position in reverse order
+      matchedRanges.sort((a, b) => b.start - a.start);
+      
+      // Remove each matched range
+      for (const range of matchedRanges) {
+        processedContent = processedContent.substring(0, range.start) + processedContent.substring(range.end);
+      }
+    }
+  } else {
+    // Only try other patterns if we haven't found blocks yet
+    for (const pattern of scheduleBlockPatterns) {
+      const matches = Array.from(processedContent.matchAll(pattern));
+      
+      for (const match of matches) {
+        let title, startTime, endTime, description;
+        
+        // Handle different capture group orders based on pattern
+        if (match[0].includes('**') && match[0].indexOf(':') < match[0].indexOf('**', 2)) {
+          // Format: **time - time**: Title
+          startTime = normalizeTime(match[1] || '');
+          endTime = normalizeTime(match[2] || '');
+          title = match[3]?.trim() || '';
+        } else if (match[0].startsWith('**')) {
+          // Format: **Title (time)**
+          title = match[1]?.trim() || '';
+          startTime = normalizeTime(match[2] || '');
+          endTime = normalizeTime(match[3] || '');
+        } else if (match[0].match(/^\d+\./)) {
+          // Format: 1. **Title** (time - time): Description
+          title = match[1]?.trim() || '';
+          startTime = normalizeTime(match[2] || '');
+          endTime = normalizeTime(match[3] || '');
+          description = match[4]?.trim();
+        } else if (match[0].includes('\n')) {
+          // Format: Time - Time\nTitle\nDescription
+          startTime = normalizeTime(match[1] || '');
+          endTime = normalizeTime(match[2] || '');
+          title = match[3]?.trim() || '';
+          description = match[4]?.trim();
+        } else {
+          // Format: time - time: Title
+          startTime = normalizeTime(match[1] || '');
+          endTime = normalizeTime(match[2] || '');
+          title = match[3]?.trim() || '';
+        }
+        
+        if (title && startTime && endTime) {
+          const block: any = {
+            id: generateId(),
+            startTime,
+            endTime,
+            title,
+            type: inferBlockType(title)
+          };
+          
+          blocks.push(block);
+          
+          // Track the matched range to remove it later
+          matchedRanges.push({
+            start: match.index!,
+            end: match.index! + match[0].length
+          });
+        }
+      }
+    }
+  }
+  
+  // Remove all matched schedule blocks from the content
+  if (matchedRanges.length > 0) {
+    // Sort ranges by start position in reverse order
+    matchedRanges.sort((a, b) => b.start - a.start);
     
-    // Remove matched content
+    // Remove each matched range
+    for (const range of matchedRanges) {
+      processedContent = processedContent.substring(0, range.start) + processedContent.substring(range.end);
+    }
+  }
+  
+  // Clean up any leftover schedule-related text
+  const cleanupPatterns = [
+    /Here'?s your schedule for.*?:\s*/gi,
+    /Your schedule for.*?:\s*/gi,
+    /Schedule for.*?:\s*/gi,
+    /Today'?s schedule.*?:\s*/gi,
+    /Would you like to.*?\?/gi,
+    /Suggested actions\s*/gi,
+    /^\s*\.\s*$/gm, // Lone periods
+    /^\s*schedule_getSchedule\s*$/gm, // Tool names
+    /^\s*\d{1,2}:\d{2}\s*(?:AM|PM)\s*$/gm, // Lone timestamps
+    /\*\*Description:\*\*[^\n]*/gm, // Description lines
+    /Your day includes.*$/gm, // Summary text
+    /^\s*\)\s*$/gm, // Lone closing parentheses
+    /^\s*-\s*[A-Z][^.]*\.\s*$/gm, // Partial description lines starting with dash
+    /^\s*\)\s*-.*$/gm, // Lines starting with ) -
+    /[^.]*(?:Process urgent|Expense report|update task list)[^.]*$/gm, // Partial sentences
+    /^.*(?:bloced|cheduled).*$/gm, // Typos and partial words
+  ];
+  
+  for (const pattern of cleanupPatterns) {
     processedContent = processedContent.replace(pattern, '');
   }
   
@@ -105,7 +237,7 @@ export function parseMessageContent(
   
   // Now process remaining text for inline entities
   const remainingText = processedContent.trim();
-  if (remainingText) {
+  if (remainingText && remainingText.length > 0) {
     const inlineSegments = parseInlineEntities(remainingText, providedEntities);
     segments.push(...inlineSegments);
   }
@@ -236,7 +368,7 @@ function parseInlineEntities(text: string, providedEntities?: Entity[]): ParsedS
   }
   
   // If no entities found, return the whole text
-  if (segments.length === 0) {
+  if (segments.length === 0 && text.trim()) {
     segments.push({
       type: 'text',
       value: text
@@ -255,7 +387,11 @@ function inferBlockType(title: string): 'work' | 'meeting' | 'email' | 'break' |
   if (lower.includes('meeting') || lower.includes('call') || lower.includes('1:1') || lower.includes('sync') || lower.includes('review')) {
     return 'meeting';
   }
-  if (lower.includes('email') || lower.includes('inbox') || lower.includes('messages') || lower.includes('triage')) {
+  if (lower.includes('email') || lower.includes('inbox') || lower.includes('messages') || lower.includes('triage') || lower.includes('email check')) {
+    return 'email';
+  }
+  // Special case: "End of Day Wrap-up" is typically email checking
+  if (lower.includes('end of day') && lower.includes('wrap')) {
     return 'email';
   }
   if (lower.includes('break') || lower.includes('lunch') || lower.includes('coffee') || lower.includes('walk') || lower.includes('stretch')) {

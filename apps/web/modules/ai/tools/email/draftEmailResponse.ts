@@ -4,6 +4,7 @@ import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const draftEmailResponse = tool({
   description: "Create a draft email response with AI assistance",
@@ -17,6 +18,9 @@ export const draftEmailResponse = tool({
   }),
   execute: async (params) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const gmailService = ServiceFactory.getInstance().getGmailService();
       
       // Get context if replying

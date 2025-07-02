@@ -1,8 +1,9 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError, toolConfirmation } from '../types';
+import { toolSuccess, toolError, toolConfirmation, TimeBlock, ProposedChange, Task } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const regenerateSchedule = tool({
   description: 'Regenerate the entire schedule for a day based on preferences and priorities',
@@ -13,6 +14,9 @@ export const regenerateSchedule = tool({
   }),
   execute: async ({ date, keepMeetings, optimizeFor }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       const taskService = ServiceFactory.getInstance().getTaskService();
@@ -75,15 +79,15 @@ export const regenerateSchedule = tool({
       const confirmationId = crypto.randomUUID();
       
       const changesSummary = changes.map(change => {
-        switch (change.action) {
-          case 'add':
-            return `• Add ${change.block.type} "${change.block.title}" at ${change.block.startTime}`;
-          case 'remove':
-            return `• Remove "${change.block.title}"`;
-          case 'modify':
-            return `• Adjust "${change.block.title}" time or duration`;
+        switch (change.type) {
+          case 'create':
+            return `• Add ${change.block?.type} "${change.block?.title}" at ${change.block?.startTime}`;
+          case 'delete':
+            return `• Remove "${change.block?.title}"`;
+          case 'update':
+            return `• Adjust "${change.block?.title}" time or duration`;
           default:
-            return `• ${change.description}`;
+            return `• ${change.type} ${change.description}`;
         }
       }).join('\n');
       
@@ -92,14 +96,24 @@ export const regenerateSchedule = tool({
         changes,
         stats: {
           totalChanges: changes.length,
-          blocksAdded: changes.filter(c => c.action === 'add').length,
-          blocksRemoved: changes.filter(c => c.action === 'remove').length,
+          blocksAdded: changes.filter(c => c.type === 'create').length,
+          blocksRemoved: changes.filter(c => c.type === 'delete').length,
           focusTime: proposedSchedule
             .filter(b => b.type === 'work')
-            .reduce((sum, b) => sum + (b.duration || 0), 0)
+            .reduce((sum, b) => {
+              const duration = b.startTime && b.endTime 
+                ? timeToMinutes(b.endTime as string) - timeToMinutes(b.startTime as string)
+                : 0;
+              return sum + duration;
+            }, 0)
         }
       }, confirmationId, 
-      `I've regenerated your schedule optimized for ${optimizeFor}:\n\n${changesSummary}\n\nThis will give you ${Math.floor(proposedSchedule.filter(b => b.type === 'work').reduce((sum, b) => sum + (b.duration || 0), 0) / 60)} hours of focus time. Apply these changes?`
+      `I've regenerated your schedule optimized for ${optimizeFor}:\n\n${changesSummary}\n\nThis will give you ${Math.floor(proposedSchedule.filter(b => b.type === 'work').reduce((sum, b) => {
+        const duration = b.startTime && b.endTime 
+          ? timeToMinutes(b.endTime as string) - timeToMinutes(b.startTime as string)
+          : 0;
+        return sum + duration;
+      }, 0) / 60)} hours of focus time. Apply these changes?`
       );
       
     } catch (error) {
@@ -115,16 +129,29 @@ export const regenerateSchedule = tool({
 // Helper to generate optimal schedule
 function generateOptimalSchedule(params: {
   date: string;
-  existingMeetings: any[];
-  availableTasks: any[];
-  preferences: any;
+  existingMeetings: TimeBlock[];
+  availableTasks: Task[];
+  preferences: {
+    workStartTime?: string;
+    workEndTime?: string;
+    breakSchedule?: {
+      lunchTime?: string;
+      lunchDuration?: number;
+      morningBreak?: { time: string; duration: number };
+      afternoonBreak?: { time: string; duration: number };
+    };
+    breakFrequency?: number;
+    emailPreferences?: {
+      quickReplyMinutes?: number;
+    };
+  };
   optimizeFor: string;
   workStart: string;
   workEnd: string;
   lunchTime: string;
   lunchDuration: number;
-}): any[] {
-  const schedule: any[] = [];
+}): Partial<TimeBlock>[] {
+  const schedule: Partial<TimeBlock>[] = [];
   
   // Add lunch break if configured
   if (params.preferences.breakSchedule?.lunchTime && params.preferences.breakSchedule?.lunchDuration) {
@@ -134,7 +161,7 @@ function generateOptimalSchedule(params: {
       title: 'Lunch',
       startTime: lunchStart,
       endTime: addMinutesToTime(lunchStart, params.preferences.breakSchedule.lunchDuration),
-      duration: params.preferences.breakSchedule.lunchDuration
+      description: 'Lunch break'
     });
   }
   
@@ -149,7 +176,7 @@ function generateOptimalSchedule(params: {
       title: 'Deep Focus Work',
       startTime: params.workStart,
       endTime: '11:30',
-      duration: 150
+      description: 'Focus time for deep work'
     });
     
     schedule.push({
@@ -157,7 +184,7 @@ function generateOptimalSchedule(params: {
       title: 'Afternoon Focus',
       startTime: '13:30',
       endTime: '16:00',
-      duration: 150
+      description: 'Afternoon focus session'
     });
   } else if (params.optimizeFor === 'variety') {
     // Mix different types of blocks
@@ -167,21 +194,21 @@ function generateOptimalSchedule(params: {
         title: 'Morning Tasks',
         startTime: params.workStart,
         endTime: '10:30',
-        duration: 90
+        description: 'Morning task work'
       },
       {
         type: 'email',
         title: 'Email Processing',
         startTime: '10:30',
         endTime: '11:00',
-        duration: 30
+        description: 'Process emails'
       },
       {
         type: 'work',
         title: 'Project Work',
         startTime: '14:00',
         endTime: '15:30',
-        duration: 90
+        description: 'Project focused work'
       }
     );
   }
@@ -193,25 +220,31 @@ function generateOptimalSchedule(params: {
       title: 'Morning Break',
       startTime: '10:30',
       endTime: '10:45',
-      duration: 15
+      description: '15 minute break'
     });
   }
   
   return schedule.sort((a, b) => 
-    timeToMinutes(a.startTime) - timeToMinutes(b.startTime)
+    timeToMinutes(a.startTime as string) - timeToMinutes(b.startTime as string)
   );
 }
 
 // Helper to calculate changes
-function calculateScheduleChanges(current: any[], proposed: any[]): any[] {
-  const changes: any[] = [];
+function calculateScheduleChanges(current: TimeBlock[], proposed: Partial<TimeBlock>[]): ProposedChange[] {
+  const changes: ProposedChange[] = [];
   
   // Find blocks to remove
   current.forEach(block => {
     if (!proposed.find(p => p.id === block.id)) {
       changes.push({
-        action: 'remove',
-        block
+        type: 'delete',
+        block: {
+          id: block.id,
+          type: block.type,
+          title: block.title,
+          startTime: typeof block.startTime === 'string' ? block.startTime : format(block.startTime, 'HH:mm'),
+          endTime: typeof block.endTime === 'string' ? block.endTime : format(block.endTime, 'HH:mm')
+        }
       });
     }
   });
@@ -220,8 +253,13 @@ function calculateScheduleChanges(current: any[], proposed: any[]): any[] {
   proposed.forEach(block => {
     if (!block.id || !current.find(c => c.id === block.id)) {
       changes.push({
-        action: 'add',
-        block
+        type: 'create',
+        block: {
+          type: block.type || 'work',
+          title: block.title || 'New Block',
+          startTime: typeof block.startTime === 'string' ? block.startTime : format(block.startTime as Date, 'HH:mm'),
+          endTime: typeof block.endTime === 'string' ? block.endTime : format(block.endTime as Date, 'HH:mm')
+        }
       });
     }
   });

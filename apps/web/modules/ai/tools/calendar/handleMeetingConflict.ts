@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format, addMinutes } from 'date-fns';
+import { ensureServicesConfigured } from '../utils/auth';
 
 // Helper to get Date from event start/end
 function getEventDate(eventTime: { dateTime?: string; date?: string }): Date {
@@ -14,6 +15,14 @@ function getEventDate(eventTime: { dateTime?: string; date?: string }): Date {
   throw new Error('Event has no valid date');
 }
 
+interface ConflictResolutionResult {
+  action: 'moved_meeting' | 'moved_block' | 'shortened_both' | 'cancelled_block';
+  meeting?: string;
+  block?: string;
+  newTime?: string;
+  reductionMinutes?: number;
+}
+
 export const handleMeetingConflict = tool({
   description: "Intelligently resolve meeting conflicts",
   parameters: z.object({
@@ -23,6 +32,9 @@ export const handleMeetingConflict = tool({
   }),
   execute: async ({ meetingId, conflictingBlockId, resolution }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const calendarService = ServiceFactory.getInstance().getCalendarService();
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       
@@ -41,7 +53,7 @@ export const handleMeetingConflict = tool({
       const meetingStart = getEventDate(meeting.start);
       const meetingEnd = getEventDate(meeting.end);
       
-      let result: any = {};
+      let result: ConflictResolutionResult;
       
       switch (resolution) {
         case 'move_meeting': {
@@ -155,7 +167,7 @@ export const handleMeetingConflict = tool({
   },
 });
 
-function getResolutionMessage(result: any): string {
+function getResolutionMessage(result: ConflictResolutionResult): string {
   switch (result.action) {
     case 'moved_meeting':
       return `Moved "${result.meeting}" to ${result.newTime}`;

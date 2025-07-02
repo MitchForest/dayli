@@ -7,7 +7,6 @@ import {
   CreateTaskParams,
   UpdateTaskParams
 } from '../interfaces/task.interface';
-import { createClient } from '@supabase/supabase-js';
 import { Database } from '../../database.types';
 
 export class RealTaskService implements TaskService {
@@ -18,20 +17,16 @@ export class RealTaskService implements TaskService {
 
   constructor(private config: ServiceConfig) {
     this.userId = config.userId;
-    this.supabase = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    this.supabase = config.supabaseClient;
   }
 
   async createTask(params: CreateTaskParams): Promise<Task> {
-    const userId = (await this.supabase.auth.getUser()).data.user?.id;
-    if (!userId) throw new Error('User not authenticated');
+    if (!this.userId) throw new Error('User not authenticated');
 
     const { data, error } = await this.supabase
       .from('tasks')
       .insert({
-        user_id: userId,
+        user_id: this.userId,
         title: params.title,
         description: params.description,
         priority: params.priority || 'medium',

@@ -81,4 +81,46 @@ export function toolStreaming<T>(
       partialData
     }
   };
+}
+
+// Common types for tools
+export interface ProposedChange {
+  type: 'create' | 'move' | 'delete' | 'assign' | 'update';
+  description?: string;
+  block?: {
+    id?: string;
+    type: string;
+    title: string;
+    startTime: string;
+    endTime?: string;
+  };
+  task?: {
+    id: string;
+    title: string;
+  };
+  newStartTime?: string;
+  newEndTime?: string;
+}
+
+export interface TimeBlock {
+  id: string;
+  type: 'work' | 'email' | 'break' | 'meeting' | 'blocked';
+  title: string;
+  startTime: Date | string;
+  endTime: Date | string;
+  date?: string;
+  description?: string;
+  taskIds?: string[];
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  priority?: 'high' | 'medium' | 'low';
+  status?: string;
+  estimatedMinutes?: number;
+  completedAt?: Date | null;
+  source?: string;
+  metadata?: Record<string, string>;
 } 

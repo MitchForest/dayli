@@ -649,3 +649,85 @@ it('should retry recoverable errors', async () => {
 - [ ] Progress streaming for multi-step operations
 - [ ] All tools return standardized ToolResult format
 - [ ] Database migrations for backlogs and persistence 
+
+export const handleMeetingConflict = tool({
+  description: "Intelligently resolve meeting conflicts",
+  parameters: z.object({
+    meetingId: z.string(),
+    conflictingBlockId: z.string(),
+    resolution: z.enum(['move_meeting', 'move_block', 'shorten_both', 'cancel_block']),
+  }),
+  execute: async ({ meetingId, conflictingBlockId, resolution }) => {
+    // Implementation for different resolution strategies
+    switch (resolution) {
+      case 'move_meeting':
+        // Find next available slot for meeting
+        break;
+      case 'move_block':
+        // Reschedule the conflicting block
+        break;
+      case 'shorten_both':
+        // Reduce duration of both to fit
+        break;
+      case 'cancel_block':
+        // Remove the conflicting block
+        break;
+    }
+  },
+});
+
+export const protectTimeOnCalendar = tool({
+  description: "Block time on Google Calendar to protect focus/break time",
+  parameters: z.object({
+    block: z.object({
+      title: z.string(),
+      startTime: z.string(),
+      endTime: z.string(),
+      type: z.enum(['focus', 'break', 'email']),
+    }),
+    markAsBusy: z.boolean().default(true),
+    color: z.enum(['blue', 'green', 'red', 'purple']).optional(),
+  }),
+  execute: async ({ block, markAsBusy, color }) => {
+    try {
+      const calendarService = ServiceFactory.getInstance().getCalendarService();
+      
+      // For now, this is a placeholder that logs the action
+      // Will be fully implemented when Google Calendar API is integrated
+      console.log('[CALENDAR PROTECTION] Would create calendar event:', {
+        summary: block.title,
+        start: block.startTime,
+        end: block.endTime,
+        busy: markAsBusy,
+        colorId: color,
+      });
+      
+      // TODO: In Sprint 03.05, this will create actual Google Calendar events
+      // const event = await calendarService.createEvent({
+      //   summary: block.title,
+      //   start: { dateTime: block.startTime },
+      //   end: { dateTime: block.endTime },
+      //   transparency: markAsBusy ? 'opaque' : 'transparent',
+      //   colorId: getColorId(color),
+      //   reminders: { useDefault: false },
+      // });
+      
+      return toolSuccess({
+        protected: true,
+        blockId: block.id,
+        message: `Protected ${block.type} time: ${block.title}`,
+        // eventId: event.id, // Will be available after API integration
+      }, {
+        type: 'text',
+        content: `Calendar protection enabled for ${block.title}`,
+      });
+      
+    } catch (error) {
+      return toolError(
+        'CALENDAR_PROTECTION_FAILED',
+        `Failed to protect time on calendar: ${error.message}`,
+        error
+      );
+    }
+  },
+}); 

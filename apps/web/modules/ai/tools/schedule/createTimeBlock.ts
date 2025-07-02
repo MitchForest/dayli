@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
-import { useScheduleStore } from '@/modules/schedule/store/scheduleStore';
+import { ensureServicesConfigured } from '../utils/auth';
 
 // Helper to parse natural language times
 function parseTimeToMilitary(timeStr: string): string | null {
@@ -31,13 +31,6 @@ function parseTimeToMilitary(timeStr: string): string | null {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 }
 
-// Helper to invalidate schedule after changes
-function invalidateScheduleForDate(date: string) {
-  const { invalidateSchedule } = useScheduleStore.getState();
-  invalidateSchedule(date);
-  console.log(`[AI Tools] Invalidated schedule for date: ${date}`);
-}
-
 export const createTimeBlock = tool({
   description: 'Create a new time block in the schedule',
   parameters: z.object({
@@ -50,6 +43,9 @@ export const createTimeBlock = tool({
   }),
   execute: async ({ type, title, startTime, endTime, date, description }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       
       // Parse natural language times
@@ -99,7 +95,8 @@ export const createTimeBlock = tool({
         description,
       });
       
-      invalidateScheduleForDate(targetDate);
+      // Note: Schedule invalidation should be handled by the service or UI layer
+      console.log(`[AI Tools] Created block ${block.id} for date: ${targetDate}`);
       
       const result = {
         id: block.id,
@@ -122,6 +119,15 @@ export const createTimeBlock = tool({
       
     } catch (error) {
       console.error('[AI Tools] Error in createTimeBlock:', error);
+      
+      // Handle authentication errors specifically
+      if (error instanceof Error && error.message.includes('not configured')) {
+        return toolError(
+          'AUTH_REQUIRED',
+          'Please log in to use this feature',
+          error
+        );
+      }
       
       return toolError(
         'BLOCK_CREATE_FAILED',

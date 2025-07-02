@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const listEmails = tool({
   description: "List emails from inbox with basic information",
@@ -11,6 +12,9 @@ export const listEmails = tool({
   }),
   execute: async ({ maxResults, query }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const gmailService = ServiceFactory.getInstance().getGmailService();
       
       // List messages with optional query

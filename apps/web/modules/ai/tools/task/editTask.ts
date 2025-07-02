@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const editTask = tool({
   description: "Edit an existing task",
@@ -17,6 +18,9 @@ export const editTask = tool({
   }),
   execute: async ({ taskId, updates }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const taskService = ServiceFactory.getInstance().getTaskService();
       
       // Get current task to show what changed

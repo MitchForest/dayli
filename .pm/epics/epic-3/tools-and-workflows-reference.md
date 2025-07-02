@@ -1,301 +1,521 @@
 # Tools and Workflows Reference
 
 ## Overview
-This document provides a high-level reference of all tools and workflows in the dayli system after Sprint 03.015 and the planned Sprints 03.02-03.04.
+This document provides a comprehensive reference of all tools and workflows in the dayli system after Sprint 03.015, 03.016 and the NEW architecture for Sprints 03.02-03.04.
+
+### Architecture Evolution
+- **Sprint 03.02 NEW**: Domain Tools & Operations (stateless, single-purpose)
+- **Sprint 03.03 NEW**: RAG Memory System (learning and context)
+- **Sprint 03.04 NEW**: Time-Based Workflows (SOD, Midday, EOD)
 
 ---
 
-## AI Tools Inventory
+## AI Tools Inventory (Post Sprint 03.015 & 03.016 + NEW Domain Tools)
 
-### 1. Schedule Management Tools
-**Location**: `apps/web/modules/ai/tools/schedule-tools.ts`
-- `viewSchedule` - Display today's schedule
+### Tool Organization
+All tools are now organized by domain under `apps/web/modules/ai/tools/` with automatic registration via the Tool Registry pattern.
+
+### 1. Schedule Management Tools (14 tools)
+**Location**: `apps/web/modules/ai/tools/schedule/`
+
+**Existing Tools (10)**:
 - `createTimeBlock` - Create a new time block
 - `moveTimeBlock` - Move existing block to new time
 - `deleteTimeBlock` - Remove a time block
-- `findTimeBlock` - Locate blocks by description
-- `regenerateSchedule` - Recover lost schedule data
+- `getSchedule` - Display schedule for a specific date
 - `assignTaskToBlock` - Assign task to a time block
 - `completeTask` - Mark task as done
+- `getUnassignedTasks` - Get tasks from both tables with intelligent scoring ✨
+- `findTimeBlock` - Locate blocks by description
+- `regenerateSchedule` - Optimize schedule for better time management
+- `suggestTasksForBlock` - Intelligently suggest tasks for a specific block ✨
 
-### 2. Email Operations Tools
-**Location**: `apps/web/modules/ai/tools/email-operations.ts`
+**NEW Domain Tools (Sprint 03.02)**:
+- `findScheduleGaps` - Find gaps in schedule
+- `detectScheduleInefficiencies` - Detect inefficiencies
+- `calculateFocusTime` - Calculate total/continuous/fragmented focus time
+- `findBestTimeSlot` - Find optimal slot for activity
+
+### 2. Email Operations Tools (12 tools)
+**Location**: `apps/web/modules/ai/tools/email/`
+
+**Existing Tools (4)**:
 - `readEmailContent` - Read full email with attachments
-- `draftEmailResponse` - Create/send email drafts with AI
+- `draftEmailResponse` - Create email drafts with AI assistance
 - `processEmailToTask` - Convert email to scheduled task
-- `triageEmails` - Process and categorize emails (Sprint 03.03)
+- `listEmails` - List emails from inbox with basic information
 
-### 3. Task Management Tools
-**Location**: `apps/web/modules/ai/tools/task-operations.ts`
+**NEW Domain Tools (Sprint 03.02)**:
+- `analyzeSingleEmail` - Analyze importance/urgency of email
+- `batchEmailsByStrategy` - Batch emails by importance/urgency matrix
+- `calculateEmailProcessingTime` - Estimate time needed for emails
+- `extractActionItems` - Extract action items from email content
+- `updateEmailBacklog` - Manage email backlog
+- `getEmailBacklogSummary` - Get backlog statistics
+- `analyzeSenderPatterns` - Analyze patterns from specific senders
+- `findSimilarEmails` - Find related emails
+
+### 3. Task Management Tools (10 tools)
+**Location**: `apps/web/modules/ai/tools/task/`
+
+**Existing Tools (4)**:
 - `createTask` - Create new task via natural language
 - `editTask` - Modify existing task properties
 - `deleteTask` - Remove task with confirmation
-- `findTasks` - Search tasks by criteria
-- `getUnassignedTasks` - View tasks not yet scheduled
+- `findTasks` - Search tasks by criteria (understands "pending", "todo", etc.)
 
-### 4. Meeting/Calendar Tools
-**Location**: `apps/web/modules/ai/tools/calendar-operations.ts`
-- `scheduleMeeting` - Create meeting with conflict detection
+**NEW Domain Tools (Sprint 03.02)**:
+- `scoreTask` - Score task based on multiple factors
+- `findTasksForTimeSlot` - Match tasks to available time
+- `analyzeTaskPatterns` - Analyze completion patterns
+- `updateTaskBacklog` - Manage task backlog
+- `getTaskBacklogHealth` - Get backlog health metrics
+- `batchSimilarTasks` - Group similar tasks
+
+### 4. Calendar Tools (7 tools)
+**Location**: `apps/web/modules/ai/tools/calendar/`
+
+**Existing Tools (3)**:
+- `scheduleMeeting` - Create meeting with smart time finding
 - `rescheduleMeeting` - Move meeting with notifications
-- `handleMeetingConflict` - Resolve scheduling conflicts
+- `handleMeetingConflict` - Intelligently resolve meeting conflicts
 
-### 5. Smart Block Creation Tools
-**Location**: `apps/web/modules/ai/tools/smart-block-creation.ts`
-- `createWorkBlock` - Create focus block with best-fit tasks from backlog
+**NEW Domain Tools (Sprint 03.02)**:
+- `detectConflicts` - Find calendar conflicts
+- `suggestConflictResolution` - Suggest conflict resolutions
+- `findOptimalMeetingTime` - Find best time for all attendees
+- `protectCalendarTime` - Block time on Google Calendar (placeholder for API)
+
+### 5. Preference Tools (2 tools)
+**Location**: `apps/web/modules/ai/tools/preference/`
+- `updatePreference` - Update user preferences based on natural language
+- `getPreferences` - Get current user preferences
+
+### 6. Workflow Tools (4 tools)
+**Location**: `apps/web/modules/ai/tools/workflow/`
+
+**Existing Tools (1)**:
+- `scheduleDay` - Run adaptive daily planning workflow
+
+**NEW Time-Based Workflow Tools (Sprint 03.04)**:
+- `startMyDay` - Run Start of Day (SOD) workflow
+- `adjustMyDay` - Run Midday Adjustment workflow
+- `reviewMyDay` - Run End of Day (EOD) workflow
+
+### 7. RAG Tools (2 tools) - NEW Sprint 03.03
+**Location**: `apps/web/modules/ai/tools/rag/`
+- `storeUserFeedback` - Store feedback/corrections for learning
+- `getPersonalizedContext` - Retrieve personalized context
+
+### 8. Smart Block Creation Tools (2 tools) - NEW Sprint 03.02
+**Location**: `apps/web/modules/ai/tools/schedule/`
+- `createWorkBlock` - Create work block filled with best-fit tasks from backlog
 - `createEmailBlock` - Create email block with urgent items
 
-### 6. Workflow Management Tools
-**Location**: `apps/web/modules/ai/tools/workflow-management.ts`
-- `resumeWorkflow` - Resume interrupted workflow
-- `showWorkflowHistory` - View workflow execution history
-
-### 7. Workflow Execution Tools
-**Location**: `apps/web/modules/ai/tools/workflow-tools.ts`
-- `scheduleDay` - Run adaptive scheduling workflow (Sprint 03.02)
-- `confirmScheduleChanges` - Apply proposed schedule changes (Sprint 03.02)
-- `optimizeSchedule` - Run schedule optimization workflow (Sprint 03.02)
-- `dailyReview` - Run end-of-day review workflow (Sprint 03.04)
-
-### 8. Preference Tools
-**Location**: `apps/web/modules/ai/tools/preference-tools.ts`
-- `updatePreferences` - Modify user preferences
-- `viewPreferences` - Show current preferences
+### Total: 49 Tools (All with standardized ToolResult format)
 
 ---
 
-## LangGraph Workflows Inventory
+## NEW Domain Tools Details (Sprint 03.02)
 
-### 1. Adaptive Scheduling Workflow
+### Email Operations
+```typescript
+analyzeSingleEmail(email) → { importance, urgency, suggestedAction }
+batchEmailsByStrategy(emails, strategy) → EmailBatch[]
+calculateEmailProcessingTime(emails) → { totalMinutes, breakdown }
+extractActionItems(emailContent) → ActionItem[]
+```
+
+### Task Operations
+```typescript
+scoreTask(task, context) → { score, factors, reasoning }
+findTasksForTimeSlot(tasks, minutes, energy) → Task[]
+analyzeTaskPatterns(userId, tasks) → { velocity, preferredTimes }
+```
+
+### Calendar Operations
+```typescript
+detectConflicts(events, timeRange) → Conflict[]
+suggestConflictResolution(conflict) → Resolution[]
+protectCalendarTime(block, userId) → { protected: true, eventId }
+```
+
+### Schedule Operations
+```typescript
+findScheduleGaps(blocks, workingHours) → Gap[]
+detectScheduleInefficiencies(blocks) → Inefficiency[]
+balanceScheduleLoad(blocks) → BalancedSchedule
+```
+
+---
+
+## LangGraph Workflows Inventory (NEW Architecture)
+
+### 1. Adaptive Scheduling Workflow (Enhanced)
 **Location**: `apps/web/modules/workflows/graphs/adaptiveScheduling.ts`
 **Sprint**: 03.02
-**Purpose**: Intelligently plan daily schedule based on current state
+**Purpose**: ONE intelligent workflow that adapts to any schedule state
 
 **Nodes**:
-- fetchData → analyzeState → determineStrategy
-- Strategy branches: fullPlanning | partialPlanning | optimization | taskAssignment
-- All converge to: protectBreaks → validateSchedule → generateSummary
+- `fetchData` → Fetch current schedule, tasks, preferences
+- `analyzeState` → Determine schedule fullness and inefficiencies
+- `determineStrategy` → Smart routing (rules + LLM)
+- `executeStrategy` → Execute based on strategy
+- `protectBreaks` → Ensure lunch is protected
+- `validateSchedule` → No conflicts
+- `generateSummary` → Human-readable response
 
 **Strategies**:
 - `full`: Empty schedule needs complete planning
 - `partial`: Fill gaps in existing schedule
-- `optimize`: Improve existing full schedule
+- `optimize`: Improve existing full schedule (fix inefficiencies)
 - `task_only`: Just assign tasks to existing blocks
 
-### 2. Schedule Optimization Workflow
-**Location**: `apps/web/modules/workflows/graphs/scheduleOptimization.ts`
-**Sprint**: 03.02
-**Purpose**: Non-destructive schedule improvements
+**RAG Integration**: Every node enhanced with user patterns and recent decisions
+
+### 2. Start of Day (SOD) Workflow - NEW Sprint 03.04
+**Location**: `apps/web/modules/workflows/graphs/startOfDay.ts`
+**Purpose**: Morning planning with overnight review
 
 **Nodes**:
-- analyzeEfficiency → identifyOptimizations → respectConstraints → proposeChanges → calculateBenefits
+- `fetchOvernightData` → Get overnight emails, calendar changes, backlogs
+- `enhanceWithRAG` → Load user patterns and preferences
+- `prioritizeItems` → Score and rank all items needing attention
+- `generateSchedule` → Create optimal schedule using domain tools
+- `optimizeSchedule` → Fine-tune the schedule
+- `protectTimeBlocks` → Protect focus time and breaks
+- `generateSummary` → Natural language summary
 
-**Optimizations**:
-- Gap elimination
-- Focus time consolidation
-- Energy-based timing
-- Task reordering
+**Key Features**:
+- Reviews overnight changes
+- Pulls from task/email backlogs
+- Uses RAG patterns for personalization
+- Creates balanced schedule
 
-### 3. Email Triage Workflow
-**Location**: `apps/web/modules/workflows/graphs/emailTriage.ts`
-**Sprint**: 03.03
-**Purpose**: Analyze and batch emails by importance/urgency
-
-**Nodes**:
-- fetchEmails → fetchBacklog → mergeAndPrioritize → analyzeEmails
-- → detectUrgency → batchEmails → generateSchedule → updateBacklog → generateSummary
-
-**Analysis Dimensions**:
-- Importance: important | not_important | archive
-- Urgency: urgent | can_wait | no_response
-
-### 4. Task Prioritization Workflow
-**Location**: `apps/web/modules/workflows/graphs/taskPrioritization.ts`
-**Sprint**: 03.03
-**Purpose**: Smart task selection based on context
+### 3. Midday Adjustment Workflow - NEW Sprint 03.04
+**Location**: `apps/web/modules/workflows/graphs/middayAdjustment.ts`
+**Purpose**: Dynamic adaptation based on morning progress
 
 **Nodes**:
-- fetchBacklog → analyzeContext → scoreTasks → matchToTime → generateRecommendations
+- `analyzeMorningProgress` → Check completion rate
+- `checkNewUrgentItems` → Find new urgent tasks/emails
+- `assessCurrentEnergy` → Determine energy level
+- `enhanceWithRAG` → Load patterns for afternoon
+- `generateAdjustments` → Create schedule adjustments
+- `optimizeAfternoon` → Rebalance remaining work
+- `generateSummary` → Explain changes
 
-**Scoring Factors**:
-- Base priority
-- Age in backlog
-- Energy matching
-- Time of day alignment
+**Key Features**:
+- Adapts to actual vs planned
+- Handles new urgent items
+- Energy-aware scheduling
+- Non-destructive adjustments
 
-### 5. Daily Review Workflow
-**Location**: `apps/web/modules/workflows/graphs/dailyReview.ts`
-**Sprint**: 03.04
-**Purpose**: End-of-day analysis and tomorrow prep
+### 4. End of Day (EOD) Workflow - NEW Sprint 03.04
+**Location**: `apps/web/modules/workflows/graphs/endOfDay.ts`
+**Purpose**: Review, learn, and prepare tomorrow
 
 **Nodes**:
-- fetchTodayData → extractTodayPatterns → analyzeProductivity
-- → reviewBacklog → prepareTomorrow → updateLearnings → generateReviewSummary
+- `fetchTodayData` → Get complete day's data
+- `analyzeScheduleAdherence` → Compare planned vs actual
+- `extractPatterns` → Find productivity/behavior patterns
+- `reviewBacklogs` → Analyze backlog health
+- `updateRAGLearnings` → Store patterns and decisions
+- `prepareTomorrow` → Generate tomorrow's suggestions
+- `generateReviewSummary` → Complete review with insights
 
-**Outputs**:
-- Productivity patterns
-- Tomorrow's priorities
-- Backlog status
-- Learning updates for RAG
+**Key Features**:
+- Extracts learnable patterns
+- Updates RAG system
+- Manages backlogs
+- Prepares tomorrow
+
+### 5. Email Management Workflow - Sprint 03.03
+**Location**: `apps/web/modules/workflows/graphs/emailManagement.ts`
+**Purpose**: Intelligent email triage and batching
+
+**Nodes**:
+- `fetchEmails` → Get new emails
+- `fetchBacklog` → Get email backlog
+- `analyzeEmails` → 2D analysis (importance × urgency)
+- `batchByStrategy` → Group by action type
+- `createScheduleBlocks` → Create time blocks
+- `updateBacklog` → Update email backlog
+- `generateSummary` → Summary of actions
+
+### 6. Task Management Workflow - Sprint 03.03
+**Location**: `apps/web/modules/workflows/graphs/taskManagement.ts`
+**Purpose**: Smart task prioritization and recommendations
+
+**Nodes**:
+- `fetchTasks` → Get all tasks
+- `analyzeContext` → Consider time, energy
+- `scoreTasks` → Multi-factor scoring
+- `generateRecommendations` → Create recommendations
+- `proposeActions` → Suggest actions
+
+### 7. Calendar Management Workflow - Sprint 03.03
+**Location**: `apps/web/modules/workflows/graphs/calendarManagement.ts`
+**Purpose**: Conflict resolution and optimization
+
+**Nodes**:
+- `fetchCalendar` → Get calendar events
+- `detectConflicts` → Find overlaps
+- `analyzeSchedule` → Determine issues
+- `resolveConflicts` → Smart resolution
+- `optimizeMeetings` → Consolidate/optimize
+- `protectFocusTime` → Ensure deep work
+- `generateProposal` → Present changes
 
 ---
 
-## Service Architecture
+## RAG System Architecture (Sprint 03.03)
+
+### Core Components
+
+1. **RAGContextService**
+   - Stores context with embeddings (OpenAI text-embedding-3-small)
+   - Retrieves multi-layer context
+   - Vector similarity search with pgvector
+
+2. **LearningPatternsService**
+   - Learns from schedule changes
+   - Learns from email decisions
+   - Learns from rejections (critical!)
+   - Learns from task completions
+   - Extracts patterns when threshold met
+
+3. **ContextEnhancer**
+   - Enhances any workflow state with RAG
+   - Adds patterns, recent decisions, similar situations
+   - Checks for rejection patterns to avoid
+
+### Context Types
+```typescript
+type ContextEntry = {
+  type: 'pattern' | 'decision' | 'preference' | 'rejection';
+  content: string;
+  embedding: number[]; // 1536 dimensions
+  metadata: Record<string, any>;
+}
+```
+
+### Three-Layer Context System
+1. **Pattern Layer**: Long-term behavioral patterns
+2. **Recent Layer**: Last 7 days of decisions
+3. **Similar Layer**: Vector similarity to current situation
+
+### Integration with Workflows
+Every workflow node can be enhanced:
+```typescript
+const enhancedState = await contextEnhancer.enhanceWorkflowState(
+  userId,
+  workflowType, // 'sod', 'midday', 'eod', etc.
+  currentState
+);
+```
+
+---
+
+## Workflow-Tool Integration Patterns
+
+### How Workflows Use Domain Tools
+```typescript
+// Workflows orchestrate tools, never reimplement
+const emailBatches = await batchEmailsByStrategy(emails, 'importance_urgency');
+const workBlock = await createWorkBlock({ duration: 120, tasks });
+const conflicts = await detectConflicts(meetings);
+```
+
+### Tool Composition in Workflows
+1. **SOD Workflow** uses:
+   - Email tools: `listEmails`, `analyzeSingleEmail`, `batchEmailsByStrategy`
+   - Task tools: `getTaskBacklogHealth`, `scoreTask`, `findTasksForTimeSlot`
+   - Schedule tools: `createWorkBlock`, `createEmailBlock`, `findScheduleGaps`
+
+2. **Midday Workflow** uses:
+   - Schedule tools: `getSchedule`, `detectScheduleInefficiencies`
+   - Task tools: `findTasksForTimeSlot`, `scoreTask`
+   - Calendar tools: `detectConflicts`, `suggestConflictResolution`
+
+3. **EOD Workflow** uses:
+   - All analysis tools for pattern extraction
+   - RAG tools: `storeUserFeedback`, `getPersonalizedContext`
+   - Backlog tools: `updateTaskBacklog`, `updateEmailBacklog`
+
+---
+
+## Service Architecture (Enhanced)
 
 ### Core Services
 **Location**: `apps/web/services/`
 
-1. **EmailService** (IEmailService)
-   - Gmail API integration
-   - Full email CRUD operations
-
+1. **GmailService** (IGmailService)
 2. **TaskService** (ITaskService)
-   - Task management
-   - Backlog operations
-
 3. **CalendarService** (ICalendarService)
-   - Google Calendar integration
-   - Conflict detection
-   - Event management
-
 4. **ScheduleService** (IScheduleService)
-   - Time block management
-   - Schedule queries
-
 5. **PreferenceService** (IPreferenceService)
-   - User preferences
-   - Work hours, lunch time, etc.
 
-### Supporting Services
+### NEW Supporting Services (Sprint 03.03)
 
 1. **RAGContextService**
-   - Store/retrieve embeddings
-   - Multi-layer context (patterns, recent, similar)
+   ```typescript
+   storeContext(params) → ContextEntry
+   getContext(userId, query, options) → RAGContext
+   generateEmbedding(text) → number[]
+   ```
 
-2. **WorkflowPersistenceService**
-   - Save workflow state
-   - Resume interrupted workflows
-   - Track history
+2. **LearningPatternsService**
+   ```typescript
+   learnFromScheduleChange(params) → void
+   learnFromEmailDecision(params) → void
+   learnFromRejection(params) → void // Critical!
+   learnFromTaskCompletion(params) → void
+   ```
 
-3. **LearningPatternsService**
-   - Extract patterns from decisions
-   - Update RAG with learnings
-
-4. **CalendarProtectionService** (Mock → Real in Sprint 03.05)
-   - Auto-decline during protected time
-   - Calendar blocking
-
----
-
-## Architecture Patterns
-
-### 1. Service Factory Pattern
-```typescript
-ServiceFactory.getInstance()
-  .getEmailService()
-  .getTaskService()
-  // etc.
-```
-
-### 2. Tool Pattern (AI SDK)
-```typescript
-tool({
-  description: "...",
-  parameters: z.object({...}),
-  execute: async (params) => {...}
-})
-```
-
-### 3. LangGraph State Pattern
-```typescript
-StateGraph<StateType>({
-  channels: {...}
-})
-.addNode(...)
-.addEdge(...)
-.addConditionalEdges(...)
-```
-
-### 4. Error Handling Proxy
-```typescript
-new ErrorHandlingProxy(service)
-// Wraps all methods with retry logic
-```
-
-### 5. Workflow Persistence Wrapper
-```typescript
-createPersistentWorkflow(workflow, type)
-// Adds state saving to any workflow
-```
+3. **WorkflowPersistenceService** (Enhanced)
+   ```typescript
+   saveWorkflowState(workflowId, state) → void
+   getWorkflowState(workflowId) → WorkflowState
+   resumeWorkflow(workflowId) → any
+   cleanupExpiredWorkflows() → number
+   ```
 
 ---
 
-## Integration Points
+## Key Architectural Patterns
 
-### 1. Chat → Tools
-- AI SDK handles tool calling
-- Tools return structured responses
-- Chat UI renders rich components
+### 1. Tool Registry Pattern (Auto-Discovery)
+```typescript
+const registry = ToolRegistry.getInstance();
+await registry.autoRegister(); // Discovers all tools
+const tools = registry.getAll();
+```
 
-### 2. Tools → Workflows
-- Tools can invoke workflows
-- Workflows compose multiple tool calls
-- Two-step confirmation pattern
+### 2. Standardized Tool Result
+```typescript
+interface ToolResult<T> {
+  success: boolean;
+  data?: T;
+  error?: { code: string; message: string; };
+  metadata?: { 
+    suggestions?: string[];
+    confirmationRequired?: boolean;
+    confirmationId?: string;
+  };
+  display?: { type: string; content: any };
+}
+```
 
-### 3. Workflows → Services
-- Workflows use ServiceFactory
-- Services handle data operations
-- Services integrate with external APIs
+### 3. Workflow Persistence Pattern
+```typescript
+const baseWorkflow = createSODWorkflow();
+const workflow = createPersistentWorkflow(baseWorkflow, 'sod');
+// Can be interrupted and resumed
+```
 
-### 4. Services → External APIs
-- Gmail API for emails
-- Google Calendar API for events
-- OpenAI API for embeddings/chat
-- Supabase for data persistence
+### 4. RAG Enhancement Pattern
+```typescript
+// Every workflow decision enhanced with context
+const enhancedState = await enhanceWithRAG(state);
+// Now includes patterns, recent decisions, similar situations
+```
+
+### 5. Proposal Storage Pattern
+```typescript
+// Store proposals with TTL
+proposalStore.store(confirmationId, proposal);
+// Retrieve and execute later
+const proposal = proposalStore.retrieve(confirmationId);
+```
 
 ---
 
-## Missing Tools/Workflows?
+## Database Schema Updates
 
-Based on PRD requirements, we have coverage for:
-- ✅ Daily planning
-- ✅ Email triage
-- ✅ Task management
-- ✅ Meeting scheduling
-- ✅ Schedule optimization
-- ✅ Focus time protection
-- ✅ Backlog management
-- ✅ Learning/adaptation
+### Existing Tables
+1. **workflow_states** - Workflow persistence
+2. **task_backlog** - Tasks with numeric priority/urgency (0-100)
+3. **email_backlog** - Email triage queue
 
-Potential additions:
-- Break management tools (move lunch, adjust breaks)
-- Batch operations (complete multiple tasks)
-- Emergency rescheduling (when day goes off-track)
+### NEW Tables (Sprint 03.03)
+1. **rag_context** - Vector embeddings and context
+   ```sql
+   - id, user_id, type, content, metadata
+   - embedding vector(1536)
+   - created_at
+   ```
+
+2. **Vector Search Function**
+   ```sql
+   search_similar_contexts(
+     query_embedding, 
+     user_id, 
+     match_count, 
+     threshold
+   )
+   ```
 
 ---
 
-## Workflows NOT Being Built
+## Integration Flow Example
 
-Based on analysis, these were mentioned but are NOT needed:
+### User: "Plan my day"
+1. **Chat Layer** → Selects `startMyDay` tool
+2. **Tool Execution** → Creates SOD workflow
+3. **SOD Workflow**:
+   - Fetches data using domain tools
+   - Enhances with RAG context
+   - Uses `createWorkBlock`, `createEmailBlock`
+   - Uses `findScheduleGaps`, `scoreTask`
+   - Generates proposal
+4. **Proposal Storage** → Stores with confirmationId
+5. **Response** → Streams summary with confirmation
+6. **Learning** → Stores decisions in RAG
 
-### ❌ Email Response Workflow
-- **Reason**: `draftEmailResponse` tool handles this completely
-- **No workflow needed** - single tool is sufficient
+---
 
-### ❌ Meeting Prep Workflow
-- **Reason**: Existing tools can be composed
-- **Use**: `scheduleMeeting` + `createTimeBlock` tools
+## Time-Based Triggers
 
-### ❌ Overflow Management Workflow
-- **Reason**: Adaptive Scheduling Workflow already handles this
-- **Use**: `scheduleDay` with "optimize" strategy
+### Automatic Workflow Suggestions
+- **Morning (6-10am)**: Suggest SOD if not run
+- **Midday (11am-2pm)**: Suggest adjustment if needed
+- **Evening (5-8pm)**: Suggest EOD if not run
+
+### Workflow Persistence
+- All workflows can be interrupted
+- State saved after each node
+- 24-hour TTL on saved states
+- Automatic cleanup of expired states
+
+---
+
+## Testing Considerations
+
+### Domain Tools
+- Test stateless operation
+- Test error handling
+- Test with various inputs
+
+### Workflows
+- Test each node independently
+- Test strategy routing
+- Test RAG enhancement
+- Test persistence/resume
+
+### RAG System
+- Test embedding generation
+- Test similarity search
+- Test pattern extraction
+- Test rejection learning
 
 ---
 
 ## Notes
 
-1. All tools follow consistent patterns
-2. Workflows handle complex multi-step operations
-3. Services abstract data/API complexity
-4. RAG provides memory/learning layer
-5. Architecture supports future expansion
-6. **Clear distinction**: Use tools for single operations, workflows for multi-step processes 
+1. **Clear Architecture**: Tools are stateless, workflows are stateful
+2. **RAG Integration**: Every workflow decision is smarter
+3. **Learning from Rejections**: Critical for not repeating mistakes
+4. **Time-Based Design**: Matches natural work rhythm
+5. **Proposal Pattern**: All changes preview before applying
+6. **49 Total Tools**: Comprehensive coverage of all operations 

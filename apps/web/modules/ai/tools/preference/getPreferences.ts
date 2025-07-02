@@ -2,12 +2,18 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const getPreferences = tool({
   description: 'Get current user preferences for scheduling',
-  parameters: z.object({}),
-  execute: async () => {
+  parameters: z.object({
+    category: z.enum(['all', 'schedule', 'email', 'task', 'meeting']).default('all'),
+  }),
+  execute: async ({ category }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const factory = ServiceFactory.getInstance();
       const preferenceService = factory.getPreferenceService();
       

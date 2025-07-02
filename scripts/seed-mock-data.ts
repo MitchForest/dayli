@@ -1,9 +1,6 @@
 #!/usr/bin/env bun
 
 import { createClient } from '@supabase/supabase-js';
-import { MockGmailService } from '../apps/web/services/mock/gmail.service';
-import { MockCalendarService } from '../apps/web/services/mock/calendar.service';
-import { MockTaskService } from '../apps/web/services/mock/tasks.service';
 import type { TablesInsert } from '../packages/database/src/types';
 import { parseArgs } from 'util';
 import { readFileSync } from 'fs';
@@ -168,6 +165,226 @@ function hasConflict(
   });
 }
 
+// Mock email data generator
+function generateMockEmails(count: number = 15): Array<{
+  from_email: string;
+  from_name: string;
+  subject: string;
+  body_preview: string;
+  full_body: string;
+  is_read: boolean;
+  received_at: string;
+}> {
+  const senders = [
+    { email: 'sarah.johnson@techcorp.com', name: 'Sarah Johnson' },
+    { email: 'mike.chen@designstudio.io', name: 'Mike Chen' },
+    { email: 'emily.rodriguez@marketingpro.com', name: 'Emily Rodriguez' },
+    { email: 'david.kim@dataanalytics.co', name: 'David Kim' },
+    { email: 'lisa.thompson@salesforce.com', name: 'Lisa Thompson' },
+    { email: 'notifications@github.com', name: 'GitHub' },
+    { email: 'team@slack.com', name: 'Slack' },
+    { email: 'no-reply@amazon.com', name: 'Amazon' },
+    { email: 'updates@notion.so', name: 'Notion' },
+    { email: 'support@zoom.us', name: 'Zoom' },
+  ];
+
+  const subjects = [
+    'Q4 Financial Report - Review Required',
+    'Re: Project Timeline Update',
+    'Meeting Notes: Product Roadmap Discussion',
+    'Urgent: Client Feedback on Proposal',
+    'Weekly Team Sync - Action Items',
+    'Budget Approval Needed by EOD',
+    'New Feature Request from Customer',
+    'Performance Review Schedule',
+    'Conference Registration Confirmation',
+    'System Maintenance Notice - This Weekend',
+    'Invoice #12345 - Payment Due',
+    'Quarterly Business Review Invitation',
+    'Updated Design Mockups for Review',
+    'Security Alert: New Login Detected',
+    'Your Monthly Analytics Report',
+  ];
+
+  const emails: Array<{
+    from_email: string;
+    from_name: string;
+    subject: string;
+    body_preview: string;
+    full_body: string;
+    is_read: boolean;
+    received_at: string;
+  }> = [];
+  const now = new Date();
+
+  for (let i = 0; i < count; i++) {
+    const sender = randomFrom(senders);
+    const subject = randomFrom(subjects);
+    const daysAgo = Math.floor(Math.random() * 7);
+    const hoursAgo = Math.floor(Math.random() * 24);
+    const receivedDate = new Date(now);
+    receivedDate.setDate(receivedDate.getDate() - daysAgo);
+    receivedDate.setHours(receivedDate.getHours() - hoursAgo);
+
+    const bodyPreview = `Hi there, I wanted to follow up on ${subject.toLowerCase()}. Please let me know your thoughts when you get a chance...`;
+    const fullBody = `
+Hi there,
+
+I wanted to follow up on ${subject.toLowerCase()}.
+
+${Math.random() > 0.5 ? 'As discussed in our last meeting, ' : 'Following up from our conversation, '}we need to make a decision on this by ${new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString()}.
+
+Key points to consider:
+- Timeline implications
+- Budget constraints
+- Resource availability
+- Stakeholder alignment
+
+Please let me know your thoughts when you get a chance.
+
+Best regards,
+${sender.name}
+    `.trim();
+
+    emails.push({
+      from_email: sender.email,
+      from_name: sender.name,
+      subject,
+      body_preview: bodyPreview,
+      full_body: fullBody,
+      is_read: Math.random() > 0.3, // 70% read
+      received_at: receivedDate.toISOString(),
+    });
+  }
+
+  return emails.sort((a, b) => 
+    new Date(b.received_at).getTime() - new Date(a.received_at).getTime()
+  );
+}
+
+// Mock task data generator
+function generateMockTasks(userId: string, count: number = 30): Array<Partial<TaskInsert>> {
+  const taskTemplates = [
+    { title: 'Review Q4 financial projections', priority: 'high', estimated_minutes: 60 },
+    { title: 'Update team on project status', priority: 'medium', estimated_minutes: 30 },
+    { title: 'Prepare presentation for board meeting', priority: 'high', estimated_minutes: 120 },
+    { title: 'Code review for feature branch', priority: 'medium', estimated_minutes: 45 },
+    { title: 'Write blog post about new feature', priority: 'low', estimated_minutes: 90 },
+    { title: 'Schedule 1:1s with team members', priority: 'medium', estimated_minutes: 15 },
+    { title: 'Update documentation for API changes', priority: 'medium', estimated_minutes: 60 },
+    { title: 'Research competitor pricing models', priority: 'high', estimated_minutes: 90 },
+    { title: 'Fix critical bug in production', priority: 'high', estimated_minutes: 120 },
+    { title: 'Plan team offsite agenda', priority: 'low', estimated_minutes: 45 },
+    { title: 'Review and approve expense reports', priority: 'low', estimated_minutes: 30 },
+    { title: 'Conduct user interviews', priority: 'high', estimated_minutes: 180 },
+    { title: 'Optimize database queries', priority: 'medium', estimated_minutes: 90 },
+    { title: 'Create marketing campaign brief', priority: 'medium', estimated_minutes: 60 },
+    { title: 'Set up monitoring alerts', priority: 'medium', estimated_minutes: 45 },
+  ];
+
+  const tasks: Array<Partial<TaskInsert>> = [];
+  const sources: Array<'manual' | 'email' | 'calendar'> = ['manual', 'email', 'calendar'];
+
+  for (let i = 0; i < count; i++) {
+    const template = randomFrom(taskTemplates);
+    const source = randomFrom(sources);
+    
+    tasks.push({
+      title: template.title,
+      description: `Task created from ${source}. ${Math.random() > 0.5 ? 'This task is important for the upcoming deadline.' : 'Regular maintenance task.'}`,
+      priority: template.priority as 'high' | 'medium' | 'low',
+      status: 'backlog' as const,
+      estimated_minutes: template.estimated_minutes,
+      source,
+    });
+  }
+
+  return tasks;
+}
+
+// Mock calendar events generator
+function generateMockCalendarEvents(dateStr: string): Array<{
+  id: string;
+  summary: string;
+  description?: string;
+  start: { dateTime: string };
+  end: { dateTime: string };
+  attendees?: Array<{ email: string }>;
+}> {
+  const meetingTypes = [
+    { 
+      summary: 'Daily Standup', 
+      duration: 15, 
+      time: '09:00',
+      attendees: ['team@company.com']
+    },
+    { 
+      summary: 'Product Review Meeting', 
+      duration: 60, 
+      time: '10:00',
+      attendees: ['product@company.com', 'design@company.com']
+    },
+    { 
+      summary: '1:1 with Manager', 
+      duration: 30, 
+      time: '11:00',
+      attendees: ['manager@company.com']
+    },
+    { 
+      summary: 'Client Sync', 
+      duration: 45, 
+      time: '14:00',
+      attendees: ['client@external.com', 'sales@company.com']
+    },
+    { 
+      summary: 'Team Retrospective', 
+      duration: 60, 
+      time: '15:30',
+      attendees: ['team@company.com']
+    },
+    { 
+      summary: 'Engineering Sync', 
+      duration: 30, 
+      time: '16:00',
+      attendees: ['engineering@company.com']
+    },
+  ];
+
+  // Select 2-4 meetings for this day
+  const meetingCount = Math.floor(Math.random() * 3) + 2;
+  const selectedMeetings: Array<{
+    id: string;
+    summary: string;
+    description?: string;
+    start: { dateTime: string };
+    end: { dateTime: string };
+    attendees?: Array<{ email: string }>;
+  }> = [];
+  const usedTimes = new Set<string>();
+
+  for (let i = 0; i < meetingCount && selectedMeetings.length < meetingTypes.length; i++) {
+    const meeting = randomFrom(meetingTypes);
+    if (!usedTimes.has(meeting.time)) {
+      usedTimes.add(meeting.time);
+      
+      const startDateTime = `${dateStr}T${meeting.time}:00.000Z`;
+      const endTime = addMinutesToTime(meeting.time, meeting.duration);
+      const endDateTime = `${dateStr}T${endTime}:00.000Z`;
+
+      selectedMeetings.push({
+        id: `evt_${Math.random().toString(36).substring(7)}`,
+        summary: meeting.summary,
+        description: `Regular ${meeting.summary.toLowerCase()}`,
+        start: { dateTime: startDateTime },
+        end: { dateTime: endDateTime },
+        attendees: meeting.attendees.map(email => ({ email })),
+      });
+    }
+  }
+
+  return selectedMeetings;
+}
+
 async function handleMockData() {
   if (clearData) {
     console.log(`🗑️  Clearing mock data for user: ${userEmail}`);
@@ -232,39 +449,23 @@ async function handleMockData() {
     
     // 4. Generate mock emails (10-20 per day)
     console.log('📧 Generating emails...');
-    const gmailService = new MockGmailService();
-    const gmailMessages = gmailService.getAllMessages();
+    const mockEmails = generateMockEmails(15);
     
-    // Take a subset of emails (15 emails)
-    const selectedEmails = gmailMessages.slice(0, 15);
-    
-    const emails: EmailInsert[] = selectedEmails.map(msg => {
-      const fromHeader = msg.payload.headers.find(h => h.name === 'From');
-      const subjectHeader = msg.payload.headers.find(h => h.name === 'Subject');
-      
-      const fromMatch = fromHeader?.value.match(/^(.+?)\s*<(.+?)>$/);
-      const fromEmail = fromMatch ? fromMatch[2] : fromHeader?.value || 'unknown@example.com';
-      const fromName = fromMatch ? fromMatch[1] : undefined;
-      
-      const bodyData = msg.payload.body.data;
-      const fullBody = Buffer.from(bodyData, 'base64').toString('utf-8');
-      
-      return {
-        user_id: userId,
-        gmail_id: msg.id,
-        from_email: fromEmail,
-        from_name: fromName,
-        subject: subjectHeader?.value || 'No Subject',
-        body_preview: msg.snippet,
-        full_body: fullBody,
-        is_read: !msg.labelIds.includes('UNREAD'),
-        received_at: new Date(parseInt(msg.internalDate)).toISOString(),
-        metadata: {
-          labelIds: msg.labelIds,
-          threadId: msg.threadId,
-        },
-      };
-    });
+    const emails: EmailInsert[] = mockEmails.map(email => ({
+      user_id: userId,
+      gmail_id: `msg_${Math.random().toString(36).substring(7)}`,
+      from_email: email.from_email,
+      from_name: email.from_name,
+      subject: email.subject,
+      body_preview: email.body_preview,
+      full_body: email.full_body,
+      is_read: email.is_read,
+      received_at: email.received_at,
+      metadata: {
+        labelIds: email.is_read ? ['INBOX'] : ['INBOX', 'UNREAD'],
+        threadId: `thread_${Math.random().toString(36).substring(7)}`,
+      },
+    }));
     
     const { data: insertedEmails, error: emailError } = await supabase
       .from('emails')
@@ -310,15 +511,12 @@ async function handleMockData() {
     
     // 5. Generate tasks (20-40 in backlog)
     console.log('📋 Generating tasks...');
-    const taskService = new MockTaskService();
-    const mockTasks = taskService.generateBacklogTasks(userId);
+    const mockTasks = generateMockTasks(userId, 30);
     
-    // Take 30 tasks
-    const selectedTasks = mockTasks.slice(0, 30);
-    const tasks: TaskInsert[] = selectedTasks.map(task => ({
+    const tasks: TaskInsert[] = mockTasks.map(task => ({
       ...task,
       user_id: userId,
-    }));
+    } as TaskInsert));
     
     const { data: insertedTasks, error: taskError } = await supabase
       .from('tasks')
@@ -360,8 +558,6 @@ async function handleMockData() {
     
     // 6. Generate calendar events and schedules
     console.log('📅 Generating schedules and calendar events...');
-    const calendarService = new MockCalendarService(userTimezone);
-    const calendarEvents = calendarService.getAllEvents();
     
     // Generate 7 days of schedules (-3 to +3 days from today)
     const today = new Date();
@@ -404,14 +600,11 @@ async function handleMockData() {
       const dayBlocks: TimeBlockInsert[] = [];
       const existingBlocks: Array<{start_time: string, end_time: string}> = [];
       
-      // Add calendar events as time blocks for this day
-      const dayEvents = calendarEvents.filter(event => {
-        const eventDate = new Date(event.start.dateTime || event.start.date || '');
-        return eventDate.toISOString().split('T')[0] === dateStr;
-      });
+      // Generate calendar events for this day
+      const calendarEvents = generateMockCalendarEvents(dateStr);
       
       // Add meetings first (they have priority)
-      for (const event of dayEvents) {
+      for (const event of calendarEvents) {
         // Generate video link for most meetings (80% chance)
         const hasVideoLink = Math.random() < 0.8;
         const videoLink = hasVideoLink 
@@ -877,7 +1070,7 @@ async function handleMockData() {
         dayBlocks.push(checkInBlock);
         
         // Scenario 2: Double-booked meetings
-        if (dayEvents.length > 0) {
+        if (calendarEvents.length > 0) {
           const doubleBookStart = createLocalTimestamp(scheduleDate, '14:30', userTimezone);
           const doubleBookEnd = createLocalTimestamp(scheduleDate, '15:00', userTimezone);
           

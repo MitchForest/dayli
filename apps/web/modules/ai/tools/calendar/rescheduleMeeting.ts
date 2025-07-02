@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format, parseISO } from 'date-fns';
+import { ensureServicesConfigured } from '../utils/auth';
 
 // Helper to get Date from event start/end
 function getEventDate(eventTime: { dateTime?: string; date?: string }): Date {
@@ -41,19 +42,22 @@ function parseNaturalTime(timeStr: string): Date {
 }
 
 export const rescheduleMeeting = tool({
-  description: "Reschedule an existing meeting",
+  description: "Reschedule an existing meeting to a new time",
   parameters: z.object({
     eventId: z.string().describe("Calendar event ID"),
-    newTime: z.string().describe("New time in natural language"),
-    reason: z.string().optional(),
+    newTime: z.string().describe("New date/time for the meeting"),
+    reason: z.string().optional().describe("Reason for rescheduling"),
     notifyAttendees: z.boolean().default(true),
   }),
-  execute: async ({ eventId, newTime, reason, notifyAttendees }) => {
+  execute: async (params) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const calendarService = ServiceFactory.getInstance().getCalendarService();
       
       // Get current event
-      const event = await calendarService.getEvent(eventId);
+      const event = await calendarService.getEvent(params.eventId);
       if (!event) {
         return toolError(
           'MEETING_NOT_FOUND',
@@ -66,7 +70,7 @@ export const rescheduleMeeting = tool({
       const currentEnd = getEventDate(event.end);
       
       // Parse new time
-      const parsed = parseNaturalTime(newTime);
+      const parsed = parseNaturalTime(params.newTime);
       const duration = currentEnd.getTime() - currentStart.getTime();
       const newEnd = new Date(parsed.getTime() + duration);
       
@@ -74,7 +78,7 @@ export const rescheduleMeeting = tool({
       const conflicts = await calendarService.checkConflicts({
         start: parsed,
         end: newEnd,
-        excludeEventId: eventId,
+        excludeEventId: params.eventId,
       });
       
       if (conflicts.length > 0) {
@@ -91,19 +95,19 @@ export const rescheduleMeeting = tool({
       }
       
       // Update the event
-      const updated = await calendarService.updateEvent(eventId, {
+      const updated = await calendarService.updateEvent(params.eventId, {
         start: parsed,
         end: newEnd,
         description: event.description + 
           `\n\nRescheduled from ${format(currentStart, 'PPpp')}` +
-          (reason ? ` - Reason: ${reason}` : ''),
+          (params.reason ? ` - Reason: ${params.reason}` : ''),
       });
       
       // Notify attendees if requested
-      if (notifyAttendees && event.attendees && event.attendees.length > 0) {
-        await calendarService.sendUpdateNotification(eventId, {
+      if (params.notifyAttendees && event.attendees && event.attendees.length > 0) {
+        await calendarService.sendUpdateNotification(params.eventId, {
           message: `Meeting rescheduled to ${format(parsed, 'PPpp')}` +
-            (reason ? ` - ${reason}` : ''),
+            (params.reason ? ` - ${params.reason}` : ''),
         });
       }
       
@@ -111,12 +115,12 @@ export const rescheduleMeeting = tool({
         meeting: updated,
         oldTime: format(currentStart, 'PPpp'),
         newTime: format(parsed, 'PPpp'),
-        attendeesNotified: notifyAttendees && (event.attendees?.length || 0) > 0
+        attendeesNotified: params.notifyAttendees && (event.attendees?.length || 0) > 0
       }, {
         type: 'text',
         content: `Rescheduled "${event.summary}" from ${format(currentStart, 'h:mm a')} to ${format(parsed, 'h:mm a')}`
       }, {
-        affectedItems: [eventId],
+        affectedItems: [params.eventId],
         suggestions: [
           'View updated calendar',
           'Send additional notes to attendees',

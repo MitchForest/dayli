@@ -1,18 +1,14 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError, toolConfirmation } from '../types';
+import { toolSuccess, toolError, toolConfirmation, ProposedChange } from '../types';
 import { createDailyPlanningWorkflow } from '@/modules/workflows/graphs/dailyPlanning';
 import { format } from 'date-fns';
 import { createServerActionClient } from '@/lib/supabase-server';
-
-// Helper to get current user ID (simplified for now)
-async function getCurrentUserId(): Promise<string> {
-  // This would normally get from auth context
-  return 'current-user-id';
-}
+import { ServiceFactory } from '@/services/factory/service.factory';
+import { ensureServicesConfigured } from '../utils/auth';
 
 // Helper to store proposed changes for confirmation
-async function storeProposedChanges(confirmationId: string, changes: any[]): Promise<void> {
+async function storeProposedChanges(confirmationId: string, changes: ProposedChange[]): Promise<void> {
   // In a real implementation, this would store in database or cache
   console.log('Storing proposed changes:', confirmationId, changes);
 }
@@ -25,10 +21,22 @@ export const scheduleDay = tool({
   }),
   execute: async ({ date, includeBacklog }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const supabase = await createServerActionClient();
       const workflow = createDailyPlanningWorkflow(supabase);
       const targetDate = date || format(new Date(), 'yyyy-MM-dd');
-      const userId = await getCurrentUserId();
+      
+      // Get userId from the authenticated session
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        return toolError(
+          'AUTH_REQUIRED',
+          'User not authenticated'
+        );
+      }
+      const userId = user.id;
       
       const result = await workflow.invoke({
         userId,
@@ -43,16 +51,16 @@ export const scheduleDay = tool({
         const confirmationId = crypto.randomUUID();
         await storeProposedChanges(confirmationId, result.proposedChanges);
         
-        const changesSummary = result.proposedChanges.map((change: any) => {
+        const changesSummary = result.proposedChanges.map((change: ProposedChange) => {
           switch (change.type) {
             case 'create':
-              return `• Create ${change.block.type} block "${change.block.title}" at ${change.block.startTime}`;
+              return `• Create ${change.block?.type} block "${change.block?.title}" at ${change.block?.startTime}`;
             case 'move':
-              return `• Move "${change.block.title}" to ${change.newStartTime}`;
+              return `• Move "${change.block?.title}" to ${change.newStartTime}`;
             case 'delete':
-              return `• Remove "${change.block.title}"`;
+              return `• Remove "${change.block?.title}"`;
             case 'assign':
-              return `• Assign "${change.task.title}" to ${change.block.title}`;
+              return `• Assign "${change.task?.title}" to ${change.block?.title}`;
             default:
               return `• ${change.type} ${change.description}`;
           }
@@ -89,6 +97,15 @@ export const scheduleDay = tool({
       );
       
     } catch (error) {
+      // Handle authentication errors specifically
+      if (error instanceof Error && error.message.includes('not configured')) {
+        return toolError(
+          'AUTH_REQUIRED',
+          'Please log in to use this feature',
+          error
+        );
+      }
+      
       return toolError(
         'WORKFLOW_FAILED',
         `Failed to plan schedule: ${error instanceof Error ? error.message : 'Unknown error'}`,

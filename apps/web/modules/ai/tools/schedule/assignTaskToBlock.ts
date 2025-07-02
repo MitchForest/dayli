@@ -3,13 +3,7 @@ import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
-import { useScheduleStore } from '@/modules/schedule/store/scheduleStore';
-
-// Helper to invalidate schedule after changes
-function invalidateScheduleForDate(date: string) {
-  const { invalidateSchedule } = useScheduleStore.getState();
-  invalidateSchedule(date);
-}
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const assignTaskToBlock = tool({
   description: 'Assign a task to a specific time block',
@@ -19,6 +13,9 @@ export const assignTaskToBlock = tool({
   }),
   execute: async ({ taskId, blockId }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const taskService = ServiceFactory.getInstance().getTaskService();
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       
@@ -73,7 +70,8 @@ export const assignTaskToBlock = tool({
       
       await taskService.assignTaskToBlock(taskId, blockId);
       
-      invalidateScheduleForDate(format(block.startTime, 'yyyy-MM-dd'));
+      // Note: Schedule invalidation should be handled by the service or UI layer
+      console.log(`[AI Tools] Assigned task ${taskId} to block ${blockId}`);
       
       const result = {
         task: {

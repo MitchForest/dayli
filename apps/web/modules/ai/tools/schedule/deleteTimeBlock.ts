@@ -3,13 +3,7 @@ import { z } from 'zod';
 import { toolSuccess, toolError, toolConfirmation } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
-import { useScheduleStore } from '@/modules/schedule/store/scheduleStore';
-
-// Helper to invalidate schedule after changes
-function invalidateScheduleForDate(date: string) {
-  const { invalidateSchedule } = useScheduleStore.getState();
-  invalidateSchedule(date);
-}
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const deleteTimeBlock = tool({
   description: 'Delete a time block from the schedule',
@@ -22,6 +16,9 @@ export const deleteTimeBlock = tool({
   }),
   execute: async ({ blockId, blockDescription, date, reason, confirm }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       
@@ -89,7 +86,8 @@ export const deleteTimeBlock = tool({
       // Delete the block
       await scheduleService.deleteTimeBlock(actualBlockId);
       
-      invalidateScheduleForDate(targetDate);
+      // Note: Schedule invalidation should be handled by the service or UI layer
+      console.log(`[AI Tools] Deleted block ${actualBlockId} for date: ${targetDate}`);
       
       const result = {
         deleted: true,

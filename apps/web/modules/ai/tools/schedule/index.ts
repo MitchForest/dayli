@@ -6,4 +6,5 @@ export { assignTaskToBlock } from './assignTaskToBlock';
 export { completeTask } from './completeTask';
 export { getSchedule } from './getSchedule';
 export { getUnassignedTasks } from './getUnassignedTasks';
-export { regenerateSchedule } from './regenerateSchedule'; 
+export { regenerateSchedule } from './regenerateSchedule';
+export { suggestTasksForBlock } from './suggestTasksForBlock'; 

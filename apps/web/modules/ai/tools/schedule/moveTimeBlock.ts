@@ -1,9 +1,9 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError } from '../types';
+import { toolSuccess, toolError, TimeBlock } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
-import { useScheduleStore } from '@/modules/schedule/store/scheduleStore';
+import { ensureServicesConfigured } from '../utils/auth';
 
 // Helper to parse natural language times
 function parseTimeToMilitary(timeStr: string): string | null {
@@ -28,16 +28,16 @@ function parseTimeToMilitary(timeStr: string): string | null {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 }
 
-// Helper to invalidate schedule after changes
-function invalidateScheduleForDate(date: string) {
-  const { invalidateSchedule } = useScheduleStore.getState();
-  invalidateSchedule(date);
-}
-
 // Helper to calculate end time based on duration
-function calculateEndTime(startTime: string, existingBlock: any): string {
+function calculateEndTime(startTime: string, existingBlock: TimeBlock): string {
   const [startHours, startMinutes] = startTime.split(':').map(Number);
-  const duration = existingBlock.endTime.getTime() - existingBlock.startTime.getTime();
+  const startDate = typeof existingBlock.startTime === 'string' 
+    ? new Date(existingBlock.startTime) 
+    : existingBlock.startTime;
+  const endDate = typeof existingBlock.endTime === 'string'
+    ? new Date(existingBlock.endTime)
+    : existingBlock.endTime;
+  const duration = endDate.getTime() - startDate.getTime();
   const durationMinutes = Math.floor(duration / 60000);
   
   let endHours = startHours || 0;
@@ -62,6 +62,9 @@ export const moveTimeBlock = tool({
   }),
   execute: async ({ blockId, blockDescription, newStartTime, newEndTime, date }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       
@@ -142,8 +145,6 @@ export const moveTimeBlock = tool({
         startTime: parsedStartTime,
         endTime: parsedEndTime,
       });
-      
-      invalidateScheduleForDate(targetDate);
       
       const result = {
         id: updated.id,

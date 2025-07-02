@@ -82,15 +82,15 @@ export function EmailBlock({
             {title}
           </div>
           
-          {/* Email count - Show if 60px+ */}
-          {showEmailCount && (
+          {/* Email count - Show if 60px+ AND there are emails */}
+          {showEmailCount && emailQueue.length > 0 && (
             <div className="flex items-center gap-1 text-xs text-purple-700 mt-1">
               <Inbox size={12} />
               <span>{emailQueue.length} {emailQueue.length === 1 ? 'email' : 'emails'} to process</span>
             </div>
           )}
           
-          {/* Urgent indicator - Show if 90px+ */}
+          {/* Urgent indicator - Show if 90px+ AND there are urgent emails */}
           {showUrgentCount && urgentCount > 0 && (
             <div className="flex items-center gap-1 text-xs text-purple-600 mt-1">
               <AlertCircle size={12} />

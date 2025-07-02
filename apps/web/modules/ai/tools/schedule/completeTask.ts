@@ -3,13 +3,7 @@ import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
-import { useScheduleStore } from '@/modules/schedule/store/scheduleStore';
-
-// Helper to invalidate schedule after changes
-function invalidateScheduleForDate(date: string) {
-  const { invalidateSchedule } = useScheduleStore.getState();
-  invalidateSchedule(date);
-}
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const completeTask = tool({
   description: 'Mark a task as completed',
@@ -19,6 +13,9 @@ export const completeTask = tool({
   }),
   execute: async ({ taskId, notes }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const taskService = ServiceFactory.getInstance().getTaskService();
       
       const task = await taskService.getTask(taskId);
@@ -48,8 +45,8 @@ export const completeTask = tool({
         await taskService.updateTask(taskId, { description: updatedNotes });
       }
       
-      // Invalidate today's schedule since we don't know which date the task is on
-      invalidateScheduleForDate(format(new Date(), 'yyyy-MM-dd'));
+      // Note: Schedule invalidation should be handled by the service or UI layer
+      console.log(`[AI Tools] Completed task ${taskId}`);
       
       // Calculate time saved/spent
       const timeInfo = task.estimatedMinutes

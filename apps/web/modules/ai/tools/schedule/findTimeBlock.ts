@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const findTimeBlock = tool({
   description: 'Find a time block by time, title, or description. Use this before trying to move or delete blocks.',
@@ -12,6 +13,9 @@ export const findTimeBlock = tool({
   }),
   execute: async ({ description, date }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       

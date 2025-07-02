@@ -3,8 +3,7 @@
 import { cn } from '@/lib/utils';
 import { parseMessageContent } from '../utils/messageParser';
 import { EntityChip } from './EntityChip';
-import { SchedulePreview } from './SchedulePreview';
-import { ScheduleBlockList } from './ScheduleBlockDisplay';
+import { ChatScheduleDisplay } from './ChatScheduleDisplay';
 import { SuggestionButtons } from './SuggestionButtons';
 import { MessageStreamingProgress } from './StreamingProgress';
 import type { Entity, MessageMetadata, ListItem } from '../types/chat.types';
@@ -75,9 +74,10 @@ export const MessageContent = memo(function MessageContent({
 
             case 'schedule':
               return segment.blocks ? (
-                <ScheduleBlockList
+                <ChatScheduleDisplay
                   key={idx}
                   blocks={segment.blocks}
+                  groupByPeriod={true}
                   className="my-3"
                 />
               ) : null;

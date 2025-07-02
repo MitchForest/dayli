@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const readEmailContent = tool({
   description: "Read the full content of an email including body and attachments",
@@ -11,6 +12,9 @@ export const readEmailContent = tool({
   }),
   execute: async ({ emailId, includeAttachments }) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const gmailService = ServiceFactory.getInstance().getGmailService();
       
       // Get the full email message

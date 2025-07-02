@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { toolSuccess, toolError, toolConfirmation } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format, addMinutes } from 'date-fns';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const scheduleMeeting = tool({
   description: "Schedule a new meeting with smart time finding",
@@ -16,6 +17,9 @@ export const scheduleMeeting = tool({
   }),
   execute: async (params) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const calendarService = ServiceFactory.getInstance().getCalendarService();
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       

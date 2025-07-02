@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toolSuccess, toolError, toolStreaming } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
+import { ensureServicesConfigured } from '../utils/auth';
 
 export const createTask = tool({
   description: "Create a new task from natural language",
@@ -11,10 +12,13 @@ export const createTask = tool({
     description: z.string().optional(),
     priority: z.enum(['high', 'medium', 'low']).optional().default('medium'),
     source: z.enum(['email', 'chat', 'calendar', 'manual']).optional().default('chat'),
-    metadata: z.record(z.any()).optional(),
+    metadata: z.record(z.string()).optional(),
   }),
   execute: async (params) => {
     try {
+      // Ensure services are configured before proceeding
+      await ensureServicesConfigured();
+      
       const taskService = ServiceFactory.getInstance().getTaskService();
       
       // Stream progress for better UX
@@ -75,6 +79,15 @@ export const createTask = tool({
       });
       
     } catch (error) {
+      // Handle authentication errors specifically
+      if (error instanceof Error && error.message.includes('not configured')) {
+        return toolError(
+          'AUTH_REQUIRED',
+          'Please log in to use this feature',
+          error
+        );
+      }
+      
       return toolError(
         'TASK_CREATE_FAILED',
         `Failed to create task: ${error instanceof Error ? error.message : 'Unknown error'}`,
