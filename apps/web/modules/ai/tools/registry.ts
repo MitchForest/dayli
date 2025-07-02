@@ -28,7 +28,7 @@ export class ToolRegistry {
 
   getByCategory(category: string): Record<string, CoreTool<any, any>> {
     const filtered = Array.from(this.tools.entries())
-      .filter(([name]) => name.startsWith(`${category}.`));
+      .filter(([name]) => name.startsWith(`${category}_`));
     return Object.fromEntries(filtered);
   }
 
@@ -41,14 +41,14 @@ export class ToolRegistry {
       const emailTools = await import('./email');
       Object.entries(emailTools).forEach(([name, tool]) => {
         if (tool && typeof tool === 'object' && 'execute' in tool) {
-          this.register(`email.${name}`, tool as CoreTool<any, any>);
+          this.register(`email_${name}`, tool as CoreTool<any, any>);
         }
       });
       
       const taskTools = await import('./task');
       Object.entries(taskTools).forEach(([name, tool]) => {
         if (tool && typeof tool === 'object' && 'execute' in tool) {
-          this.register(`task.${name}`, tool as CoreTool<any, any>);
+          this.register(`task_${name}`, tool as CoreTool<any, any>);
         }
       });
       
@@ -56,7 +56,7 @@ export class ToolRegistry {
       const scheduleTools = await import('./schedule');
       Object.entries(scheduleTools).forEach(([name, tool]) => {
         if (tool && typeof tool === 'object' && 'execute' in tool) {
-          this.register(`schedule.${name}`, tool as CoreTool<any, any>);
+          this.register(`schedule_${name}`, tool as CoreTool<any, any>);
         }
       });
       
@@ -64,7 +64,7 @@ export class ToolRegistry {
       const calendarTools = await import('./calendar');
       Object.entries(calendarTools).forEach(([name, tool]) => {
         if (tool && typeof tool === 'object' && 'execute' in tool) {
-          this.register(`calendar.${name}`, tool as CoreTool<any, any>);
+          this.register(`calendar_${name}`, tool as CoreTool<any, any>);
         }
       });
       
@@ -72,7 +72,7 @@ export class ToolRegistry {
       const preferenceTools = await import('./preference');
       Object.entries(preferenceTools).forEach(([name, tool]) => {
         if (tool && typeof tool === 'object' && 'execute' in tool) {
-          this.register(`preference.${name}`, tool as CoreTool<any, any>);
+          this.register(`preference_${name}`, tool as CoreTool<any, any>);
         }
       });
       
@@ -80,7 +80,7 @@ export class ToolRegistry {
       const workflowTools = await import('./workflow');
       Object.entries(workflowTools).forEach(([name, tool]) => {
         if (tool && typeof tool === 'object' && 'execute' in tool) {
-          this.register(`workflow.${name}`, tool as CoreTool<any, any>);
+          this.register(`workflow_${name}`, tool as CoreTool<any, any>);
         }
       });
       

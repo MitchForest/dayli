@@ -9,7 +9,7 @@ import { RealScheduleService } from '../real/schedule.service';
 import { RealTaskService } from '../real/task.service';
 import { RealGmailService } from '../real/gmail.service';
 import { RealCalendarService } from '../real/calendar.service';
-import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { withRetry, isNetworkError } from '../utils/retry';
 import { ServiceError } from '../utils/error-handling';
 import { queueForOffline } from '../utils/offline-queue';
@@ -59,31 +59,16 @@ class ErrorHandlingProxy<T extends object> implements ProxyHandler<T> {
 
 export class ServiceFactory {
   private static instance: ServiceFactory;
-  private config: ServiceConfig;
-  private preferenceService: PreferenceService;
-  private scheduleService: ScheduleService;
-  private taskService: TaskService;
-  private gmailService: IGmailService;
-  private calendarService: ICalendarService;
+  private config: ServiceConfig | null = null;
+  private preferenceService: PreferenceService | null = null;
+  private scheduleService: ScheduleService | null = null;
+  private taskService: TaskService | null = null;
+  private gmailService: IGmailService | null = null;
+  private calendarService: ICalendarService | null = null;
+  private configured = false;
 
   private constructor() {
-    // Initialize configuration
-    const supabaseClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-
-    this.config = {
-      userId: 'default-user', // This should be set dynamically
-      supabaseClient,
-    };
-
-    // Always use real services now
-    this.preferenceService = new RealPreferenceService(this.config);
-    this.scheduleService = new RealScheduleService(this.config);
-    this.taskService = new RealTaskService(this.config);
-    this.gmailService = new RealGmailService(this.config);
-    this.calendarService = new RealCalendarService(this.config);
+    // Don't initialize anything here - wait for configure()
   }
 
   static getInstance(): ServiceFactory {
@@ -93,7 +78,28 @@ export class ServiceFactory {
     return ServiceFactory.instance;
   }
 
+  isConfigured(): boolean {
+    return this.configured;
+  }
+
+  configure(config: { userId: string; supabaseClient: SupabaseClient<any> }): void {
+    this.config = config;
+    this.configured = true;
+    
+    // Initialize all services with the provided config
+    this.preferenceService = new RealPreferenceService(this.config);
+    this.scheduleService = new RealScheduleService(this.config);
+    this.taskService = new RealTaskService(this.config);
+    this.gmailService = new RealGmailService(this.config);
+    this.calendarService = new RealCalendarService(this.config);
+  }
+
   updateUserId(userId: string): void {
+    if (!this.config) {
+      console.warn('[ServiceFactory] Cannot update userId - factory not configured');
+      return;
+    }
+    
     this.config.userId = userId;
     // Update all services with new config
     this.preferenceService = new RealPreferenceService(this.config);
@@ -103,38 +109,49 @@ export class ServiceFactory {
     this.calendarService = new RealCalendarService(this.config);
   }
 
+  private checkConfigured(): void {
+    if (!this.configured) {
+      throw new Error('ServiceFactory not configured. Call configure() first.');
+    }
+  }
+
   getPreferenceService(): PreferenceService {
+    this.checkConfigured();
     return new Proxy(
-      this.preferenceService,
-      new ErrorHandlingProxy(this.preferenceService, 'PreferenceService')
+      this.preferenceService!,
+      new ErrorHandlingProxy(this.preferenceService!, 'PreferenceService')
     ) as PreferenceService;
   }
 
   getScheduleService(): ScheduleService {
+    this.checkConfigured();
     return new Proxy(
-      this.scheduleService,
-      new ErrorHandlingProxy(this.scheduleService, 'ScheduleService')
+      this.scheduleService!,
+      new ErrorHandlingProxy(this.scheduleService!, 'ScheduleService')
     ) as ScheduleService;
   }
 
   getTaskService(): TaskService {
+    this.checkConfigured();
     return new Proxy(
-      this.taskService,
-      new ErrorHandlingProxy(this.taskService, 'TaskService')
+      this.taskService!,
+      new ErrorHandlingProxy(this.taskService!, 'TaskService')
     ) as TaskService;
   }
 
   getGmailService(): IGmailService {
+    this.checkConfigured();
     return new Proxy(
-      this.gmailService,
-      new ErrorHandlingProxy(this.gmailService, 'GmailService')
+      this.gmailService!,
+      new ErrorHandlingProxy(this.gmailService!, 'GmailService')
     ) as IGmailService;
   }
 
   getCalendarService(): ICalendarService {
+    this.checkConfigured();
     return new Proxy(
-      this.calendarService,
-      new ErrorHandlingProxy(this.calendarService, 'CalendarService')
+      this.calendarService!,
+      new ErrorHandlingProxy(this.calendarService!, 'CalendarService')
     ) as ICalendarService;
   }
 } 

@@ -183,8 +183,46 @@
 
 /* Selection color */
 ::selection {
-  background-color: oklch(var(--color-primary) / 0.2);
-  color: var(--color-foreground);
+  background-color: oklch(0.478 0.095 194.769 / 0.4); /* Primary color at 40% opacity */
+  color: var(--foreground);
+}
+
+::-moz-selection {
+  background-color: oklch(0.478 0.095 194.769 / 0.4); /* Primary color at 40% opacity */
+  color: var(--foreground);
+}
+
+/* Specific selection styles for chat components */
+.message-content ::selection {
+  background-color: oklch(0.478 0.095 194.769 / 0.5); /* Even more visible in messages */
+}
+
+.message-content ::-moz-selection {
+  background-color: oklch(0.478 0.095 194.769 / 0.5); /* Even more visible in messages */
+}
+
+/* Chat input selection */
+textarea::selection,
+input::selection {
+  background-color: oklch(0.478 0.095 194.769 / 0.4); /* Primary color for inputs */
+  color: var(--foreground);
+}
+
+textarea::-moz-selection,
+input::-moz-selection {
+  background-color: oklch(0.478 0.095 194.769 / 0.4); /* Primary color for inputs */
+  color: var(--foreground);
+}
+
+/* Dark mode selection */
+.dark ::selection {
+  background-color: oklch(0.689 0.093 174.769 / 0.4); /* Brighter teal for dark mode */
+  color: var(--foreground);
+}
+
+.dark ::-moz-selection {
+  background-color: oklch(0.689 0.093 174.769 / 0.4); /* Brighter teal for dark mode */
+  color: var(--foreground);
 }
 
 /* Focus ring */

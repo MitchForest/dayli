@@ -137,14 +137,18 @@ export class RealGmailService implements IGmailService {
       .from('emails')
       .insert({
         user_id: this.userId,
-        thread_id: params.threadId,
         from_email: 'user@example.com', // Will get from user profile
-        to_email: params.to,
         subject: params.subject,
-        body: params.body,
-        snippet: params.body.substring(0, 200),
-        status: 'sent',
-        label_ids: ['SENT']
+        body_preview: params.body.substring(0, 200),
+        full_body: params.body,
+        is_read: false,
+        received_at: new Date().toISOString(),
+        metadata: {
+          to: params.to,
+          threadId: params.threadId,
+          status: 'sent',
+          labelIds: ['SENT']
+        }
       })
       .select()
       .single();
@@ -158,7 +162,7 @@ export class RealGmailService implements IGmailService {
     const { error } = await this.supabase
       .from('emails')
       .update({ 
-        label_ids: ['TRASH'],
+        metadata: this.supabase.json({ labelIds: ['TRASH'] }),
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
@@ -171,7 +175,7 @@ export class RealGmailService implements IGmailService {
     const { error } = await this.supabase
       .from('emails')
       .update({ 
-        label_ids: ['ARCHIVE'],
+        metadata: this.supabase.json({ labelIds: ['ARCHIVE'] }),
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
@@ -192,14 +196,18 @@ export class RealGmailService implements IGmailService {
       .from('emails')
       .insert({
         user_id: this.userId,
-        thread_id: params.threadId,
         from_email: 'user@example.com', // Will get from user profile
-        to_email: params.to.join(', '),
         subject: params.subject,
-        body: params.body,
-        snippet: params.body.substring(0, 200),
-        status: 'draft',
-        label_ids: ['DRAFT']
+        body_preview: params.body.substring(0, 200),
+        full_body: params.body,
+        is_read: true,
+        received_at: new Date().toISOString(),
+        metadata: {
+          to: params.to,
+          threadId: params.threadId,
+          status: 'draft',
+          labelIds: ['DRAFT']
+        }
       })
       .select('id')
       .single();
@@ -216,17 +224,24 @@ export class RealGmailService implements IGmailService {
       .select()
       .eq('id', draftId)
       .eq('user_id', this.userId)
-      .eq('status', 'draft')
       .single();
 
     if (fetchError) throw new Error(`Failed to find draft: ${fetchError.message}`);
+
+    // Check if it's actually a draft
+    if (!draft.metadata?.status || draft.metadata.status !== 'draft') {
+      throw new Error('Email is not a draft');
+    }
 
     // Update status to sent
     const { data, error } = await this.supabase
       .from('emails')
       .update({
-        status: 'sent',
-        label_ids: ['SENT'],
+        metadata: {
+          ...draft.metadata,
+          status: 'sent',
+          labelIds: ['SENT']
+        },
         updated_at: new Date().toISOString()
       })
       .eq('id', draftId)
@@ -243,25 +258,25 @@ export class RealGmailService implements IGmailService {
       id: data.id,
       threadId: data.thread_id || data.id,
       labelIds: data.label_ids || ['INBOX'],
-      snippet: data.snippet || data.body?.substring(0, 200) || '',
+      snippet: data.body_preview || data.full_body?.substring(0, 200) || '',
       historyId: data.history_id || '1',
-      internalDate: new Date(data.created_at).getTime().toString(),
+      internalDate: new Date(data.received_at || data.created_at).getTime().toString(),
       payload: {
         partId: '0',
         mimeType: 'text/plain',
         filename: '',
         headers: [
           { name: 'From', value: data.from_email || '' },
-          { name: 'To', value: data.to_email || '' },
+          { name: 'To', value: data.to_email || 'me' },
           { name: 'Subject', value: data.subject || '' },
-          { name: 'Date', value: data.created_at }
+          { name: 'Date', value: data.received_at || data.created_at }
         ],
         body: {
-          size: data.body?.length || 0,
-          data: Buffer.from(data.body || '').toString('base64')
+          size: data.full_body?.length || 0,
+          data: Buffer.from(data.full_body || data.body_preview || '').toString('base64')
         }
       },
-      sizeEstimate: data.body?.length || 0
+      sizeEstimate: data.full_body?.length || 0
     };
   }
 } 

@@ -13,14 +13,19 @@ export function Providers({ children }: { children: React.ReactNode }) {
   
   // Handle auth state changes to configure ServiceFactory
   const handleAuthStateChange = useCallback((user: User | null) => {
+    const factory = ServiceFactory.getInstance();
+    
     if (user) {
       console.log('[Providers] Configuring ServiceFactory for user:', user.id);
-      ServiceFactory.getInstance().updateUserId(user.id);
+      factory.configure({
+        userId: user.id,
+        supabaseClient
+      });
     } else {
-      console.log('[Providers] Clearing ServiceFactory configuration');
-      ServiceFactory.getInstance().updateUserId('default-user');
+      console.log('[Providers] User logged out - ServiceFactory will need reconfiguration on next login');
+      // Don't clear the factory when logged out, just note it needs reconfiguration
     }
-  }, []);
+  }, [supabaseClient]);
   
   return (
     <ThemeProvider

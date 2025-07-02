@@ -1,9 +1,9 @@
 export { createTimeBlock } from './createTimeBlock';
 export { moveTimeBlock } from './moveTimeBlock';
 export { deleteTimeBlock } from './deleteTimeBlock';
-export { getSchedule } from './getSchedule';
+export { findTimeBlock } from './findTimeBlock';
 export { assignTaskToBlock } from './assignTaskToBlock';
 export { completeTask } from './completeTask';
+export { getSchedule } from './getSchedule';
 export { getUnassignedTasks } from './getUnassignedTasks';
-export { findTimeBlock } from './findTimeBlock';
 export { regenerateSchedule } from './regenerateSchedule'; 

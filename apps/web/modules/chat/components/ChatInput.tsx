@@ -1,22 +1,27 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send } from 'lucide-react';
+import { Send, Command } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '../store/chatStore';
 import { cn } from '@/lib/utils';
 import type { UseChatHelpers } from 'ai/react';
 
-interface ChatInputProps extends UseChatHelpers {}
+interface ChatInputProps extends UseChatHelpers {
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>;
+}
 
 export function ChatInput({ 
   input, 
   handleInputChange, 
   handleSubmit, 
-  isLoading 
+  isLoading,
+  inputRef: externalInputRef
 }: ChatInputProps) {
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [showCommandHint, setShowCommandHint] = useState(false);
+  const internalInputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = externalInputRef || internalInputRef;
   const { commandHistory, addToHistory } = useChatStore();
 
   // Focus input on mount and when pressing Cmd+K
@@ -30,7 +35,12 @@ export function ChatInput({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [inputRef]);
+
+  // Watch for / to show command hint
+  useEffect(() => {
+    setShowCommandHint(input === '/');
+  }, [input]);
 
   const onSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -76,8 +86,16 @@ export function ChatInput({
   return (
     <div className="border-t border-border p-4">
       <div className="text-xs text-muted-foreground mb-2">
-        Ask me anything about your schedule, tasks, or emails
+        Ask me anything. Type /commands for help.
       </div>
+      
+      {showCommandHint && (
+        <div className="mb-2 p-2 bg-muted/50 rounded-md text-xs flex items-center gap-2 animate-in fade-in-0 slide-in-from-bottom-2">
+          <Command className="h-3 w-3" />
+          <span>Type <code className="px-1 py-0.5 bg-background rounded">commands</code> to see all available commands</span>
+        </div>
+      )}
+      
       <form onSubmit={onSubmit} className="flex gap-2">
         <textarea
           ref={inputRef}

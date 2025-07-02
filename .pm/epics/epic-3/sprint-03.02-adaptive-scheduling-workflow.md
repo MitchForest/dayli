@@ -21,9 +21,10 @@
 
 2. **Use the new standardized tools from Sprint 03.015**:
    - Email operations: `readEmailContent`, `draftEmailResponse`, `processEmailToTask`
-   - Task operations: `createTask`, `editTask`, `deleteTask`, `findTasks`
+   - Task operations: `createTask`, `editTask`, `deleteTask`, `findTasks` (with natural language support)
    - Meeting operations: `scheduleMeeting`, `rescheduleMeeting`
    - Smart blocks: `createWorkBlock`, `createEmailBlock`
+   - Workflow persistence: `WorkflowPersistenceService`
 
 3. **Tool Registry is now used** - no manual tool imports needed in chat route
 
@@ -36,132 +37,98 @@
 **Sprint Number**: 03.02  
 **Epic**: Epic 3 - AI-First Chat & Intelligent Workflows  
 **Duration**: 2 days  
-**Status**: IN PROGRESS
+**Status**: PLANNING
 
 ### Sprint Goal
-Build an intelligent LangGraph workflow that adapts to any schedule state - whether empty, partially filled, or needing optimization. This workflow will be the brain behind dayli's scheduling, making smart decisions about when to place tasks, how to protect breaks, and how to optimize existing schedules.
+Build ONE intelligent LangGraph workflow that adapts to any schedule state - whether empty, partially filled, or needing optimization. This workflow will be the brain behind dayli's scheduling, making smart decisions about when to place tasks, how to protect breaks, and how to optimize existing schedules.
+
+### What Changed from Original Plan
+Based on architectural review, we're:
+- **Combining** the two workflows (adaptive + optimization) into one intelligent system
+- **Leveraging** smart tools from Sprint 03.015 instead of recreating functionality
+- **Removing** mock calendar service (moved to Sprint 03.05)
+- **Integrating** with WorkflowPersistenceService for state management
+- **Building on** existing `scheduleDay` tool rather than starting from scratch
 
 ### Context for Executor
-In Sprint 03.01, we built individual tools (createTimeBlock, assignTaskToBlock, etc.) that the AI can call. Now we're combining these tools into a sophisticated workflow using LangGraph. Think of it as building a smart scheduling assistant that:
-- Looks at the current schedule
-- Understands what strategy to use (full planning vs filling gaps vs optimizing)
-- Makes intelligent decisions about task placement
+In Sprint 03.015, we built:
+- Individual tools (createTimeBlock, assignTaskToBlock, etc.)
+- Smart block creation tools (createWorkBlock, createEmailBlock)
+- Enhanced task finding with natural language understanding
+- Workflow persistence infrastructure
+
+Now we're combining these tools into a sophisticated LangGraph workflow. Think of it as building a smart scheduling assistant that:
+- Analyzes the current schedule state
+- Intelligently chooses a strategy (create, fill, optimize, or just assign tasks)
+- Uses smart tools to execute the strategy
 - Always protects lunch breaks
-- Learns from user patterns stored in RAG (to be implemented in Sprint 03.04)
+- Learns from patterns (preparation for Sprint 03.04 RAG integration)
 
-The workflow should handle ANY state gracefully - from "I have nothing scheduled" to "my day is packed, help me optimize."
-
-## Prerequisites from Sprint 03.01
+## Prerequisites from Sprint 03.015
 
 Before starting this sprint, verify:
-- [x] All CRUD tools are working (createTimeBlock, moveTimeBlock, etc.) - VERIFIED
-- [x] Chat endpoint successfully calls tools with `streamText` - VERIFIED
-- [x] Database migrations for backlogs are complete - VERIFIED (task_backlog table exists)
-- [x] Basic tool execution shows in the UI - VERIFIED (in ChatPanel.tsx)
+- [x] ToolResult format implemented for all tools
+- [x] Tool Registry with auto-discovery working
+- [x] Smart block creation tools (`createWorkBlock`, `createEmailBlock`)
+- [x] Enhanced task finding with natural language support
+- [x] WorkflowPersistenceService available
+- [x] All services are real (no mocks)
+- [x] Chat endpoint using `streamText` with tool registry
 
-## Implementation Plan (Executor Analysis)
+## Implementation Plan (Updated)
 
-### Investigation Findings
-1. **Existing Workflow Pattern**: Found `dailyPlanning.ts` and `emailTriage.ts` using LangGraph with StateGraph
-2. **Tool Integration**: All schedule tools properly implemented in `schedule-tools.ts`
-3. **Database Schema**: 
-   - `task_backlog` table exists with priority/urgency fields
-   - `user_preferences` has new JSONB fields for break_schedule, open_time_preferences
-4. **Service Architecture**: ServiceFactory pattern in place for data abstraction
-5. **Type System**: Strong typing throughout with proper interfaces
+### Technical Approach - Single Adaptive Workflow
 
-### Technical Approach
+#### Step 1: Enhance Existing scheduleDay Tool
+- **Files**: Update `apps/web/modules/ai/tools/workflow/scheduleDay.ts`
+- **Pattern**: Build on existing tool, add LangGraph workflow internally
+- **Details**: 
+  - Keep existing tool interface
+  - Replace simple logic with adaptive LangGraph workflow
+  - Integrate with smart tools from Sprint 03.015
+  - Add workflow persistence
 
-#### Step 1: Create the Adaptive Scheduling Workflow
+#### Step 2: Create the Adaptive Scheduling Workflow
 - **Files**: Create `apps/web/modules/workflows/graphs/adaptiveScheduling.ts`
-- **Pattern**: Follow existing LangGraph workflow patterns from `dailyPlanning.ts`
+- **Pattern**: Follow existing LangGraph patterns from `dailyPlanning.ts`
 - **Details**: 
-  - Implement state interface with all required fields
-  - Create nodes: fetchData, analyzeState, determineStrategy, fullPlanning, partialPlanning, optimization, taskAssignment, protectBreaks, validateSchedule, generateSummary
+  - Single workflow with multiple strategies
+  - Strategies: `full`, `partial`, `optimize`, `task_only`
+  - Nodes: fetchData, analyzeState, determineStrategy, executeStrategy, protectBreaks, validateSchedule, generateSummary
   - Use conditional edges for strategy routing
-  - Ensure proper TypeScript typing throughout
-
-#### Step 2: Create Workflow Tools Integration
-- **Files**: Create `apps/web/modules/ai/tools/workflow-tools.ts`
-- **Pattern**: Follow existing tool patterns from `schedule-tools.ts` using AI SDK's `tool` function
-- **Details**: 
-  - Create `scheduleDay` tool that invokes the workflow
-  - Create `confirmScheduleChanges` tool for applying proposed changes
-  - Store proposals in memory with TTL
-  - Return confirmation IDs for two-step process
+  - Call smart tools instead of manual block creation
 
 #### Step 3: Create Helper Functions
 - **Files**: Create `apps/web/modules/workflows/utils/scheduleHelpers.ts`
-- **Pattern**: Pure utility functions similar to existing utils
+- **Pattern**: Pure utility functions for schedule analysis
 - **Details**: 
   - Time parsing/formatting functions
   - Gap finding algorithm
+  - Inefficiency detection (for optimize strategy)
   - Conflict detection
-  - Schedule analysis helpers
   - Summary generation
 
-#### Step 4: Create Calendar Protection Service (Mock)
-- **Files**: Create `apps/web/modules/schedule/services/calendarProtection.ts`
-- **Pattern**: Service class with interface for future Google Calendar integration
+#### Step 4: Integrate with Workflow Persistence
+- **Files**: Update workflow to use `WorkflowPersistenceService`
+- **Pattern**: Wrap workflow with `createPersistentWorkflow`
 - **Details**: 
-  - Mock implementation that simulates calendar blocking
-  - Prepared interface for real implementation in Sprint 03.05
-  - Auto-decline logic placeholder
+  - Save state between nodes
+  - Allow resuming interrupted workflows
+  - Track execution history
+  - 5-minute TTL for proposals
 
-#### Step 5: Update Tool Exports
-- **Files**: Update `apps/web/modules/ai/tools/index.ts`
-- **Pattern**: Add new tool exports alongside existing ones
-- **Details**: Export scheduleDay and confirmScheduleChanges
+#### Step 5: Update Tool Registry
+- **Files**: Ensure `scheduleDay` is properly exported
+- **Pattern**: Tool already in registry via auto-discovery
+- **Details**: Just verify it's in the workflow directory
 
-#### Step 6: Integrate with Chat Endpoint
-- **Files**: Update `apps/web/app/api/chat/route.ts`
-- **Pattern**: Add new tools to the tools object
-- **Details**: Import and include workflow tools in the tool registry
+### Key Changes from Original Plan
 
-### Database Operations
-- No new migrations needed - all required tables exist
-- Will use existing `time_blocks`, `task_backlog`, and `user_preferences` tables
-- Preference JSONB fields already support break_schedule and open_time_preferences
-
-### Type Definitions
-```typescript
-// New types to create in workflow file
-interface SchedulingState {
-  userId: string;
-  date: string;
-  currentSchedule: TimeBlock[];
-  unassignedTasks: Task[];
-  taskBacklog: TaskBacklog[];
-  userPreferences: UserPreferences;
-  ragContext?: RAGContext; // Optional for now
-  strategy?: "full" | "partial" | "optimize" | "task_only";
-  proposedChanges: ScheduleChange[];
-  messages: BaseMessage[];
-}
-
-interface ScheduleChange {
-  action: "create" | "move" | "delete" | "assign";
-  description: string;
-  details: any; // Will be properly typed based on action
-}
-
-interface TimeGap {
-  startTime: string;
-  endTime: string;
-  duration: number; // in minutes
-}
-
-interface RAGContext {
-  patterns?: any[]; // Placeholder for Sprint 03.04
-  recentDecisions?: any[];
-}
-```
-
-### UI/UX Implementation
-- Text-based summaries of proposed changes (no visual preview)
-- Streaming progress updates via onStepFinish
-- Clear indication of which strategy was selected
-- Natural language explanations of all changes
+1. **ONE Workflow**: No separate optimization workflow - it's a strategy
+2. **Smart Tools**: Use `createWorkBlock` and `createEmailBlock` instead of manual creation
+3. **No Mocks**: No calendar protection service - just add `protected: boolean` flag
+4. **Persistence**: Integrate with WorkflowPersistenceService from day one
+5. **Natural Language**: Leverage enhanced `findTasks` that understands "pending", "todo", etc.
 
 ## Questions Requiring Clarification - WITH REVIEWER GUIDANCE
 
@@ -276,21 +243,21 @@ This ensures fast, predictable behavior for common cases while maintaining flexi
 5. Store the lunch move decision for future learning (prepare the data structure even if RAG isn't ready)
 
 ## Success Criteria
-- [ ] All TypeScript types properly defined (no `any` except where necessary)
+- [ ] All TypeScript types properly defined (no `any` except RAGContext placeholder)
 - [ ] Zero lint errors/warnings
-- [ ] Follows existing LangGraph patterns
+- [ ] Follows existing LangGraph patterns from `dailyPlanning.ts`
 - [ ] Proper error handling at each node
 - [ ] Workflow completes in <3 seconds
 - [ ] Lunch break always protected
-- [ ] Natural language summaries
-- [ ] Confirmation flow working
-- [ ] High-priority backlog tasks included
-- [ ] All strategies (full/partial/optimize/task_only) implemented
+- [ ] Natural language summaries using user's terminology
+- [ ] Confirmation flow working with WorkflowPersistenceService
+- [ ] Uses `createWorkBlock` and `createEmailBlock` for smart block creation
+- [ ] Uses enhanced `findTasks` with natural language support
+- [ ] All strategies (full/partial/optimize/task_only) implemented in ONE workflow
+- [ ] Optimization strategy finds and fixes inefficiencies
 - [ ] Time helper functions have unit tests
-- [ ] Mock calendar protection service ready for real implementation
-- [ ] [ADDITION] Schedule Optimization Workflow implemented and tested
-- [ ] [ADDITION] Optimization respects all constraints (meetings, lunch, work hours)
-- [ ] [ADDITION] Both workflows share helper utilities effectively
+- [ ] Integrates with standardized ToolResult format
+- [ ] Works with Tool Registry auto-discovery
 
 ## Key Concepts
 
@@ -316,36 +283,97 @@ Example: "Plan my day" workflow:
 
 ## Key Deliverables
 
-### 1. Create the Adaptive Scheduling Workflow
+### 1. Enhanced scheduleDay Tool
+
+**File**: `apps/web/modules/ai/tools/workflow/scheduleDay.ts`
+
+```typescript
+import { tool } from 'ai';
+import { z } from 'zod';
+import { toolSuccess, toolError, toolConfirmation } from '../types';
+import { createAdaptiveSchedulingWorkflow } from '@/modules/workflows/graphs/adaptiveScheduling';
+import { createPersistentWorkflow } from '@/modules/workflows/services/workflowPersistence';
+
+export const scheduleDay = tool({
+  description: "Intelligently plan, adjust, or optimize your daily schedule",
+  parameters: z.object({
+    date: z.string().optional().describe("YYYY-MM-DD format, defaults to today"),
+    intent: z.enum(['plan', 'optimize', 'auto']).default('auto').describe("Hint for workflow strategy"),
+    includeBacklog: z.boolean().default(true).describe("Include high-priority tasks from backlog"),
+    preferences: z.object({
+      protectLunch: z.boolean().default(true),
+      consolidateFocus: z.boolean().default(true),
+      preferMorningFocus: z.boolean().default(true),
+    }).optional(),
+  }),
+  execute: async ({ date, intent, includeBacklog, preferences }) => {
+    try {
+      // Create workflow with persistence
+      const baseWorkflow = createAdaptiveSchedulingWorkflow();
+      const workflow = createPersistentWorkflow(baseWorkflow, 'scheduling');
+      
+      const targetDate = date || format(new Date(), 'yyyy-MM-dd');
+      const userId = await getCurrentUserId();
+      
+      // Run the adaptive workflow
+      const result = await workflow.invoke({
+        userId,
+        date: targetDate,
+        intentHint: intent,
+        includeBacklog,
+        userPreferences: preferences,
+        proposedChanges: [],
+        messages: [],
+      });
+      
+      // Handle results based on what happened
+      if (result.proposedChanges.length === 0) {
+        return toolSuccess(
+          { message: 'Your schedule is already well-optimized!', strategy: result.strategy },
+          { type: 'text', content: 'No changes needed - your schedule looks great!' },
+          { suggestions: ['Show my schedule', 'Add a new task', 'Check tomorrow'] }
+        );
+      }
+      
+      // Store proposals and return confirmation
+      const confirmationId = crypto.randomUUID();
+      await storeProposedChanges(confirmationId, result.proposedChanges);
+      
+      return toolConfirmation(
+        {
+          proposedChanges: result.proposedChanges,
+          strategy: result.strategy,
+          summary: result.summary,
+        },
+        confirmationId,
+        result.summary // Natural language summary from workflow
+      );
+      
+    } catch (error) {
+      return toolError(
+        'SCHEDULE_WORKFLOW_FAILED',
+        `Failed to process schedule: ${error.message}`,
+        error
+      );
+    }
+  },
+});
+```
+
+### 2. Create the Single Adaptive Scheduling Workflow
 
 **File**: `apps/web/modules/workflows/graphs/adaptiveScheduling.ts`
 
 ```typescript
 import { StateGraph, END } from "@langchain/langgraph";
 import { BaseMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
-import { ChatOpenAI } from "@langchain/openai";
-import { z } from "zod";
-
-// Define the state that flows through the workflow
-interface SchedulingState {
-  userId: string;
-  date: string;
-  currentSchedule: TimeBlock[];
-  unassignedTasks: Task[];
-  taskBacklog: TaskBacklog[];
-  userPreferences: UserPreferences;
-  ragContext?: RAGContext; // Will be populated in Sprint 03.04
-  strategy?: "full" | "partial" | "optimize" | "task_only";
-  proposedChanges: ScheduleChange[];
-  messages: BaseMessage[];
-}
-
-// Define what changes we're proposing
-interface ScheduleChange {
-  action: "create" | "move" | "delete" | "assign";
-  description: string;
-  details: any;
-}
+import { ServiceFactory } from "@/services/factory/service.factory";
+import { 
+  createWorkBlock, 
+  createEmailBlock, 
+  findTasks,
+  assignTaskToBlock 
+} from "@/modules/ai/tools";
 
 export function createAdaptiveSchedulingWorkflow() {
   const workflow = new StateGraph<SchedulingState>({
@@ -358,19 +386,17 @@ export function createAdaptiveSchedulingWorkflow() {
       userPreferences: null,
       ragContext: null,
       strategy: null,
+      inefficiencies: [],
       proposedChanges: [],
       messages: [],
     },
   });
 
-  // Add nodes (each node is a step in the workflow)
+  // Add nodes
   workflow.addNode("fetchData", fetchDataNode);
-  workflow.addNode("analyzeState", analyzeCurrentStateNode);
+  workflow.addNode("analyzeState", analyzeStateNode);
   workflow.addNode("determineStrategy", determineStrategyNode);
-  workflow.addNode("fullPlanning", fullPlanningNode);
-  workflow.addNode("partialPlanning", partialPlanningNode);
-  workflow.addNode("optimization", optimizationNode);
-  workflow.addNode("taskAssignment", taskAssignmentNode);
+  workflow.addNode("executeStrategy", executeStrategyNode);
   workflow.addNode("protectBreaks", protectBreaksNode);
   workflow.addNode("validateSchedule", validateScheduleNode);
   workflow.addNode("generateSummary", generateSummaryNode);
@@ -378,25 +404,8 @@ export function createAdaptiveSchedulingWorkflow() {
   // Define the flow
   workflow.addEdge("fetchData", "analyzeState");
   workflow.addEdge("analyzeState", "determineStrategy");
-  
-  // Conditional routing based on strategy
-  workflow.addConditionalEdges(
-    "determineStrategy",
-    (state) => state.strategy || "full",
-    {
-      full: "fullPlanning",
-      partial: "partialPlanning",
-      optimize: "optimization",
-      task_only: "taskAssignment",
-    }
-  );
-
-  // All strategies converge to break protection
-  workflow.addEdge("fullPlanning", "protectBreaks");
-  workflow.addEdge("partialPlanning", "protectBreaks");
-  workflow.addEdge("optimization", "protectBreaks");
-  workflow.addEdge("taskAssignment", "protectBreaks");
-  
+  workflow.addEdge("determineStrategy", "executeStrategy");
+  workflow.addEdge("executeStrategy", "protectBreaks");
   workflow.addEdge("protectBreaks", "validateSchedule");
   workflow.addEdge("validateSchedule", "generateSummary");
   workflow.addEdge("generateSummary", END);
@@ -405,47 +414,55 @@ export function createAdaptiveSchedulingWorkflow() {
 
   return workflow.compile();
 }
+```
 
-### 2. Implement Workflow Nodes
+### 3. Implement Key Workflow Nodes
 
-Each node is a function that takes state and returns updated state. Here are the key nodes:
-
-#### Fetch Data Node
+#### Fetch Data Node - Uses Smart Tools
 ```typescript
 async function fetchDataNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
-  // Fetch all necessary data in parallel for efficiency
-  const [schedule, tasks, backlog, preferences] = await Promise.all([
+  const factory = ServiceFactory.getInstance();
+  const scheduleService = factory.getScheduleService();
+  const preferencesService = factory.getPreferencesService();
+  
+  // Fetch schedule and preferences in parallel
+  const [schedule, preferences] = await Promise.all([
     scheduleService.getScheduleForDate(state.date, state.userId),
-    taskService.getUnassignedTasks(state.userId),
-    taskService.getTaskBacklog(state.userId),
     preferencesService.getUserPreferences(state.userId),
   ]);
-
+  
+  // Use enhanced findTasks to get both unassigned and backlog
+  const taskResult = await findTasks.execute({
+    status: 'pending', // Will be mapped to 'backlog' by the tool
+    priority: 'high',
+    limit: 20,
+  });
+  
   return {
     currentSchedule: schedule.blocks,
-    unassignedTasks: tasks,
-    taskBacklog: backlog.filter(t => t.priority > 70), // Only high priority from backlog
+    unassignedTasks: taskResult.data.tasks.filter(t => !t.blockId),
+    taskBacklog: taskResult.data.tasks,
     userPreferences: preferences,
   };
 }
 ```
 
-#### Analyze Current State Node
+#### Analyze State Node - Detects Inefficiencies
 ```typescript
-async function analyzeCurrentStateNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
+async function analyzeStateNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
   const analysis = {
     totalScheduledHours: 0,
     hasLunchBreak: false,
     hasFocusTime: false,
     hasEmailTime: false,
     gaps: [] as TimeGap[],
-    conflicts: [] as Conflict[],
+    inefficiencies: [] as Inefficiency[],
   };
 
-  // Analyze existing schedule
+  // Basic analysis
   state.currentSchedule.forEach(block => {
     const duration = calculateDuration(block.startTime, block.endTime);
-    analysis.totalScheduledHours += duration;
+    analysis.totalScheduledHours += duration / 60;
     
     if (block.type === "break" && isLunchTime(block)) {
       analysis.hasLunchBreak = true;
@@ -458,378 +475,238 @@ async function analyzeCurrentStateNode(state: SchedulingState): Promise<Partial<
     }
   });
 
-  // Find gaps in schedule
+  // Find gaps
   analysis.gaps = findScheduleGaps(state.currentSchedule, state.userPreferences);
+  
+  // Detect inefficiencies for optimization
+  if (state.currentSchedule.length > 0) {
+    // Small unproductive gaps
+    analysis.gaps.forEach(gap => {
+      if (gap.duration >= 15 && gap.duration < 30) {
+        analysis.inefficiencies.push({
+          type: "gap",
+          description: `${gap.duration}-minute gap is too short for productive work`,
+          severity: "medium",
+          affectedBlocks: getAdjacentBlockIds(state.currentSchedule, gap),
+        });
+      }
+    });
+    
+    // Fragmented focus time
+    const focusBlocks = state.currentSchedule.filter(b => b.type === "focus");
+    if (focusBlocks.length > 2) {
+      analysis.inefficiencies.push({
+        type: "fragmentation",
+        description: "Focus time is fragmented across multiple blocks",
+        severity: "high",
+        affectedBlocks: focusBlocks.map(b => b.id),
+      });
+    }
+  }
 
-  // Add analysis to messages for the strategy determiner
   return {
     messages: [
       ...state.messages,
       new HumanMessage(`Schedule analysis: ${JSON.stringify(analysis)}`),
     ],
+    inefficiencies: analysis.inefficiencies,
   };
 }
 ```
 
-#### Determine Strategy Node (Router)
+#### Determine Strategy Node - Smart Routing
 ```typescript
 async function determineStrategyNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
-  const model = new ChatOpenAI({ temperature: 0 });
+  const { currentSchedule, unassignedTasks, inefficiencies, intentHint } = state;
   
-  const prompt = `Based on the schedule analysis, determine the best strategy:
+  let strategy: SchedulingState['strategy'];
   
-  Current state:
-  - Scheduled hours: ${state.currentSchedule.length}
-  - Unassigned tasks: ${state.unassignedTasks.length}
-  - High priority backlog: ${state.taskBacklog.length}
+  // Rule-based strategy selection
+  if (currentSchedule.length === 0) {
+    strategy = "full";
+  } else if (inefficiencies.length > 2 && currentSchedule.length >= 4) {
+    strategy = "optimize";
+  } else if (unassignedTasks.length > 0 && hasAvailableFocusBlocks(currentSchedule)) {
+    strategy = "task_only";
+  } else if (hasSignificantGaps(state)) {
+    strategy = "partial";
+  } else if (intentHint === 'optimize') {
+    strategy = "optimize";
+  } else {
+    strategy = "task_only"; // Default to least disruptive
+  }
   
-  Strategies:
-  - "full": Empty or nearly empty schedule, needs complete planning
-  - "partial": Some blocks exist, fill in the gaps
-  - "optimize": Full schedule but could be improved
-  - "task_only": Just assign tasks to existing blocks
-  
-  Choose the most appropriate strategy.`;
-
-  const response = await model.invoke([
-    new SystemMessage(prompt),
-    ...state.messages,
-  ]);
-
-  // Parse strategy from response
-  const strategy = parseStrategy(response.content);
-
   return {
     strategy,
-    messages: [...state.messages, response],
-  };
-}
-
-#### Full Planning Node
-```typescript
-async function fullPlanningNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
-  const proposedChanges: ScheduleChange[] = [];
-  const workStart = parseTime(state.userPreferences.work_start_time);
-  const workEnd = parseTime(state.userPreferences.work_end_time);
-  
-  // 1. Create morning focus block (2 hours)
-  proposedChanges.push({
-    action: "create",
-    description: "Morning deep work session",
-    details: {
-      type: "focus",
-      title: "Deep Work",
-      startTime: workStart,
-      endTime: addHours(workStart, 2),
-    },
-  });
-
-  // 2. Add short break
-  proposedChanges.push({
-    action: "create",
-    description: "Morning break",
-    details: {
-      type: "break",
-      title: "Break",
-      startTime: addHours(workStart, 2),
-      endTime: addMinutes(addHours(workStart, 2), 15),
-    },
-  });
-
-  // 3. Email triage block
-  proposedChanges.push({
-    action: "create",
-    description: "Email and communication time",
-    details: {
-      type: "email",
-      title: "Email Triage",
-      startTime: addMinutes(addHours(workStart, 2), 15),
-      endTime: addHours(workStart, 3),
-    },
-  });
-
-  // 4. Lunch break (always protected)
-  const lunchTime = parseTime(state.userPreferences.lunch_start_time || "12:00");
-  proposedChanges.push({
-    action: "create",
-    description: "Lunch break",
-    details: {
-      type: "break",
-      title: "Lunch",
-      startTime: lunchTime,
-      endTime: addMinutes(lunchTime, state.userPreferences.lunch_duration_minutes || 60),
-    },
-  });
-
-  // 5. Afternoon focus block
-  proposedChanges.push({
-    action: "create",
-    description: "Afternoon deep work",
-    details: {
-      type: "focus",
-      title: "Deep Work",
-      startTime: addHours(lunchTime, 1),
-      endTime: addHours(lunchTime, 3),
-    },
-  });
-
-  // 6. End of day email check
-  proposedChanges.push({
-    action: "create",
-    description: "End of day emails",
-    details: {
-      type: "email",
-      title: "Email Review",
-      startTime: addHours(workEnd, -1),
-      endTime: workEnd,
-    },
-  });
-
-  return { proposedChanges };
-}
-```
-
-#### Partial Planning Node
-```typescript
-async function partialPlanningNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
-  const proposedChanges: ScheduleChange[] = [];
-  const gaps = findScheduleGaps(state.currentSchedule, state.userPreferences);
-  
-  // Fill gaps intelligently
-  for (const gap of gaps) {
-    if (gap.duration >= 120) { // 2+ hour gap
-      proposedChanges.push({
-        action: "create",
-        description: `Fill ${gap.duration}min gap with focus time`,
-        details: {
-          type: "focus",
-          title: "Deep Work",
-          startTime: gap.startTime,
-          endTime: gap.endTime,
-        },
-      });
-    } else if (gap.duration >= 30) { // 30min+ gap
-      proposedChanges.push({
-        action: "create",
-        description: `Use ${gap.duration}min gap for emails`,
-        details: {
-          type: "email",
-          title: "Quick Emails",
-          startTime: gap.startTime,
-          endTime: gap.endTime,
-        },
-      });
-    }
-    // Gaps under 30min are left as buffer time
-  }
-
-  return { proposedChanges };
-}
-```
-
-#### Protect Breaks Node
-```typescript
-async function protectBreaksNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
-  const updatedChanges = [...state.proposedChanges];
-  const lunchTime = parseTime(state.userPreferences.lunch_start_time || "12:00");
-  const lunchDuration = state.userPreferences.lunch_duration_minutes || 60;
-  
-  // Check if lunch break exists in current schedule or proposed changes
-  const hasLunchBreak = 
-    state.currentSchedule.some(block => 
-      block.type === "break" && isTimeOverlap(block, lunchTime, lunchDuration)
-    ) ||
-    updatedChanges.some(change => 
-      change.action === "create" && 
-      change.details.type === "break" &&
-      isTimeOverlap(change.details, lunchTime, lunchDuration)
-    );
-
-  if (!hasLunchBreak) {
-    // Find what's scheduled during lunch and move it
-    const lunchConflicts = findConflicts(state.currentSchedule, lunchTime, lunchDuration);
-    
-    for (const conflict of lunchConflicts) {
-      updatedChanges.push({
-        action: "move",
-        description: `Moving ${conflict.title} to make room for lunch`,
-        details: {
-          blockId: conflict.id,
-          newStartTime: findNextAvailableTime(state.currentSchedule, conflict.duration),
-        },
-      });
-    }
-
-    // Add lunch break
-    updatedChanges.push({
-      action: "create",
-      description: "Protected lunch break",
-      details: {
-        type: "break",
-        title: "Lunch",
-        startTime: formatTime(lunchTime),
-        endTime: formatTime(addMinutes(lunchTime, lunchDuration)),
-        protected: true, // This will auto-decline meetings
-      },
-    });
-  }
-
-  return { proposedChanges: updatedChanges };
-}
-```
-
-#### Generate Summary Node
-```typescript
-async function generateSummaryNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
-  // Group changes by type for cleaner summary
-  const changesByType = {
-    create: state.proposedChanges.filter(c => c.action === "create"),
-    move: state.proposedChanges.filter(c => c.action === "move"),
-    delete: state.proposedChanges.filter(c => c.action === "delete"),
-    assign: state.proposedChanges.filter(c => c.action === "assign"),
-  };
-
-  // Generate human-readable summary
-  const summary = generateReadableSummary(changesByType);
-  
-  // Add summary to state for the AI to use
-  return {
     messages: [
       ...state.messages,
-      new AIMessage(summary),
+      new AIMessage(`Selected strategy: ${strategy}`),
     ],
   };
 }
 ```
 
-### 3. Integrate Workflow as an AI Tool
-
-**File**: `apps/web/modules/ai/tools/workflow-tools.ts`
-
+#### Execute Strategy Node - Uses Smart Tools
 ```typescript
-import { tool } from "ai";
-import { z } from "zod";
-import { createAdaptiveSchedulingWorkflow } from "@/modules/workflows/graphs/adaptiveScheduling";
-
-export const scheduleDay = tool({
-  description: "Intelligently plan or adjust the daily schedule",
-  parameters: z.object({
-    date: z.string().optional().describe("YYYY-MM-DD format, defaults to today"),
-    includeBacklog: z.boolean().default(true).describe("Include high-priority backlog tasks"),
-    preferences: z.object({
-      focusTime: z.enum(["morning", "afternoon", "both"]).optional(),
-      emailBatching: z.boolean().default(true),
-    }).optional(),
-  }),
-  execute: async ({ date, includeBacklog, preferences }) => {
-    const workflow = createAdaptiveSchedulingWorkflow();
-    const targetDate = date || format(new Date(), "yyyy-MM-dd");
-    
-    // Run the workflow
-    const result = await workflow.invoke({
-      userId: getCurrentUserId(),
-      date: targetDate,
-      includeBacklog,
-      preferences,
-      proposedChanges: [],
-      messages: [],
-    });
-
-    // Format the proposed changes for display
-    const formattedSummary = formatWorkflowResult(result);
-    
-    // Store proposed changes for confirmation
-    await storeProposedChanges(result.proposedChanges);
-    
-    return {
-      success: true,
-      summary: formattedSummary,
-      changeCount: result.proposedChanges.length,
-      requiresConfirmation: true,
-      confirmationId: generateConfirmationId(),
-    };
-  },
-});
-```
-
-### 4. Add Confirmation Tool
-
-**File**: `apps/web/modules/ai/tools/workflow-tools.ts`
-
-```typescript
-export const confirmScheduleChanges = tool({
-  description: "Confirm and apply proposed schedule changes",
-  parameters: z.object({
-    confirmationId: z.string(),
-    confirmed: z.boolean(),
-    modifications: z.array(z.object({
-      changeIndex: z.number(),
-      newDetails: z.any(),
-    })).optional(),
-  }),
-  execute: async ({ confirmationId, confirmed, modifications }) => {
-    if (!confirmed) {
-      return { success: true, message: "Changes cancelled" };
-    }
-
-    const proposedChanges = await getProposedChanges(confirmationId);
-    if (!proposedChanges) {
-      return { success: false, message: "Confirmation expired or not found" };
-    }
-
-    // Apply modifications if any
-    const finalChanges = modifications 
-      ? applyModifications(proposedChanges, modifications)
-      : proposedChanges;
-
-    // Execute all changes
-    const results = [];
-    for (const change of finalChanges) {
-      try {
-        const result = await executeScheduleChange(change);
-        results.push(result);
-      } catch (error) {
-        // Rollback on failure
-        await rollbackChanges(results);
-        throw error;
+async function executeStrategyNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
+  const proposedChanges: ScheduleChange[] = [];
+  
+  switch (state.strategy) {
+    case "full":
+      // Use smart tools to create a full day
+      const morningBlock = await createWorkBlock.execute({
+        duration: 120,
+        timePreference: 'morning',
+        maxTasks: 3,
+      });
+      
+      if (morningBlock.data.success) {
+        proposedChanges.push({
+          action: "create",
+          description: "Morning deep work session",
+          block: morningBlock.data.block,
+        });
       }
-    }
-
-    return {
-      success: true,
-      message: `Applied ${results.length} changes to your schedule`,
-      appliedChanges: results,
-    };
-  },
-});
+      
+      // Add email block
+      const emailBlock = await createEmailBlock.execute({
+        duration: 45,
+        timePreference: '11:00am',
+        emailTypes: ['urgent', 'important'],
+      });
+      
+      if (emailBlock.data.success) {
+        proposedChanges.push({
+          action: "create",
+          description: "Email triage time",
+          block: emailBlock.data.block,
+        });
+      }
+      
+      // Always add lunch
+      proposedChanges.push({
+        action: "create",
+        description: "Lunch break",
+        block: {
+          type: "break",
+          title: "Lunch",
+          startTime: state.userPreferences.lunch_start_time || "12:00",
+          endTime: "13:00",
+          protected: true,
+        },
+      });
+      break;
+      
+    case "optimize":
+      // Fix inefficiencies
+      state.inefficiencies?.forEach(inefficiency => {
+        if (inefficiency.type === "gap" && inefficiency.affectedBlocks.length === 2) {
+          // Extend the first block to fill the gap
+          const [beforeId, afterId] = inefficiency.affectedBlocks;
+          const afterBlock = state.currentSchedule.find(b => b.id === afterId);
+          
+          if (afterBlock) {
+            proposedChanges.push({
+              action: "move",
+              description: `Extend block to eliminate ${inefficiency.description}`,
+              blockId: beforeId,
+              newStartTime: state.currentSchedule.find(b => b.id === beforeId)!.startTime,
+              newEndTime: afterBlock.startTime,
+            });
+          }
+        }
+        
+        if (inefficiency.type === "fragmentation") {
+          // Consolidate focus blocks
+          const blocks = inefficiency.affectedBlocks
+            .map(id => state.currentSchedule.find(b => b.id === id))
+            .filter(Boolean);
+          
+          // Keep first two, remove others
+          blocks.slice(2).forEach(block => {
+            proposedChanges.push({
+              action: "delete",
+              description: "Remove fragmented focus block",
+              blockId: block!.id,
+            });
+          });
+        }
+      });
+      break;
+      
+    case "partial":
+      // Fill significant gaps with smart blocks
+      const gaps = findScheduleGaps(state.currentSchedule, state.userPreferences);
+      for (const gap of gaps) {
+        if (gap.duration >= 90) {
+          const workBlock = await createWorkBlock.execute({
+            duration: gap.duration,
+            timePreference: gap.startTime,
+            maxTasks: Math.floor(gap.duration / 30),
+          });
+          
+          if (workBlock.data.success) {
+            proposedChanges.push({
+              action: "create",
+              description: `Fill ${gap.duration}-minute gap with productive work`,
+              block: workBlock.data.block,
+            });
+          }
+        }
+      }
+      break;
+      
+    case "task_only":
+      // Just assign tasks to existing blocks
+      const focusBlocks = state.currentSchedule.filter(b => b.type === "focus");
+      for (const task of state.unassignedTasks.slice(0, 5)) {
+        const targetBlock = findBestBlockForTask(task, focusBlocks);
+        if (targetBlock) {
+          proposedChanges.push({
+            action: "assign",
+            description: `Assign "${task.title}" to ${targetBlock.title}`,
+            taskId: task.id,
+            blockId: targetBlock.id,
+          });
+        }
+      }
+      break;
+  }
+  
+  return { proposedChanges };
+}
 ```
 
-### 5. Helper Functions
+### 4. Helper Functions
 
 **File**: `apps/web/modules/workflows/utils/scheduleHelpers.ts`
 
 ```typescript
-// Time parsing and manipulation
+import { format, parse, addMinutes, differenceInMinutes } from 'date-fns';
+
+// Time parsing that handles multiple formats
 export function parseTime(timeStr: string): Date {
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  const date = new Date();
-  date.setHours(hours, minutes, 0, 0);
-  return date;
+  // Handle formats: "14:00", "2:00 PM", "2pm"
+  const cleaned = timeStr.trim().toLowerCase();
+  const today = new Date();
+  
+  // Try parsing different formats
+  if (cleaned.includes(':')) {
+    const [hours, minutes] = cleaned.replace(/[ap]m/i, '').split(':').map(Number);
+    const isPM = cleaned.includes('pm');
+    const adjustedHours = isPM && hours !== 12 ? hours + 12 : hours;
+    today.setHours(adjustedHours, minutes, 0, 0);
+  } else if (cleaned.match(/^\d{1,2}[ap]m$/)) {
+    const hours = parseInt(cleaned);
+    const isPM = cleaned.includes('pm');
+    const adjustedHours = isPM && hours !== 12 ? hours + 12 : hours;
+    today.setHours(adjustedHours, 0, 0, 0);
+  }
+  
+  return today;
 }
 
-export function formatTime(date: Date): string {
-  return format(date, 'HH:mm');
-}
-
-export function addHours(date: Date, hours: number): Date {
-  return addHours(date, hours);
-}
-
-export function addMinutes(date: Date, minutes: number): Date {
-  return addMinutes(date, minutes);
-}
-
-// Schedule analysis
+// Find gaps in schedule
 export function findScheduleGaps(
   blocks: TimeBlock[], 
   preferences: UserPreferences
@@ -839,15 +716,16 @@ export function findScheduleGaps(
     parseTime(a.startTime).getTime() - parseTime(b.startTime).getTime()
   );
 
-  const workStart = parseTime(preferences.work_start_time);
-  const workEnd = parseTime(preferences.work_end_time);
+  const workStart = parseTime(preferences.work_start_time || "9:00");
+  const workEnd = parseTime(preferences.work_end_time || "17:00");
 
   // Check gap at start of day
   if (sortedBlocks.length === 0 || parseTime(sortedBlocks[0].startTime) > workStart) {
+    const gapEnd = sortedBlocks[0] ? parseTime(sortedBlocks[0].startTime) : workEnd;
     gaps.push({
-      startTime: formatTime(workStart),
-      endTime: sortedBlocks[0]?.startTime || formatTime(workEnd),
-      duration: calculateDuration(workStart, sortedBlocks[0] ? parseTime(sortedBlocks[0].startTime) : workEnd),
+      startTime: format(workStart, 'HH:mm'),
+      endTime: format(gapEnd, 'HH:mm'),
+      duration: differenceInMinutes(gapEnd, workStart),
     });
   }
 
@@ -855,9 +733,9 @@ export function findScheduleGaps(
   for (let i = 0; i < sortedBlocks.length - 1; i++) {
     const currentEnd = parseTime(sortedBlocks[i].endTime);
     const nextStart = parseTime(sortedBlocks[i + 1].startTime);
-    const gapDuration = calculateDuration(currentEnd, nextStart);
+    const gapDuration = differenceInMinutes(nextStart, currentEnd);
 
-    if (gapDuration > 15) { // Only gaps > 15 minutes
+    if (gapDuration > 15) {
       gaps.push({
         startTime: sortedBlocks[i].endTime,
         endTime: sortedBlocks[i + 1].startTime,
@@ -866,535 +744,160 @@ export function findScheduleGaps(
     }
   }
 
-  // Check gap at end of day
-  const lastBlock = sortedBlocks[sortedBlocks.length - 1];
-  if (lastBlock && parseTime(lastBlock.endTime) < workEnd) {
-    gaps.push({
-      startTime: lastBlock.endTime,
-      endTime: formatTime(workEnd),
-      duration: calculateDuration(parseTime(lastBlock.endTime), workEnd),
-    });
-  }
-
   return gaps;
 }
 
-// Conflict detection
-export function findConflicts(
-  blocks: TimeBlock[], 
-  startTime: Date, 
-  durationMinutes: number
-): TimeBlock[] {
-  const endTime = addMinutes(startTime, durationMinutes);
-  
-  return blocks.filter(block => {
-    const blockStart = parseTime(block.startTime);
-    const blockEnd = parseTime(block.endTime);
-    
-    return (
-      (blockStart >= startTime && blockStart < endTime) ||
-      (blockEnd > startTime && blockEnd <= endTime) ||
-      (blockStart <= startTime && blockEnd >= endTime)
-    );
-  });
-}
-
-// Summary generation
-export function generateReadableSummary(changesByType: ChangesByType): string {
+// Generate natural language summary
+export function generateReadableSummary(
+  changes: ScheduleChange[], 
+  strategy: string
+): string {
   const parts = [];
-
-  if (changesByType.create.length > 0) {
-    parts.push(`I'll add ${changesByType.create.length} new blocks to your schedule:`);
-    changesByType.create.forEach(change => {
-      parts.push(`- ${change.description} from ${change.details.startTime} to ${change.details.endTime}`);
+  
+  // Strategy-specific intro
+  switch (strategy) {
+    case "full":
+      parts.push("I'll create a complete schedule for your day:");
+      break;
+    case "partial":
+      parts.push("I'll fill the gaps in your schedule:");
+      break;
+    case "optimize":
+      parts.push("I'll optimize your schedule for better efficiency:");
+      break;
+    case "task_only":
+      parts.push("I'll assign your tasks to existing time blocks:");
+      break;
+  }
+  
+  // Group changes by type
+  const grouped = changes.reduce((acc, change) => {
+    if (!acc[change.action]) acc[change.action] = [];
+    acc[change.action].push(change);
+    return acc;
+  }, {} as Record<string, ScheduleChange[]>);
+  
+  // Describe changes
+  if (grouped.create) {
+    parts.push(`\n• Creating ${grouped.create.length} new blocks:`);
+    grouped.create.forEach(change => {
+      if (change.action === 'create') {
+        parts.push(`  - ${change.block.title} at ${change.block.startTime}`);
+      }
     });
   }
-
-  if (changesByType.move.length > 0) {
-    parts.push(`\nI'll move ${changesByType.move.length} existing blocks:`);
-    changesByType.move.forEach(change => {
-      parts.push(`- ${change.description}`);
+  
+  if (grouped.move) {
+    parts.push(`\n• Moving ${grouped.move.length} blocks:`);
+    grouped.move.forEach(change => {
+      parts.push(`  - ${change.description}`);
     });
   }
-
-  if (changesByType.assign.length > 0) {
-    parts.push(`\nI'll assign ${changesByType.assign.length} tasks:`);
-    changesByType.assign.forEach(change => {
-      parts.push(`- ${change.description}`);
+  
+  if (grouped.assign) {
+    parts.push(`\n• Assigning ${grouped.assign.length} tasks:`);
+    grouped.assign.forEach(change => {
+      parts.push(`  - ${change.description}`);
     });
   }
-
-  parts.push('\nYour lunch break at 12:00 PM is protected. Is this schedule OK?');
-
+  
+  parts.push('\n\nYour lunch break is protected. Would you like me to apply these changes?');
+  
   return parts.join('\n');
 }
-```
 
-### 6. Calendar Protection Implementation
-
-**File**: `apps/web/modules/schedule/services/calendarProtection.ts`
-
-```typescript
-import { google } from 'googleapis';
-
-export class CalendarProtectionService {
-  private calendar = google.calendar('v3');
-
-  async protectTimeBlock(block: TimeBlock, userId: string) {
-    const userCalendar = await getUserCalendarId(userId);
-    
-    // Create a calendar event that shows as "busy"
-    const event = {
-      summary: block.title,
-      description: `Protected time: ${block.type}`,
-      start: {
-        dateTime: combineDateAndTime(block.date, block.startTime),
-        timeZone: getUserTimezone(userId),
-      },
-      end: {
-        dateTime: combineDateAndTime(block.date, block.endTime),
-        timeZone: getUserTimezone(userId),
-      },
-      // This makes the time show as busy and auto-decline conflicts
-      transparency: 'opaque',
-      visibility: 'private',
-      reminders: {
-        useDefault: false,
-      },
-      // Custom property to identify dayli-managed blocks
-      extendedProperties: {
-        private: {
-          dayliBlockId: block.id,
-          dayliBlockType: block.type,
-          autoDecline: 'true',
-        },
-      },
-    };
-
-    const response = await this.calendar.events.insert({
-      calendarId: userCalendar,
-      requestBody: event,
-    });
-
-    return response.data;
-  }
-
-  async handleIncomingMeetingRequest(event: CalendarEvent, userId: string) {
-    // Check if the meeting conflicts with protected time
-    const conflicts = await findProtectedTimeConflicts(
-      event.start,
-      event.end,
-      userId
-    );
-
-    if (conflicts.length > 0) {
-      // Auto-decline the meeting
-      await this.calendar.events.patch({
-        calendarId: 'primary',
-        eventId: event.id,
-        requestBody: {
-          attendees: [{
-            email: getUserEmail(userId),
-            responseStatus: 'declined',
-            comment: 'This time is blocked for focused work. Please find another time.',
-          }],
-        },
-      });
-
-      // Notify the user via chat
-      await notifyUserOfDeclinedMeeting(event, conflicts[0]);
-    }
-  }
-}
-```
-
-### 7. [ADDITION] Schedule Optimization Workflow
-
-**Note**: This workflow was identified as missing from the original sprint planning but is listed in the epic tracker under "Core Workflows to Implement". It complements the Adaptive Scheduling Workflow by providing non-destructive schedule improvements.
-
-**File**: `apps/web/modules/workflows/graphs/scheduleOptimization.ts`
-
-```typescript
-import { StateGraph, END } from "@langchain/langgraph";
-import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
-import { ChatOpenAI } from "@langchain/openai";
-
-interface OptimizationState {
-  userId: string;
-  date: string;
-  currentSchedule: TimeBlock[];
-  userPreferences: UserPreferences;
-  ragContext?: RAGContext;
-  inefficiencies: Inefficiency[];
-  optimizations: ScheduleOptimization[];
-  messages: BaseMessage[];
-}
-
-interface Inefficiency {
-  type: "gap" | "fragmentation" | "poor_timing" | "task_mismatch";
-  description: string;
-  blocks: TimeBlock[];
-  impact: "low" | "medium" | "high";
-}
-
-interface ScheduleOptimization {
-  description: string;
-  changes: ScheduleChange[];
-  benefit: string;
-  estimatedTimeGain: number; // in minutes
-}
-
-export function createScheduleOptimizationWorkflow() {
-  const workflow = new StateGraph<OptimizationState>({
-    channels: {
-      userId: null,
-      date: null,
-      currentSchedule: null,
-      userPreferences: null,
-      ragContext: null,
-      inefficiencies: [],
-      optimizations: [],
-      messages: [],
-    },
-  });
-
-  // Add nodes
-  workflow.addNode("analyzeEfficiency", analyzeEfficiencyNode);
-  workflow.addNode("identifyOptimizations", identifyOptimizationsNode);
-  workflow.addNode("respectConstraints", respectConstraintsNode);
-  workflow.addNode("proposeChanges", proposeChangesNode);
-  workflow.addNode("calculateBenefits", calculateBenefitsNode);
-
-  // Define flow
-  workflow.addEdge("analyzeEfficiency", "identifyOptimizations");
-  workflow.addEdge("identifyOptimizations", "respectConstraints");
-  workflow.addEdge("respectConstraints", "proposeChanges");
-  workflow.addEdge("proposeChanges", "calculateBenefits");
-  workflow.addEdge("calculateBenefits", END);
-
-  workflow.setEntryPoint("analyzeEfficiency");
-
-  return workflow.compile();
-}
-
-// Analyze current schedule for inefficiencies
-async function analyzeEfficiencyNode(state: OptimizationState): Promise<Partial<OptimizationState>> {
-  const inefficiencies: Inefficiency[] = [];
+// Check if block is lunch time
+export function isLunchTime(block: TimeBlock): boolean {
+  const blockStart = parseTime(block.startTime);
+  const lunchStart = parseTime("11:30");
+  const lunchEnd = parseTime("13:30");
   
-  // 1. Find small gaps (15-30 minutes) that are too short to be productive
-  const gaps = findScheduleGaps(state.currentSchedule, state.userPreferences);
-  gaps.forEach(gap => {
-    if (gap.duration >= 15 && gap.duration < 30) {
-      inefficiencies.push({
-        type: "gap",
-        description: `${gap.duration}-minute gap between blocks is too short for productive work`,
-        blocks: getAdjacentBlocks(state.currentSchedule, gap),
-        impact: "medium",
-      });
-    }
+  return blockStart >= lunchStart && blockStart <= lunchEnd && 
+         block.type === "break";
+}
+
+// Find best block for a task
+export function findBestBlockForTask(
+  task: Task, 
+  focusBlocks: TimeBlock[]
+): TimeBlock | null {
+  // Simple algorithm - find block with least tasks
+  const blocksWithCapacity = focusBlocks.filter(block => {
+    const duration = calculateDuration(block.startTime, block.endTime);
+    const currentTaskTime = (block.tasks?.length || 0) * 30; // Assume 30 min per task
+    return duration - currentTaskTime >= task.estimatedMinutes;
   });
-
-  // 2. Find fragmented focus time (multiple small focus blocks instead of consolidated ones)
-  const focusBlocks = state.currentSchedule.filter(b => b.type === "focus");
-  if (focusBlocks.length > 2) {
-    const totalFocusTime = focusBlocks.reduce((sum, block) => 
-      sum + calculateDuration(block.startTime, block.endTime), 0
-    );
-    if (totalFocusTime < 240) { // Less than 4 hours total
-      inefficiencies.push({
-        type: "fragmentation",
-        description: "Focus time is fragmented across multiple small blocks",
-        blocks: focusBlocks,
-        impact: "high",
-      });
-    }
-  }
-
-  // 3. Check for poor timing (e.g., deep work scheduled right after lunch)
-  const lunchBlock = state.currentSchedule.find(b => 
-    b.type === "break" && isLunchTime(b)
+  
+  if (blocksWithCapacity.length === 0) return null;
+  
+  // Return block with fewest tasks
+  return blocksWithCapacity.reduce((best, block) => 
+    (block.tasks?.length || 0) < (best.tasks?.length || 0) ? block : best
   );
-  if (lunchBlock) {
-    const postLunchBlock = state.currentSchedule.find(b => 
-      b.startTime === lunchBlock.endTime && b.type === "focus"
-    );
-    if (postLunchBlock) {
-      inefficiencies.push({
-        type: "poor_timing",
-        description: "Deep work scheduled immediately after lunch (low energy time)",
-        blocks: [postLunchBlock],
-        impact: "medium",
-      });
-    }
-  }
-
-  return { inefficiencies };
 }
-
-// Identify possible optimizations
-async function identifyOptimizationsNode(state: OptimizationState): Promise<Partial<OptimizationState>> {
-  const optimizations: ScheduleOptimization[] = [];
-
-  // For each inefficiency, generate optimization suggestions
-  state.inefficiencies.forEach(inefficiency => {
-    switch (inefficiency.type) {
-      case "gap":
-        // Suggest extending adjacent blocks to fill gaps
-        const [before, after] = inefficiency.blocks;
-        if (before && before.type === "focus") {
-          optimizations.push({
-            description: "Extend focus block to eliminate unproductive gap",
-            changes: [{
-              action: "move",
-              description: `Extend ${before.title} by ${inefficiency.description.match(/\d+/)[0]} minutes`,
-              details: {
-                blockId: before.id,
-                newEndTime: after.startTime,
-              },
-            }],
-            benefit: "Eliminates context switching and maximizes deep work time",
-            estimatedTimeGain: 15,
-          });
-        }
-        break;
-
-      case "fragmentation":
-        // Suggest consolidating focus blocks
-        const focusBlocks = inefficiency.blocks;
-        const totalDuration = focusBlocks.reduce((sum, b) => 
-          sum + calculateDuration(b.startTime, b.endTime), 0
-        );
-        
-        optimizations.push({
-          description: "Consolidate fragmented focus time into 2 larger blocks",
-          changes: [
-            // This would be more complex in practice, showing simplified version
-            {
-              action: "delete",
-              description: "Remove small focus blocks",
-              details: { blockIds: focusBlocks.slice(2).map(b => b.id) },
-            },
-            {
-              action: "move",
-              description: "Extend morning focus block",
-              details: {
-                blockId: focusBlocks[0].id,
-                newEndTime: addMinutes(parseTime(focusBlocks[0].startTime), totalDuration * 0.6),
-              },
-            },
-          ],
-          benefit: "Deeper focus with less context switching",
-          estimatedTimeGain: 30,
-        });
-        break;
-
-      case "poor_timing":
-        // Suggest moving deep work to high-energy times
-        optimizations.push({
-          description: "Move deep work to morning high-energy time",
-          changes: [{
-            action: "move",
-            description: "Swap post-lunch deep work with email time",
-            details: {
-              blockId: inefficiency.blocks[0].id,
-              newStartTime: "09:00",
-              newEndTime: "11:00",
-            },
-          }],
-          benefit: "Align challenging work with peak mental energy",
-          estimatedTimeGain: 20,
-        });
-        break;
-    }
-  });
-
-  return { optimizations };
-}
-
-// Ensure optimizations respect constraints
-async function respectConstraintsNode(state: OptimizationState): Promise<Partial<OptimizationState>> {
-  // Filter out optimizations that would violate constraints
-  const validOptimizations = state.optimizations.filter(opt => {
-    // Never move or modify meetings
-    const affectsMeetings = opt.changes.some(change => {
-      const block = state.currentSchedule.find(b => b.id === change.details.blockId);
-      return block?.type === "meeting";
-    });
-    if (affectsMeetings) return false;
-
-    // Never touch lunch break
-    const affectsLunch = opt.changes.some(change => {
-      const block = state.currentSchedule.find(b => b.id === change.details.blockId);
-      return block?.type === "break" && isLunchTime(block);
-    });
-    if (affectsLunch) return false;
-
-    // Respect user preferences (e.g., no work before work_start_time)
-    const respectsWorkHours = opt.changes.every(change => {
-      if (change.details.newStartTime) {
-        const time = parseTime(change.details.newStartTime);
-        const workStart = parseTime(state.userPreferences.work_start_time);
-        const workEnd = parseTime(state.userPreferences.work_end_time);
-        return time >= workStart && time <= workEnd;
-      }
-      return true;
-    });
-    if (!respectsWorkHours) return false;
-
-    return true;
-  });
-
-  return { optimizations: validOptimizations };
-}
-
-// Create the tool for this workflow
-export const optimizeScheduleTool = tool({
-  description: 'Analyze and optimize an existing schedule for better efficiency',
-  parameters: z.object({
-    date: z.string().optional().describe("Date to optimize (defaults to today)"),
-  }),
-  execute: async (params) => {
-    const workflow = createScheduleOptimizationWorkflow();
-    const userId = await getCurrentUserId();
-    
-    const result = await workflow.invoke({
-      userId,
-      date: params.date || format(new Date(), 'yyyy-MM-dd'),
-      currentSchedule: await scheduleService.getScheduleForDate(params.date, userId),
-      userPreferences: await preferencesService.getUserPreferences(userId),
-    });
-
-    if (result.optimizations.length === 0) {
-      return {
-        message: "Your schedule looks well-optimized! No improvements needed.",
-      };
-    }
-
-    // Store optimization proposal
-    const proposalId = crypto.randomUUID();
-    optimizationProposals.set(proposalId, {
-      optimizations: result.optimizations,
-      timestamp: new Date(),
-      userId,
-    });
-
-    // Clean summary for user
-    const totalTimeGain = result.optimizations.reduce((sum, opt) => sum + opt.estimatedTimeGain, 0);
-    const summary = `I found ${result.optimizations.length} ways to optimize your schedule:
-
-${result.optimizations.map((opt, i) => 
-  `${i + 1}. ${opt.description}
-   Benefit: ${opt.benefit}
-   Time saved: ~${opt.estimatedTimeGain} minutes`
-).join('\n\n')}
-
-Total potential time savings: ${totalTimeGain} minutes
-
-Would you like me to apply these optimizations? (Confirmation ID: ${proposalId})`;
-
-    return { message: summary, proposalId };
-  }
-});
 ```
-
-#### Integration with Adaptive Scheduling
-
-The Schedule Optimization Workflow complements the Adaptive Scheduling Workflow:
-
-1. **When to use each**:
-   - **Adaptive Scheduling**: When creating or modifying schedule (morning planning, adding new tasks)
-   - **Schedule Optimization**: When improving existing schedule (finding inefficiencies, consolidating blocks)
-
-2. **Shared utilities**: Both workflows can use the same helper functions from `scheduleHelpers.ts`
-
-3. **User experience**:
-   - "Plan my day" → Adaptive Scheduling
-   - "Optimize my schedule" → Schedule Optimization
-   - "Make my day more efficient" → Schedule Optimization
-
-4. **Key differences**:
-   - Adaptive creates/fills, Optimization improves
-   - Adaptive is constructive, Optimization is analytical
-   - Adaptive handles any state, Optimization requires existing schedule
-
-#### Testing the Optimization Workflow
-
-**Test Case 1: Gap Elimination**
-- Create schedule with 20-minute gaps between blocks
-- Run optimization
-- Should suggest extending blocks to fill gaps
-
-**Test Case 2: Focus Consolidation**
-- Create 4 small 45-minute focus blocks
-- Run optimization  
-- Should suggest combining into 2 larger blocks
-
-**Test Case 3: Constraint Respect**
-- Create schedule with meetings and lunch
-- Run optimization
-- Should never suggest moving meetings or lunch
-
-**Test Case 4: Energy Alignment**
-- Put deep work after lunch
-- Run optimization
-- Should suggest moving to morning
 
 ## Testing Guide
 
-### Scenario 1: Empty Schedule (Full Planning)
+### Scenario 1: Empty Schedule (Full Planning Strategy)
 **Test**: User says "Plan my day" with no existing blocks
 
 **Expected Behavior**:
-1. Workflow detects empty schedule
-2. Creates full day structure:
-   - 9:00-11:00 Deep Work
-   - 11:00-11:15 Break
-   - 11:15-12:00 Email Triage
-   - 12:00-13:00 Lunch (protected)
-   - 13:00-15:00 Deep Work
-   - 16:00-17:00 Email Review
-3. AI responds: "I'll create a complete schedule for today with 2 focus blocks, email time, and protected lunch. Is this OK?"
+1. Workflow detects empty schedule → selects "full" strategy
+2. Uses smart tools to create:
+   - Morning work block with high-priority tasks
+   - Email block with urgent emails
+   - Protected lunch break
+   - Afternoon work block
+3. AI responds: "I'll create a complete schedule for your day..."
 
-### Scenario 2: Partial Schedule (Gap Filling)
+### Scenario 2: Partial Schedule (Gap Filling Strategy)
 **Test**: User has a 9am meeting and 3pm meeting, says "Fill in my day"
 
 **Expected Behavior**:
-1. Workflow detects existing meetings
-2. Identifies gaps:
-   - 10:00-12:00 (2 hour gap)
-   - 13:00-15:00 (2 hour gap)
-3. Proposes:
-   - 10:00-12:00 Deep Work
-   - 12:00-13:00 Lunch
-   - 13:00-15:00 Deep Work
-4. AI responds with specific gap-filling plan
+1. Workflow detects gaps → selects "partial" strategy
+2. Calls `createWorkBlock` for each significant gap
+3. Respects existing meetings
+4. AI responds: "I'll fill the gaps in your schedule..."
 
-### Scenario 3: Lunch Protection
-**Test**: User has a meeting scheduled 12-1pm, says "Plan my day"
+### Scenario 3: Schedule Optimization (Optimize Strategy)
+**Test**: User has fragmented schedule with small gaps, says "Make my day more efficient"
 
 **Expected Behavior**:
-1. Workflow detects lunch conflict
+1. Workflow detects inefficiencies → selects "optimize" strategy
+2. Finds:
+   - 20-minute gaps (too small to be productive)
+   - 4 separate 45-minute focus blocks
+3. Proposes:
+   - Extend blocks to eliminate gaps
+   - Consolidate focus time into 2 larger blocks
+4. AI responds: "I'll optimize your schedule for better efficiency..."
+
+### Scenario 4: Task Assignment (Task Only Strategy)
+**Test**: User has full schedule with empty focus blocks, says "Add my tasks to today"
+
+**Expected Behavior**:
+1. Workflow detects existing blocks → selects "task_only" strategy
+2. Uses `findTasks` to get high-priority pending tasks
+3. Assigns tasks to blocks with capacity
+4. AI responds: "I'll assign your tasks to existing time blocks..."
+
+### Scenario 5: Natural Language Understanding
+**Test**: User says "I have too many small breaks, can you fix that?"
+
+**Expected Behavior**:
+1. Workflow understands intent → selects "optimize" strategy
+2. Identifies and consolidates small gaps
+3. AI responds with optimization plan
+
+### Scenario 6: Lunch Protection Edge Case
+**Test**: User has meeting at 12pm, workflow needs to plan day
+
+**Expected Behavior**:
+1. Any strategy will protect lunch
 2. Proposes moving the meeting
 3. Creates protected lunch block
-4. AI responds: "I notice you have a meeting during lunch. I'll move it to 2pm and protect your lunch break at noon."
-
-### Scenario 4: Task Assignment Only
-**Test**: User has full schedule but unassigned tasks, says "Schedule my tasks"
-
-**Expected Behavior**:
-1. Workflow detects full schedule with focus blocks
-2. Assigns tasks to existing focus blocks
-3. No new blocks created
-4. AI responds: "I'll assign your 3 tasks to your existing focus blocks."
-
-### Scenario 5: Optimization
-**Test**: User has inefficient schedule (many small gaps), says "Optimize my schedule"
-
-**Expected Behavior**:
-1. Workflow analyzes current efficiency
-2. Proposes consolidating blocks
-3. Maintains meeting times
-4. AI responds with optimization plan
+4. AI explains: "I notice you have a meeting during lunch time..."
 
 ## Common Issues & Solutions
 
@@ -1515,7 +1018,6 @@ Ensure clean imports following the existing pattern:
 import { StateGraph, END } from "@langchain/langgraph";
 import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
-import { z } from "zod";
 import { format, addHours, addMinutes } from "date-fns";
 
 // Internal imports grouped by feature
@@ -1651,3 +1153,68 @@ Before marking this sprint complete:
 5. Don't skip error handling in any node
 
 Remember: This is the brain of dayli. Make it smart, but keep it simple and maintainable. Good luck! 🚀 
+
+### Type Definitions
+
+```typescript
+// State that flows through the workflow
+interface SchedulingState {
+  userId: string;
+  date: string;
+  currentSchedule: TimeBlock[];
+  unassignedTasks: Task[];
+  taskBacklog: Task[]; // From enhanced findTasks tool
+  userPreferences: UserPreferences;
+  ragContext?: RAGContext; // Optional for now
+  strategy?: "full" | "partial" | "optimize" | "task_only";
+  proposedChanges: ScheduleChange[];
+  inefficiencies?: Inefficiency[]; // For optimize strategy
+  messages: BaseMessage[];
+}
+
+// Discriminated union for type-safe changes
+type ScheduleChange = 
+  | { action: "create"; description: string; block: Partial<TimeBlock>; }
+  | { action: "move"; description: string; blockId: string; newStartTime: string; newEndTime: string; }
+  | { action: "delete"; description: string; blockId: string; }
+  | { action: "assign"; description: string; taskId: string; blockId: string; };
+
+interface Inefficiency {
+  type: "gap" | "fragmentation" | "poor_timing" | "task_mismatch";
+  description: string;
+  severity: "low" | "medium" | "high";
+  affectedBlocks: string[]; // Block IDs
+}
+
+interface TimeGap {
+  startTime: string;
+  endTime: string;
+  duration: number; // in minutes
+}
+
+// Placeholder interfaces for Sprint 03.04
+interface RAGContext {
+  patterns?: UserPattern[];
+  recentDecisions?: Decision[];
+  similarDays?: DayContext[];
+}
+interface UserPattern {}
+interface Decision {}
+interface DayContext {}
+```
+
+### Database Operations
+- No new migrations needed - all required tables exist
+- Will use existing tables:
+  - `time_blocks` - for schedule blocks
+  - `tasks` - for task management (status: 'backlog' | 'completed')
+  - `user_preferences` - for work hours, lunch preferences
+  - `workflow_states` - for persistence (from Sprint 03.015)
+- Smart tools handle all database operations
+
+### UI/UX Implementation
+- Text-based summaries of proposed changes
+- Streaming progress updates via `onStepFinish` in chat route
+- Clear indication of strategy selected ("Planning your full day..." vs "Optimizing existing schedule...")
+- Natural language explanations using user's terminology
+- Confirmation flow with ability to modify proposals 

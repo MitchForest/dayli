@@ -1,17 +1,29 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Bot, User, Loader2, Check, X, Wrench } from 'lucide-react';
 import { format } from 'date-fns';
+import { MessageContent } from './MessageContent';
+import { CommandListMessage } from './CommandListMessage';
 import type { Message } from 'ai';
+import type { Entity, MessageMetadata } from '../types/chat.types';
 
 interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
+  onEntityClick?: (entity: Entity) => void;
+  onSuggestionSelect?: (suggestion: string) => void;
+  showCommands?: boolean;
 }
 
-export function MessageList({ messages, isLoading = false }: MessageListProps) {
+export function MessageList({ 
+  messages, 
+  isLoading = false,
+  onEntityClick,
+  onSuggestionSelect,
+  showCommands = false
+}: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -20,6 +32,13 @@ export function MessageList({ messages, isLoading = false }: MessageListProps) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Handle command selection - wrapper to ensure commands close
+  const handleCommandSelect = useCallback((command: string) => {
+    if (onSuggestionSelect) {
+      onSuggestionSelect(command);
+    }
+  }, [onSuggestionSelect]);
 
   // Helper to format tool execution status
   const getToolExecutionDisplay = (toolName: string, invocation: any) => {
@@ -46,19 +65,50 @@ export function MessageList({ messages, isLoading = false }: MessageListProps) {
     return { description, status };
   };
 
+  // Extract metadata from message including tool results
+  const getMessageMetadata = (message: Message): MessageMetadata => {
+    const metadata: MessageMetadata = {};
+    
+    // Extract suggestions from tool results
+    if (message.toolInvocations && message.toolInvocations.length > 0) {
+      const suggestions: string[] = [];
+      
+      message.toolInvocations.forEach((invocation) => {
+        if (invocation.state === 'result' && invocation.result?.metadata?.suggestions) {
+          suggestions.push(...invocation.result.metadata.suggestions);
+        }
+      });
+      
+      if (suggestions.length > 0) {
+        // Deduplicate suggestions
+        metadata.suggestions = [...new Set(suggestions)];
+      }
+    }
+    
+    return metadata;
+  };
+
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-      {messages.length === 0 && (
-        <div className="text-center text-muted-foreground mt-8">
-          <Bot className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">Hi! I'm dayli, your AI executive assistant.</p>
-          <p className="text-sm mt-2">Try saying "Plan my day" or "What should I work on?"</p>
+      {messages.length === 0 && !showCommands && (
+        <div className="max-w-3xl mx-auto mt-8">
+          <CommandListMessage onCommandSelect={handleCommandSelect} />
+        </div>
+      )}
+      
+      {showCommands && (
+        <div className="max-w-3xl mx-auto mt-8">
+          <CommandListMessage 
+            onCommandSelect={handleCommandSelect} 
+            showAll={true}
+          />
         </div>
       )}
       
       {messages.map((message) => (
         <div
           key={message.id}
+          data-role={message.role}
           className={cn(
             "flex gap-3",
             message.role === 'user' ? 'justify-end' : 'justify-start'
@@ -78,7 +128,16 @@ export function MessageList({ messages, isLoading = false }: MessageListProps) {
                 : 'bg-muted'
             )}
           >
-            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+            {/* Use MessageContent for rich display */}
+            <MessageContent
+              content={message.content}
+              role={message.role as 'user' | 'assistant' | 'system'}
+              metadata={getMessageMetadata(message)}
+              message={message}
+              onEntityClick={onEntityClick}
+              onSuggestionSelect={onSuggestionSelect}
+              isLoading={isLoading && message === messages[messages.length - 1]}
+            />
             
             {/* Display tool executions */}
             {message.toolInvocations && message.toolInvocations.length > 0 && (

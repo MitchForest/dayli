@@ -4,10 +4,10 @@ import { toolSuccess, toolError } from '../types';
 import { ServiceFactory } from '@/services/factory/service.factory';
 
 export const findTasks = tool({
-  description: "Search for tasks by various criteria",
+  description: "Search for tasks by various criteria - understands natural language like 'pending', 'todo', 'unscheduled', 'done'",
   parameters: z.object({
     query: z.string().optional().describe("Search in title or description"),
-    status: z.enum(['pending', 'scheduled', 'completed', 'all']).optional().default('all'),
+    status: z.string().optional().default('all').describe("Task status - can be natural language like 'pending', 'todo', 'unscheduled', 'done', 'finished'"),
     priority: z.enum(['high', 'medium', 'low', 'all']).optional().default('all'),
     source: z.enum(['email', 'chat', 'calendar', 'manual', 'all']).optional().default('all'),
     limit: z.number().optional().default(10).describe("Maximum number of results"),
@@ -16,16 +16,39 @@ export const findTasks = tool({
     try {
       const taskService = ServiceFactory.getInstance().getTaskService();
       
+      // Map user intent to database values
+      const statusMap: Record<string, string> = {
+        // User might say these -> map to database value
+        'pending': 'backlog',
+        'todo': 'backlog',
+        'to do': 'backlog',
+        'unscheduled': 'backlog',
+        'not done': 'backlog',
+        'incomplete': 'backlog',
+        'backlog': 'backlog',
+        'scheduled': 'scheduled',
+        'assigned': 'scheduled',
+        'planned': 'scheduled',
+        'completed': 'completed',
+        'done': 'completed',
+        'finished': 'completed',
+        'complete': 'completed',
+        'all': 'all'
+      };
+      
+      // Normalize the status parameter
+      const normalizedStatus = statusMap[params.status.toLowerCase()] || params.status;
+      
       // Get all tasks first (in a real implementation, this would be filtered at DB level)
       let tasks = await taskService.getUnassignedTasks();
       
       // If looking for scheduled/completed tasks, fetch those too
-      if (params.status === 'scheduled' || params.status === 'all') {
+      if (normalizedStatus === 'scheduled' || normalizedStatus === 'all') {
         const scheduledTasks = await taskService.getTasksByStatus('scheduled');
         tasks = [...tasks, ...scheduledTasks];
       }
       
-      if (params.status === 'completed' || params.status === 'all') {
+      if (normalizedStatus === 'completed' || normalizedStatus === 'all') {
         const completedTasks = await taskService.getTasksByStatus('completed');
         tasks = [...tasks, ...completedTasks];
       }
@@ -43,14 +66,9 @@ export const findTasks = tool({
       }
       
       // Status filter
-      if (params.status !== 'all') {
-        const statusMap = {
-          'pending': 'backlog',
-          'scheduled': 'scheduled',
-          'completed': 'completed'
-        };
+      if (normalizedStatus !== 'all') {
         filteredTasks = filteredTasks.filter(task => 
-          task.status === statusMap[params.status as keyof typeof statusMap]
+          task.status === normalizedStatus
         );
       }
       
@@ -92,27 +110,34 @@ export const findTasks = tool({
         }
       };
       
+      // Format tasks for display
+      const formattedTasks = results.map(task => ({
+        id: task.id,
+        title: task.title,
+        status: task.status,
+        priority: task.priority || 'medium',
+        estimatedMinutes: task.estimatedMinutes || 30,
+        source: task.source || 'manual',
+        createdAt: task.createdAt,
+        description: task.description
+      }));
+      
       return toolSuccess({
-        tasks: results.map(task => ({
-          id: task.id,
-          title: task.title,
-          status: task.status,
-          priority: task.priority,
-          estimatedMinutes: task.estimatedMinutes,
-          source: task.source,
-          createdAt: task.createdAt
-        })),
+        tasks: formattedTasks,
         summary,
-        query: params
+        query: params,
+        interpretation: normalizedStatus !== params.status 
+          ? `Interpreted "${params.status}" as "${normalizedStatus}"`
+          : undefined
       }, {
         type: 'list',
-        content: results
+        content: formattedTasks
       }, {
         suggestions: results.length === 0
           ? ['Try different search criteria', 'Create a new task', 'Show all tasks']
-          : results.length >= params.limit
-          ? ['Show more results', 'Refine search', 'Schedule high priority tasks']
-          : ['Schedule these tasks', 'Edit a task', 'Create new task']
+          : grouped.backlog.length > 0
+          ? ['Add tasks to today\'s schedule', 'Assign to work blocks', 'Set priorities']
+          : ['View completed tasks', 'Create new tasks', 'Check schedule']
       });
       
     } catch (error) {
