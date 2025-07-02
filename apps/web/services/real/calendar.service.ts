@@ -227,4 +227,303 @@ export class RealCalendarService implements ICalendarService {
       items: []
     };
   }
+  
+  // Additional methods needed by calendar tools
+  async createEvent(params: {
+    summary: string;
+    description?: string;
+    start: Date;
+    end: Date;
+    attendees?: Array<{ email: string }>;
+  }): Promise<CalendarEvent> {
+    return this.insertEvent({
+      calendarId: 'primary',
+      resource: {
+        summary: params.summary,
+        description: params.description,
+        start: {
+          dateTime: params.start.toISOString(),
+          timeZone: this.userTimezone
+        },
+        end: {
+          dateTime: params.end.toISOString(),
+          timeZone: this.userTimezone
+        },
+        attendees: params.attendees?.map(a => ({
+          email: a.email,
+          responseStatus: 'needsAction' as const
+        }))
+      }
+    });
+  }
+  
+  async getEvent(eventId: string): Promise<CalendarEvent | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from('calendar_events')
+        .select()
+        .eq('id', eventId)
+        .eq('user_id', this.userId)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') return null; // Not found
+        throw new Error(`Failed to get event: ${error.message}`);
+      }
+
+      // Transform to Google Calendar format
+      return {
+        kind: 'calendar#event',
+        etag: `"${data.updated_at}"`,
+        id: data.id,
+        status: data.status || 'confirmed',
+        htmlLink: `https://calendar.google.com/event?eid=${data.id}`,
+        created: data.created_at,
+        updated: data.updated_at,
+        summary: data.title,
+        description: data.description,
+        location: data.location,
+        creator: {
+          email: data.creator_email || 'user@example.com',
+          displayName: data.creator_name
+        },
+        organizer: {
+          email: data.organizer_email || 'user@example.com',
+          displayName: data.organizer_name
+        },
+        start: {
+          dateTime: data.start_time,
+          timeZone: this.userTimezone
+        },
+        end: {
+          dateTime: data.end_time,
+          timeZone: this.userTimezone
+        },
+        attendees: data.attendees || [],
+        reminders: data.reminders || { useDefault: true }
+      };
+    } catch (error) {
+      console.error('Error getting event:', error);
+      return null;
+    }
+  }
+  
+  async updateEvent(eventId: string, updates: {
+    summary?: string;
+    description?: string;
+    start?: Date;
+    end?: Date;
+  }): Promise<CalendarEvent> {
+    const updateData: any = {};
+    if (updates.summary) updateData.title = updates.summary;
+    if (updates.description !== undefined) updateData.description = updates.description;
+    if (updates.start) updateData.start_time = updates.start.toISOString();
+    if (updates.end) updateData.end_time = updates.end.toISOString();
+    updateData.updated_at = new Date().toISOString();
+
+    const { data, error } = await this.supabase
+      .from('calendar_events')
+      .update(updateData)
+      .eq('id', eventId)
+      .eq('user_id', this.userId)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update event: ${error.message}`);
+
+    // Transform back to Google Calendar format
+    return {
+      kind: 'calendar#event',
+      etag: `"${data.updated_at}"`,
+      id: data.id,
+      status: data.status,
+      htmlLink: `https://calendar.google.com/event?eid=${data.id}`,
+      created: data.created_at,
+      updated: data.updated_at,
+      summary: data.title,
+      description: data.description,
+      location: data.location,
+      creator: {
+        email: data.creator_email || 'user@example.com',
+        displayName: data.creator_name
+      },
+      organizer: {
+        email: data.organizer_email || 'user@example.com',
+        displayName: data.organizer_name
+      },
+      start: {
+        dateTime: data.start_time,
+        timeZone: this.userTimezone
+      },
+      end: {
+        dateTime: data.end_time,
+        timeZone: this.userTimezone
+      },
+      attendees: data.attendees || [],
+      reminders: data.reminders || { useDefault: true }
+    };
+  }
+  
+  async deleteEvent(eventId: string): Promise<void> {
+    const { error } = await this.supabase
+      .from('calendar_events')
+      .delete()
+      .eq('id', eventId)
+      .eq('user_id', this.userId);
+
+    if (error) throw new Error(`Failed to delete event: ${error.message}`);
+  }
+  
+  async checkConflicts(params: {
+    start: Date;
+    end: Date;
+    excludeEventId?: string;
+  }): Promise<CalendarEvent[]> {
+    let query = this.supabase
+      .from('calendar_events')
+      .select()
+      .eq('user_id', this.userId)
+      .eq('status', 'confirmed')
+      .or(`and(start_time.lt.${params.end.toISOString()},end_time.gt.${params.start.toISOString()})`);
+
+    if (params.excludeEventId) {
+      query = query.neq('id', params.excludeEventId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw new Error(`Failed to check conflicts: ${error.message}`);
+
+    // Transform to CalendarEvent format
+    return (data || []).map((event: any) => ({
+      kind: 'calendar#event',
+      etag: `"${event.updated_at}"`,
+      id: event.id,
+      status: event.status,
+      htmlLink: `https://calendar.google.com/event?eid=${event.id}`,
+      created: event.created_at,
+      updated: event.updated_at,
+      summary: event.title,
+      description: event.description,
+      location: event.location,
+      creator: {
+        email: event.creator_email || 'user@example.com',
+        displayName: event.creator_name
+      },
+      organizer: {
+        email: event.organizer_email || 'user@example.com',
+        displayName: event.organizer_name
+      },
+      start: {
+        dateTime: event.start_time,
+        timeZone: this.userTimezone
+      },
+      end: {
+        dateTime: event.end_time,
+        timeZone: this.userTimezone
+      },
+      attendees: event.attendees || [],
+      reminders: event.reminders || { useDefault: true }
+    }));
+  }
+  
+  async sendUpdateNotification(eventId: string, params: {
+    message: string;
+  }): Promise<void> {
+    // For now, just log the notification
+    // In production, this would send emails to attendees
+    console.log(`Event update notification for ${eventId}: ${params.message}`);
+    
+    // Could store in a notifications table
+    const { error } = await this.supabase
+      .from('notifications')
+      .insert({
+        user_id: this.userId,
+        type: 'calendar_update',
+        event_id: eventId,
+        message: params.message,
+        sent_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.error('Failed to store notification:', error);
+      // Don't throw - notifications are non-critical
+    }
+  }
+  
+  async findAvailableSlots(params: {
+    duration: number;
+    attendees: string[];
+    preferredTimes?: string[];
+    workingHours: { start: string; end: string };
+  }): Promise<Array<{ start: Date; end: Date }>> {
+    // Get all events for today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const { data: events } = await this.supabase
+      .from('calendar_events')
+      .select()
+      .eq('user_id', this.userId)
+      .eq('status', 'confirmed')
+      .gte('start_time', today.toISOString())
+      .lt('start_time', tomorrow.toISOString())
+      .order('start_time', { ascending: true });
+
+    // Parse working hours
+    const workHoursParts = params.workingHours.start.split(':');
+    const workStartHour = parseInt(workHoursParts[0] || '9', 10);
+    const workStartMin = parseInt(workHoursParts[1] || '0', 10);
+    
+    const workEndParts = params.workingHours.end.split(':');
+    const workEndHour = parseInt(workEndParts[0] || '17', 10);
+    const workEndMin = parseInt(workEndParts[1] || '0', 10);
+    
+    const workStart = new Date(today);
+    workStart.setHours(workStartHour, workStartMin, 0, 0);
+    
+    const workEnd = new Date(today);
+    workEnd.setHours(workEndHour, workEndMin, 0, 0);
+
+    // Find gaps in schedule
+    const availableSlots: Array<{ start: Date; end: Date }> = [];
+    let currentTime = new Date(workStart);
+
+    for (const event of events || []) {
+      const eventStart = new Date(event.start_time);
+      const eventEnd = new Date(event.end_time);
+
+      // Check if there's a gap before this event
+      const gapMinutes = (eventStart.getTime() - currentTime.getTime()) / (1000 * 60);
+      if (gapMinutes >= params.duration) {
+        availableSlots.push({
+          start: new Date(currentTime),
+          end: new Date(currentTime.getTime() + params.duration * 60 * 1000)
+        });
+      }
+
+      // Move current time to end of this event
+      currentTime = new Date(Math.max(currentTime.getTime(), eventEnd.getTime()));
+    }
+
+    // Check if there's time after the last event
+    const remainingMinutes = (workEnd.getTime() - currentTime.getTime()) / (1000 * 60);
+    if (remainingMinutes >= params.duration) {
+      availableSlots.push({
+        start: new Date(currentTime),
+        end: new Date(currentTime.getTime() + params.duration * 60 * 1000)
+      });
+    }
+
+    // Filter by preferred times if provided
+    if (params.preferredTimes && params.preferredTimes.length > 0) {
+      // This would need more sophisticated parsing of preferred times
+      // For now, return first 3 slots
+      return availableSlots.slice(0, 3);
+    }
+
+    return availableSlots;
+  }
 } 

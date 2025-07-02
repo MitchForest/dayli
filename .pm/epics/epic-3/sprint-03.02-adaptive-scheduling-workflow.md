@@ -1,5 +1,36 @@
 # Sprint 03.02: Adaptive Scheduling Workflow
 
+## ⚠️ IMPORTANT: Sprint 03.015 Prerequisites
+
+**This sprint depends on architectural changes from Sprint 03.015. Before implementing:**
+
+1. **All workflow tools MUST return standardized `ToolResult` format**:
+   ```typescript
+   import { toolSuccess, toolError, toolConfirmation } from '@/modules/ai/tools/types';
+   
+   // Example for scheduleDay tool:
+   return toolSuccess(data, {
+     type: 'schedule',
+     content: proposedChanges
+   }, {
+     confirmationRequired: true,
+     confirmationId,
+     suggestions: ['Confirm changes', 'Show details']
+   });
+   ```
+
+2. **Use the new standardized tools from Sprint 03.015**:
+   - Email operations: `readEmailContent`, `draftEmailResponse`, `processEmailToTask`
+   - Task operations: `createTask`, `editTask`, `deleteTask`, `findTasks`
+   - Meeting operations: `scheduleMeeting`, `rescheduleMeeting`
+   - Smart blocks: `createWorkBlock`, `createEmailBlock`
+
+3. **Tool Registry is now used** - no manual tool imports needed in chat route
+
+4. **ServiceFactory always returns real services** - no mock services
+
+---
+
 ## Sprint Overview
 
 **Sprint Number**: 03.02  

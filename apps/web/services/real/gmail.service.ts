@@ -32,6 +32,7 @@ export interface GmailMessage {
       body: {
         size: number;
         data?: string;
+        attachmentId?: string;
       };
     }>;
   };
@@ -177,6 +178,64 @@ export class RealGmailService implements IGmailService {
       .eq('user_id', this.userId);
 
     if (error) throw new Error(`Failed to archive email: ${error.message}`);
+  }
+
+  async createDraft(params: {
+    to: string[];
+    subject: string;
+    body: string;
+    threadId?: string;
+  }): Promise<string> {
+    // For now, store draft in our database
+    // Later, this will use Gmail API
+    const { data, error } = await this.supabase
+      .from('emails')
+      .insert({
+        user_id: this.userId,
+        thread_id: params.threadId,
+        from_email: 'user@example.com', // Will get from user profile
+        to_email: params.to.join(', '),
+        subject: params.subject,
+        body: params.body,
+        snippet: params.body.substring(0, 200),
+        status: 'draft',
+        label_ids: ['DRAFT']
+      })
+      .select('id')
+      .single();
+
+    if (error) throw new Error(`Failed to create draft: ${error.message}`);
+
+    return data.id;
+  }
+
+  async sendDraft(draftId: string): Promise<GmailMessage> {
+    // Get the draft
+    const { data: draft, error: fetchError } = await this.supabase
+      .from('emails')
+      .select()
+      .eq('id', draftId)
+      .eq('user_id', this.userId)
+      .eq('status', 'draft')
+      .single();
+
+    if (fetchError) throw new Error(`Failed to find draft: ${fetchError.message}`);
+
+    // Update status to sent
+    const { data, error } = await this.supabase
+      .from('emails')
+      .update({
+        status: 'sent',
+        label_ids: ['SENT'],
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', draftId)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to send draft: ${error.message}`);
+
+    return this.transformToGmailMessage(data);
   }
 
   private transformToGmailMessage(data: any): GmailMessage {

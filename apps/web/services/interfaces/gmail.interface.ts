@@ -21,6 +21,15 @@ export interface IGmailService {
     threadId?: string;
   }): Promise<GmailMessage>;
   
+  createDraft(params: {
+    to: string[];
+    subject: string;
+    body: string;
+    threadId?: string;
+  }): Promise<string>; // Returns draft ID
+  
+  sendDraft(draftId: string): Promise<GmailMessage>;
+  
   trashMessage(id: string): Promise<void>;
   
   archiveMessage(id: string): Promise<void>;

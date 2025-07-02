@@ -1,5 +1,35 @@
 # Sprint 03.04: RAG System & Learning
 
+## ⚠️ IMPORTANT: Sprint 03.015 Prerequisites
+
+**This sprint depends on architectural changes from Sprint 03.015. Before implementing:**
+
+1. **All RAG-related tools MUST return standardized `ToolResult` format**:
+   ```typescript
+   import { toolSuccess, toolError } from '@/modules/ai/tools/types';
+   
+   // Example for learning tools:
+   return toolSuccess({
+     stored: true,
+     contextId: entry.id,
+     type: 'pattern'
+   }, {
+     type: 'text',
+     content: 'Learned new scheduling pattern'
+   });
+   ```
+
+2. **Workflow persistence from Sprint 03.015 enables learning**:
+   - Use `WorkflowPersistenceService` to track workflow decisions
+   - Failed/rejected proposals are automatically stored for learning
+   - Workflow history provides training data for patterns
+
+3. **ServiceFactory and Tool Registry are already configured** - focus on RAG logic
+
+4. **Rich message components** can display learning confirmations and pattern insights
+
+---
+
 ## Sprint Overview
 
 **Sprint Number**: 03.04  

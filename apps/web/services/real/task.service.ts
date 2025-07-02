@@ -3,8 +3,12 @@ import {
   TaskService, 
   Task, 
   TaskBacklog,
-  CreateTaskInput 
+  CreateTaskInput,
+  CreateTaskParams,
+  UpdateTaskParams
 } from '../interfaces/task.interface';
+import { createClient } from '@supabase/supabase-js';
+import { Database } from '../../database.types';
 
 export class RealTaskService implements TaskService {
   readonly serviceName = 'RealTaskService';
@@ -14,28 +18,31 @@ export class RealTaskService implements TaskService {
 
   constructor(private config: ServiceConfig) {
     this.userId = config.userId;
-    this.supabase = config.supabaseClient;
+    this.supabase = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
   }
 
-  async createTask(input: CreateTaskInput): Promise<Task> {
+  async createTask(params: CreateTaskParams): Promise<Task> {
+    const userId = (await this.supabase.auth.getUser()).data.user?.id;
+    if (!userId) throw new Error('User not authenticated');
+
     const { data, error } = await this.supabase
       .from('tasks')
       .insert({
-        user_id: this.userId,
-        title: input.title,
-        description: input.description,
-        source: input.source || 'manual',
-        priority: input.priority,
-        estimated_minutes: input.estimatedMinutes,
-        email_id: input.emailId,
+        user_id: userId,
+        title: params.title,
+        description: params.description,
+        priority: params.priority || 'medium',
+        estimated_minutes: params.estimatedMinutes || 30,
+        source: params.source || 'manual',
         status: 'backlog',
-        completed: false
       })
       .select()
       .single();
 
     if (error) throw new Error(`Failed to create task: ${error.message}`);
-
     return this.mapToTask(data);
   }
 
@@ -200,6 +207,48 @@ export class RealTaskService implements TaskService {
       .eq('user_id', this.userId);
 
     if (error) throw new Error(`Failed to update backlog priority: ${error.message}`);
+  }
+
+  async batchCreateTasks(tasks: CreateTaskParams[]): Promise<Task[]> {
+    const results = await Promise.all(
+      tasks.map(task => this.createTask(task))
+    );
+    return results;
+  }
+  
+  async batchUpdateTasks(updates: { id: string; updates: UpdateTaskParams }[]): Promise<Task[]> {
+    const results = await Promise.all(
+      updates.map(({ id, updates }) => this.updateTask(id, updates))
+    );
+    return results;
+  }
+  
+  async searchTasks(query: string): Promise<Task[]> {
+    const { data, error } = await this.supabase
+      .from('tasks')
+      .select('*')
+      .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+      .order('created_at', { ascending: false });
+      
+    if (error) throw error;
+    return data || [];
+  }
+  
+  async unassignTaskFromBlock(taskId: string): Promise<void> {
+    const { error } = await this.supabase
+      .from('task_assignments')
+      .delete()
+      .eq('task_id', taskId);
+      
+    if (error) throw error;
+  }
+  
+  async getTaskBacklog(): Promise<Task[]> {
+    return this.getTasksByStatus('backlog');
+  }
+  
+  async moveToBacklog(taskId: string): Promise<Task> {
+    return this.updateTask(taskId, { status: 'backlog' });
   }
 
   private mapToTask(data: any): Task {

@@ -1,5 +1,38 @@
 # Sprint 03.03: Email Triage & Task Workflows
 
+## ⚠️ IMPORTANT: Sprint 03.015 Prerequisites
+
+**This sprint depends on architectural changes from Sprint 03.015. Before implementing:**
+
+1. **All workflow tools MUST return standardized `ToolResult` format**:
+   ```typescript
+   import { toolSuccess, toolError } from '@/modules/ai/tools/types';
+   
+   // Example for triageEmails tool:
+   return toolSuccess({
+     batches: emailBatches,
+     proposedBlocks: scheduleBlocks,
+     archivedCount: archived.length
+   }, {
+     type: 'email',
+     content: emailBatches
+   }, {
+     suggestions: ['Schedule email blocks', 'Show urgent only', 'Process backlog']
+   });
+   ```
+
+2. **Use the new email operations from Sprint 03.015**:
+   - `readEmailContent` - Get full email body and attachments
+   - `draftEmailResponse` - Create AI-powered responses
+   - `processEmailToTask` - Convert emails to tasks
+   - These tools already handle Gmail API integration
+
+3. **ServiceFactory returns real Gmail service** - no mocks
+
+4. **Email display uses rich message components** from Sprint 03.015
+
+---
+
 ## Sprint Overview
 
 **Sprint Number**: 03.03  

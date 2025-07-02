@@ -15,15 +15,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const handleAuthStateChange = useCallback((user: User | null) => {
     if (user) {
       console.log('[Providers] Configuring ServiceFactory for user:', user.id);
-      ServiceFactory.getInstance().configure({
-        userId: user.id,
-        supabaseClient: supabaseClient
-      }); // Removed the useMock parameter - will always use real services
+      ServiceFactory.getInstance().updateUserId(user.id);
     } else {
       console.log('[Providers] Clearing ServiceFactory configuration');
-      ServiceFactory.getInstance().configure(null);
+      ServiceFactory.getInstance().updateUserId('default-user');
     }
-  }, [supabaseClient]);
+  }, []);
   
   return (
     <ThemeProvider

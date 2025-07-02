@@ -1382,7 +1382,168 @@ export async function POST(req: Request) {
 }
 ```
 
-### A10. Simplified Workflow Tool Integration
+### A10. Refactoring Existing Tools
+
+All existing tools from Sprint 03.01 need to be updated to use the new standardized ToolResult format. Here's how:
+
+#### Example: Refactoring `getSchedule` Tool
+
+**Before** (current implementation):
+```typescript
+export const getSchedule = tool({
+  description: 'Get the current schedule for a specific date',
+  parameters: z.object({
+    date: z.string().optional().describe('YYYY-MM-DD format, defaults to today'),
+  }),
+  execute: async ({ date }) => {
+    try {
+      // ... existing logic ...
+      return {
+        date: targetDate,
+        blocks: formattedBlocks,
+        totalBlocks: blocks.length,
+        hasBreak: blocks.some(b => b.type === 'break'),
+        hasFocusTime: blocks.some(b => b.type === 'work'),
+        summary: blocks.length === 0 
+          ? 'No blocks scheduled for this date.' 
+          : `${blocks.length} blocks scheduled: ${blocks.map(b => `${format(b.startTime, 'h:mm a')} ${b.title}`).join(', ')}`
+      };
+    } catch (error) {
+      return {
+        error: true,
+        message: error instanceof Error ? error.message : 'Failed to get schedule',
+        // ... error response ...
+      };
+    }
+  },
+});
+```
+
+**After** (refactored with ToolResult):
+```typescript
+export const getSchedule = tool({
+  description: 'Get the current schedule for a specific date',
+  parameters: z.object({
+    date: z.string().optional().describe('YYYY-MM-DD format, defaults to today'),
+  }),
+  execute: async ({ date }) => {
+    try {
+      const targetDate = date || format(new Date(), 'yyyy-MM-dd');
+      const factory = ServiceFactory.getInstance();
+      const scheduleService = factory.getScheduleService();
+      
+      const blocks = await scheduleService.getScheduleForDate(targetDate);
+      
+      const formattedBlocks = blocks.map(block => ({
+        id: block.id,
+        type: block.type,
+        title: block.title,
+        startTime: format(block.startTime, 'HH:mm'),
+        endTime: format(block.endTime, 'HH:mm'),
+        startTime12: format(block.startTime, 'h:mm a'),
+        endTime12: format(block.endTime, 'h:mm a'),
+        description: block.description,
+        tasks: block.tasks
+      }));
+      
+      return toolSuccess({
+        date: targetDate,
+        blocks: formattedBlocks,
+        totalBlocks: blocks.length,
+        hasBreak: blocks.some(b => b.type === 'break'),
+        hasFocusTime: blocks.some(b => b.type === 'work'),
+      }, {
+        type: 'schedule',
+        content: formattedBlocks
+      }, {
+        suggestions: blocks.length === 0 
+          ? ['Schedule my day', 'Create a work block', 'Add a meeting']
+          : ['Optimize my schedule', 'Find free time', 'Show tomorrow'],
+        affectedItems: blocks.map(b => b.id)
+      });
+      
+    } catch (error) {
+      return toolError(
+        'SCHEDULE_FETCH_FAILED',
+        `Failed to get schedule: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error
+      );
+    }
+  },
+});
+```
+
+#### Example: Refactoring `moveTimeBlock` Tool
+
+**After** (refactored with ToolResult):
+```typescript
+export const moveTimeBlock = tool({
+  description: 'Move an existing time block to a new time',
+  parameters: z.object({
+    blockId: z.string().optional(),
+    blockDescription: z.string().optional(),
+    newStartTime: z.string(),
+    newEndTime: z.string().optional(),
+    date: z.string().optional(),
+  }),
+  execute: async ({ blockId, blockDescription, newStartTime, newEndTime, date }) => {
+    try {
+      // ... find block logic ...
+      
+      // Check for conflicts
+      const hasConflict = await scheduleService.checkForConflicts(
+        parsedStartTime, 
+        endTime, 
+        targetDate,
+        actualBlockId
+      );
+      
+      if (hasConflict) {
+        const conflicts = await scheduleService.getConflictingBlocks(
+          parsedStartTime, 
+          endTime, 
+          targetDate
+        );
+        
+        return toolError(
+          'TIME_CONFLICT',
+          'Cannot move block due to time conflict',
+          { conflicts: conflicts.map(b => `${b.title} at ${format(b.startTime, 'h:mm a')}`) }
+        );
+      }
+      
+      // Update the block
+      const updated = await scheduleService.updateTimeBlock({
+        id: actualBlockId,
+        startTime: parsedStartTime,
+        endTime: endTime,
+      });
+      
+      return toolSuccess({
+        blockId: updated.id,
+        oldTime: `${format(existingBlock.startTime, 'h:mm a')} - ${format(existingBlock.endTime, 'h:mm a')}`,
+        newTime: `${parsedStartTime} - ${endTime}`,
+        title: updated.title
+      }, {
+        type: 'text',
+        content: `Moved "${updated.title}" to ${parsedStartTime} - ${endTime}`
+      }, {
+        affectedItems: [updated.id],
+        suggestions: ['Show my updated schedule', 'Move another block']
+      });
+      
+    } catch (error) {
+      return toolError(
+        'BLOCK_MOVE_FAILED',
+        error instanceof Error ? error.message : 'Failed to move time block',
+        error
+      );
+    }
+  },
+});
+```
+
+### A11. Simplified Workflow Tool Integration
 
 Update workflow tools to use standardized results:
 
@@ -2184,6 +2345,10 @@ export interface ListItem {
 - [ ] No code duplication between tools
 - [ ] Easy to add new tools (just export from category)
 - [ ] Type safety maintained throughout
+- [ ] **ALL existing tools refactored to use ToolResult**
+- [ ] Tools organized into logical subdirectories
+- [ ] Tool Registry successfully auto-discovers all tools
+- [ ] No manual tool imports in chat route
 
 ## Implementation Checklist
 
@@ -2234,11 +2399,30 @@ export interface ListItem {
 - [ ] Update ChatPanel with new features
 - [ ] Update UI to handle standardized ToolResult format
 
-### Day 4: Polish & Integration
+### Day 4: Polish & Integration + Existing Tool Refactoring
 - [ ] Create `SuggestionButtons` component
 - [ ] Implement contextual suggestions from ToolResult metadata
 - [ ] Add interactive actions to messages
 - [ ] Update type definitions
+- [ ] **REFACTOR ALL EXISTING TOOLS TO USE TOOLRESULT**:
+  - [ ] Update `createTimeBlock` to return ToolResult
+  - [ ] Update `moveTimeBlock` to return ToolResult
+  - [ ] Update `deleteTimeBlock` to return ToolResult
+  - [ ] Update `findTimeBlock` to return ToolResult
+  - [ ] Update `assignTaskToBlock` to return ToolResult
+  - [ ] Update `completeTask` to return ToolResult
+  - [ ] Update `getSchedule` to return ToolResult with display hints
+  - [ ] Update `getUnassignedTasks` to return ToolResult
+  - [ ] Update `regenerateSchedule` to return ToolResult
+  - [ ] Update `updatePreference` to return ToolResult
+  - [ ] Update `getPreferences` to return ToolResult
+- [ ] Organize existing tools into proper subdirectories:
+  - [ ] Move schedule tools to `tools/schedule-tools/`
+  - [ ] Move preference tools to `tools/preference-tools/`
+  - [ ] Create index.ts files for each category
+- [ ] Remove `ensureServicesConfigured` helper (ServiceFactory handles this)
+- [ ] Standardize error handling across all tools
+- [ ] Add metadata.suggestions to relevant tools
 - [ ] Test all tools return proper ToolResult format
 - [ ] Test tool registry auto-discovery
 - [ ] Test multi-step tool execution

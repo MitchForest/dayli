@@ -2,17 +2,17 @@ import { BaseService } from './base.interface';
 
 export interface Task {
   id: string;
-  userId: string;
   title: string;
-  description?: string;
-  completed: boolean;
-  source?: 'email' | 'chat' | 'calendar' | 'manual';
-  emailId?: string;
   status: 'backlog' | 'scheduled' | 'completed';
-  priority?: 'high' | 'medium' | 'low';
-  estimatedMinutes?: number;
-  createdAt: Date;
-  updatedAt: Date;
+  priority: 'high' | 'medium' | 'low';
+  estimatedMinutes: number;
+  description?: string;
+  source?: 'email' | 'chat' | 'calendar' | 'manual';
+  completed?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+  userId?: string;
+  emailId?: string;
 }
 
 export interface TaskBacklog {
@@ -33,25 +33,49 @@ export interface TaskBacklog {
 
 export interface CreateTaskInput {
   title: string;
-  description?: string;
-  source?: 'email' | 'chat' | 'calendar' | 'manual';
-  priority?: 'high' | 'medium' | 'low';
   estimatedMinutes?: number;
-  emailId?: string;
+  priority?: 'high' | 'medium' | 'low';
+  description?: string;
+}
+
+export interface CreateTaskParams {
+  title: string;
+  estimatedMinutes?: number;
+  description?: string;
+  priority?: 'high' | 'medium' | 'low';
+  source?: 'email' | 'chat' | 'calendar' | 'manual';
+}
+
+export interface UpdateTaskParams {
+  title?: string;
+  estimatedMinutes?: number;
+  description?: string;
+  priority?: 'high' | 'medium' | 'low';
+  status?: 'backlog' | 'scheduled' | 'completed';
 }
 
 export interface TaskService extends BaseService {
-  createTask(input: CreateTaskInput): Promise<Task>;
-  updateTask(id: string, updates: Partial<Task>): Promise<Task>;
+  // Core CRUD operations
+  createTask(params: CreateTaskParams): Promise<Task>;
+  updateTask(id: string, updates: UpdateTaskParams): Promise<Task>;
   deleteTask(id: string): Promise<void>;
   getTask(id: string): Promise<Task | null>;
+  
+  // Query operations
   getUnassignedTasks(): Promise<Task[]>;
   getTasksByStatus(status: 'backlog' | 'scheduled' | 'completed'): Promise<Task[]>;
-  completeTask(id: string): Promise<Task>;
+  searchTasks(query: string): Promise<Task[]>;
+  
+  // Schedule operations
   assignTaskToBlock(taskId: string, blockId: string): Promise<void>;
+  unassignTaskFromBlock(taskId: string): Promise<void>;
+  completeTask(taskId: string): Promise<Task>;
+  
+  // Batch operations
+  batchCreateTasks(tasks: CreateTaskParams[]): Promise<Task[]>;
+  batchUpdateTasks(updates: { id: string; updates: UpdateTaskParams }[]): Promise<Task[]>;
   
   // Backlog operations
-  addToBacklog(task: Omit<TaskBacklog, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<TaskBacklog>;
-  getBacklogTasks(includeDeferred?: boolean): Promise<TaskBacklog[]>;
-  updateBacklogPriority(id: string, priority: number, urgency: number): Promise<void>;
+  getTaskBacklog(): Promise<Task[]>;
+  moveToBacklog(taskId: string): Promise<Task>;
 } 

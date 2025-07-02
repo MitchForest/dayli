@@ -2,21 +2,7 @@ import { streamText } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { createServerActionClient } from '@/lib/supabase-server';
 import { ServiceFactory } from '@/services/factory/service.factory';
-
-// Import all tools
-import {
-  createTimeBlock,
-  moveTimeBlock,
-  deleteTimeBlock,
-  findTimeBlock,
-  assignTaskToBlock,
-  completeTask,
-  getSchedule,
-  getUnassignedTasks,
-  regenerateSchedule,
-  updatePreference,
-  getPreferences,
-} from '@/modules/ai/tools';
+import { toolRegistry } from '@/modules/ai/tools/registry';
 
 // Helper functions
 function getCurrentTime(): string {
@@ -166,15 +152,11 @@ export async function POST(req: Request) {
 
     console.log('[Chat API] Authenticated user:', user.id);
 
-    // Configure ServiceFactory with authenticated user context
+    // Configure services if not already configured
     const factory = ServiceFactory.getInstance();
-    if (!factory.isConfigured()) {
-      console.log('[Chat API] Configuring ServiceFactory for user:', user.id);
-      factory.configure({ 
-        userId: user.id, 
-        supabaseClient: supabase 
-      }); // Now always uses real services
-    }
+    
+    // Update userId in factory
+    factory.updateUserId(user.id);
 
     const { messages } = await req.json();
     
@@ -184,20 +166,15 @@ export async function POST(req: Request) {
       lastMessage: messages[messages.length - 1]?.content?.substring(0, 100) 
     });
 
-    // Define all tools
-    const tools = {
-      createTimeBlock,
-      moveTimeBlock,
-      deleteTimeBlock,
-      findTimeBlock,
-      assignTaskToBlock,
-      completeTask,
-      getSchedule,
-      getUnassignedTasks,
-      regenerateSchedule,
-      updatePreference,
-      getPreferences,
-    };
+    // Auto-register all tools on first request
+    if (toolRegistry.listTools().length === 0) {
+      console.log('[Chat API] Registering tools...');
+      await toolRegistry.autoRegister();
+      console.log('[Chat API] Registered tools:', toolRegistry.listTools());
+    }
+
+    // Get all tools from registry
+    const tools = toolRegistry.getAll();
 
     try {
       const result = await streamText({
