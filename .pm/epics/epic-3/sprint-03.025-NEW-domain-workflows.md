@@ -16,6 +16,86 @@ Build four intelligent domain workflows that orchestrate the stateless tools fro
 - **Composable**: Can be used independently or orchestrated by time-based workflows
 - **Persistent**: All workflows support interruption and resumption
 
+## Prerequisites & Current State
+
+### What's Already Built (Sprint 03.01 & 03.015-03.017)
+1. **Structured Tool Response System** ✅
+   - All tools return `UniversalToolResponse` format
+   - `buildToolResponse`, `buildErrorResponse`, `buildToolConfirmation` helpers
+   - Rich UI components auto-render in chat
+   
+2. **Tool Registry** ✅
+   - Auto-discovery on first chat request
+   - 23+ tools registered and working
+   - Categories: email_, task_, schedule_, calendar_, preference_, workflow_
+
+3. **Service Factory** ✅
+   - Real services (no mocks)
+   - Configured with authenticated Supabase client
+   - Services: ScheduleService, TaskService, GmailService, PreferenceService
+
+4. **Existing Tools You'll Use** ✅
+   ```typescript
+   // Schedule tools
+   - createTimeBlock - Basic block creation
+   - moveTimeBlock - Move blocks (uses flexible time parsing)
+   - deleteTimeBlock - Delete with confirmation flow
+   - assignTaskToBlock - Assign tasks to blocks
+   - findTimeBlock - Search blocks flexibly
+   - getSchedule - Get full schedule with tasks
+   
+   // Task tools  
+   - findTasks - Natural language support ("pending", "todo", etc.)
+   - createTask - Create with auto-scheduling for high priority
+   - editTask - Update task properties
+   - completeTask - Mark as done
+   - getUnassignedTasks - Get backlog with scoring
+   
+   // Email tools
+   - listEmails - Get email list
+   - readEmailContent - Full content with action extraction
+   - draftEmailResponse - Create drafts
+   - processEmailToTask - Convert to task
+   - analyzeSingleEmail - AI importance/urgency (NEW in 03.02)
+   - batchEmailsByStrategy - Group emails (NEW in 03.02)
+   
+   // Calendar tools
+   - scheduleMeeting - Create meetings
+   - rescheduleMeeting - Move meetings
+   - handleMeetingConflict - Resolve conflicts (placeholder)
+   ```
+
+5. **Time Parsing** ✅
+   - `toMilitaryTime()` - Converts "2pm", "14:00", etc. to 24hr
+   - `parseNaturalDateTime()` - Handles "tomorrow at 3pm"
+   - All schedule tools use flexible parsing
+
+6. **Confirmation Flow** ✅ (Partial)
+   - `storeProposedChanges()` in utils/helpers.ts
+   - 5-minute TTL with Map storage
+   - Used by `deleteTimeBlock` and `scheduleDay`
+
+### What's Being Built (Sprint 03.02 - IN PROGRESS)
+1. **Smart Block Creation Tools** 🚧
+   - `createWorkBlock` - Intelligent work block with task assignment
+   - `createEmailBlock` - Email processing blocks
+
+2. **Additional Email Tools** 🚧
+   - `extractActionItems` - Get tasks from emails
+   - `calculateEmailProcessingTime` - Time estimates
+   - Email backlog management tools
+
+3. **WorkflowPersistenceService** 🚧
+   - Will wrap workflows for interruption/resume
+   - Not ready yet - workflows will save state directly for now
+
+### What to Deprecate
+1. **Existing Workflows** (reference only, then delete)
+   - `apps/web/modules/workflows/graphs/dailyPlanning.ts`
+   - `apps/web/modules/workflows/graphs/emailTriage.ts`
+   - These are incomplete and use old patterns
+   - Look at them for LangGraph syntax, then create new ones
+
 ## Architectural Decisions
 
 ### 1. Workflow Hierarchy
@@ -61,6 +141,117 @@ const sodWorkflow = async (state) => {
   const emails = await emailManagementWorkflow.invoke(state);
   return combineResults(scheduling, tasks, emails);
 };
+```
+
+## Critical Implementation Patterns
+
+### 1. Error Handling Pattern (REQUIRED for all nodes)
+```typescript
+async function someNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
+  try {
+    // Your node logic here
+    return { ...updates };
+  } catch (error) {
+    console.error(`[${workflowName}] Error in someNode:`, error);
+    // IMPORTANT: Don't throw! Return state with error message
+    return {
+      messages: [
+        ...state.messages,
+        new AIMessage(`Error in ${nodeName}: ${error.message}. Continuing with partial results.`)
+      ]
+    };
+  }
+}
+```
+
+### 2. Service Usage Pattern
+```typescript
+// ALWAYS use ServiceFactory - it's already configured
+import { ServiceFactory } from '@/services/factory/service.factory';
+
+const factory = ServiceFactory.getInstance();
+const scheduleService = factory.getScheduleService();
+const taskService = factory.getTaskService();
+const gmailService = factory.getGmailService();
+const preferenceService = factory.getPreferenceService();
+```
+
+### 3. Tool Calling Pattern
+```typescript
+// Import tools directly - they're already in the registry
+import { createTimeBlock, findTasks, assignTaskToBlock } from '@/modules/ai/tools';
+
+// Call tools and handle UniversalToolResponse
+const result = await createTimeBlock.execute({
+  type: 'work',
+  title: 'Deep Focus',
+  startTime: '9:00am',  // Tool handles flexible parsing
+  endTime: '11:00am',
+  date: '2024-01-15'
+});
+
+if (result.error) {
+  // Handle error
+} else {
+  // Use result.data
+}
+```
+
+### 4. Parallel Data Fetching (REQUIRED for performance)
+```typescript
+async function fetchDataNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
+  // ALWAYS fetch in parallel when possible
+  const [schedule, tasks, preferences, emails] = await Promise.all([
+    scheduleService.getScheduleForDate(state.date),
+    taskService.getUnassignedTasks(),
+    preferenceService.getUserPreferences(),
+    gmailService.listMessages({ maxResults: 20 })
+  ]);
+  
+  return {
+    currentSchedule: schedule.blocks,
+    availableTasks: tasks,
+    userPreferences: preferences,
+    unreadEmails: emails
+  };
+}
+```
+
+### 5. RAG Context Pattern (Placeholder for Sprint 03.04)
+```typescript
+// Define minimal interface now
+interface RAGContext {
+  patterns?: UserPattern[];
+  recentDecisions?: Decision[];
+  similarDays?: DayContext[];
+}
+
+// Empty interfaces for now
+interface UserPattern {}
+interface Decision {}
+interface DayContext {}
+
+// In nodes, make it optional
+const ragContext = state.ragContext || {};
+const patterns = ragContext.patterns || [];
+```
+
+### 6. Confirmation Flow Pattern
+```typescript
+// For operations needing confirmation
+if (proposedChanges.length > 0) {
+  const confirmationId = crypto.randomUUID();
+  
+  // Store changes for later execution
+  await storeProposedChanges(confirmationId, proposedChanges);
+  
+  return {
+    proposedChanges,
+    confirmationRequired: true,
+    confirmationId,
+    summary: generateNaturalSummary(proposedChanges)
+  };
+}
 ```
 
 ## The Four Domain Workflows
@@ -144,266 +335,6 @@ const sodWorkflow = async (state) => {
 6. `optimizeMeetings` - Consolidate when possible
 7. `protectFocusTime` - Ensure deep work blocks
 8. `generateProposal` - Explain optimizations
-
-## Implementation Details
-
-### 1. Adaptive Scheduling Workflow
-
-**File**: `apps/web/modules/workflows/graphs/adaptiveScheduling.ts`
-
-```typescript
-import { StateGraph, END } from "@langchain/langgraph";
-import { BaseMessage, AIMessage } from "@langchain/core/messages";
-import { 
-  createTimeBlock,
-  moveTimeBlock,
-  deleteTimeBlock,
-  findTimeBlock,
-  assignTaskToBlock,
-  createWorkBlock,
-  createEmailBlock
-} from "@/modules/ai/tools/schedule";
-import { RAGContextService } from "@/modules/rag/services/ragContext.service";
-
-interface SchedulingState extends DomainWorkflowState<{
-  date: string;
-  currentSchedule: TimeBlock[];
-  gaps: TimeGap[];
-  inefficiencies: Inefficiency[];
-  strategy?: "full" | "partial" | "optimize" | "task_only";
-  preferences: UserPreferences;
-  availableTasks: Task[];
-  emailBacklog: EmailBacklog[];
-}> {}
-
-export function createAdaptiveSchedulingWorkflow() {
-  const workflow = new StateGraph<SchedulingState>({
-    channels: {
-      userId: null,
-      intent: null,
-      ragContext: null,
-      data: {
-        date: null,
-        currentSchedule: [],
-        gaps: [],
-        inefficiencies: [],
-        strategy: null,
-        preferences: null,
-        availableTasks: [],
-        emailBacklog: [],
-      },
-      proposedChanges: [],
-      messages: [],
-    },
-  });
-
-  // Add nodes
-  workflow.addNode("fetchScheduleData", fetchScheduleDataNode);
-  workflow.addNode("analyzeScheduleState", analyzeScheduleStateNode);
-  workflow.addNode("fetchRAGContext", fetchRAGContextNode);
-  workflow.addNode("determineStrategy", determineStrategyNode);
-  workflow.addNode("executeStrategy", executeStrategyNode);
-  workflow.addNode("protectTimeBlocks", protectTimeBlocksNode);
-  workflow.addNode("validateSchedule", validateScheduleNode);
-  workflow.addNode("generateProposal", generateProposalNode);
-
-  // Define flow
-  workflow.setEntryPoint("fetchScheduleData");
-  workflow.addEdge("fetchScheduleData", "analyzeScheduleState");
-  workflow.addEdge("analyzeScheduleState", "fetchRAGContext");
-  workflow.addEdge("fetchRAGContext", "determineStrategy");
-  workflow.addEdge("determineStrategy", "executeStrategy");
-  workflow.addEdge("executeStrategy", "protectTimeBlocks");
-  workflow.addEdge("protectTimeBlocks", "validateSchedule");
-  workflow.addEdge("validateSchedule", "generateProposal");
-  workflow.addEdge("generateProposal", END);
-
-  return workflow.compile();
-}
-```
-
-### 2. Email Management Workflow
-
-**File**: `apps/web/modules/workflows/graphs/emailManagement.ts`
-
-```typescript
-interface EmailState extends DomainWorkflowState<{
-  emails: Email[];
-  backlogEmails: EmailBacklog[];
-  analyzedEmails: AnalyzedEmail[];
-  emailBatches: EmailBatch[];
-  senderPatterns: SenderPattern[];
-}> {}
-
-interface AnalyzedEmail extends Email {
-  importance: "important" | "not_important" | "archive";
-  urgency: "urgent" | "can_wait" | "no_response";
-  estimatedResponseTime: number;
-  suggestedAction: string;
-}
-
-export function createEmailManagementWorkflow() {
-  const workflow = new StateGraph<EmailState>({
-    channels: {
-      userId: null,
-      ragContext: null,
-      data: {
-        emails: [],
-        backlogEmails: [],
-        analyzedEmails: [],
-        emailBatches: [],
-        senderPatterns: [],
-      },
-      proposedChanges: [],
-      messages: [],
-    },
-  });
-
-  workflow.addNode("fetchEmails", fetchEmailsNode);
-  workflow.addNode("fetchRAGContext", fetchRAGContextNode);
-  workflow.addNode("analyzeEmails", analyzeEmailsNode);
-  workflow.addNode("detectPatterns", detectPatternsNode);
-  workflow.addNode("batchEmails", batchEmailsNode);
-  workflow.addNode("createEmailBlocks", createEmailBlocksNode);
-  workflow.addNode("updateBacklog", updateBacklogNode);
-  workflow.addNode("generateSummary", generateSummaryNode);
-
-  // Flow
-  workflow.setEntryPoint("fetchEmails");
-  workflow.addEdge("fetchEmails", "fetchRAGContext");
-  workflow.addEdge("fetchRAGContext", "analyzeEmails");
-  workflow.addEdge("analyzeEmails", "detectPatterns");
-  workflow.addEdge("detectPatterns", "batchEmails");
-  workflow.addEdge("batchEmails", "createEmailBlocks");
-  workflow.addEdge("createEmailBlocks", "updateBacklog");
-  workflow.addEdge("updateBacklog", "generateSummary");
-  workflow.addEdge("generateSummary", END);
-
-  return workflow.compile();
-}
-```
-
-### 3. Task Intelligence Workflow
-
-**File**: `apps/web/modules/workflows/graphs/taskIntelligence.ts`
-
-```typescript
-interface TaskState extends DomainWorkflowState<{
-  tasks: Task[];
-  taskBacklog: TaskBacklog[];
-  scoredTasks: ScoredTask[];
-  availableTime: TimeSlot[];
-  currentEnergy?: "high" | "medium" | "low";
-  recommendations: TaskRecommendation[];
-}> {}
-
-interface ScoredTask extends Task {
-  score: number;
-  factors: {
-    priority: number;
-    urgency: number;
-    age: number;
-    energy: number;
-    pattern: number;
-  };
-  reasoning: string;
-}
-
-export function createTaskIntelligenceWorkflow() {
-  const workflow = new StateGraph<TaskState>({
-    channels: {
-      userId: null,
-      ragContext: null,
-      data: {
-        tasks: [],
-        taskBacklog: [],
-        scoredTasks: [],
-        availableTime: [],
-        currentEnergy: "medium",
-        recommendations: [],
-      },
-      proposedChanges: [],
-      messages: [],
-    },
-  });
-
-  workflow.addNode("fetchTasks", fetchTasksNode);
-  workflow.addNode("fetchRAGContext", fetchRAGContextNode);
-  workflow.addNode("scoreTasks", scoreTasksNode);
-  workflow.addNode("analyzeCapacity", analyzeCapacityNode);
-  workflow.addNode("matchTasksToTime", matchTasksToTimeNode);
-  workflow.addNode("suggestCombinations", suggestCombinationsNode);
-  workflow.addNode("updateBacklog", updateBacklogNode);
-  workflow.addNode("generateRecommendations", generateRecommendationsNode);
-
-  // Flow
-  workflow.setEntryPoint("fetchTasks");
-  workflow.addEdge("fetchTasks", "fetchRAGContext");
-  workflow.addEdge("fetchRAGContext", "scoreTasks");
-  workflow.addEdge("scoreTasks", "analyzeCapacity");
-  workflow.addEdge("analyzeCapacity", "matchTasksToTime");
-  workflow.addEdge("matchTasksToTime", "suggestCombinations");
-  workflow.addEdge("suggestCombinations", "updateBacklog");
-  workflow.addEdge("updateBacklog", "generateRecommendations");
-  workflow.addEdge("generateRecommendations", END);
-
-  return workflow.compile();
-}
-```
-
-### 4. Calendar Optimization Workflow
-
-**File**: `apps/web/modules/workflows/graphs/calendarOptimization.ts`
-
-```typescript
-interface CalendarState extends DomainWorkflowState<{
-  meetings: CalendarEvent[];
-  conflicts: Conflict[];
-  inefficiencies: CalendarInefficiency[];
-  protectedBlocks: TimeBlock[];
-  optimizationSuggestions: OptimizationSuggestion[];
-}> {}
-
-export function createCalendarOptimizationWorkflow() {
-  const workflow = new StateGraph<CalendarState>({
-    channels: {
-      userId: null,
-      ragContext: null,
-      data: {
-        meetings: [],
-        conflicts: [],
-        inefficiencies: [],
-        protectedBlocks: [],
-        optimizationSuggestions: [],
-      },
-      proposedChanges: [],
-      messages: [],
-    },
-  });
-
-  workflow.addNode("fetchCalendarData", fetchCalendarDataNode);
-  workflow.addNode("detectConflicts", detectConflictsNode);
-  workflow.addNode("analyzeEfficiency", analyzeEfficiencyNode);
-  workflow.addNode("fetchRAGContext", fetchRAGContextNode);
-  workflow.addNode("generateResolutions", generateResolutionsNode);
-  workflow.addNode("optimizeMeetings", optimizeMeetingsNode);
-  workflow.addNode("protectFocusTime", protectFocusTimeNode);
-  workflow.addNode("generateProposal", generateProposalNode);
-
-  // Flow
-  workflow.setEntryPoint("fetchCalendarData");
-  workflow.addEdge("fetchCalendarData", "detectConflicts");
-  workflow.addEdge("detectConflicts", "analyzeEfficiency");
-  workflow.addEdge("analyzeEfficiency", "fetchRAGContext");
-  workflow.addEdge("fetchRAGContext", "generateResolutions");
-  workflow.addEdge("generateResolutions", "optimizeMeetings");
-  workflow.addEdge("optimizeMeetings", "protectFocusTime");
-  workflow.addEdge("protectFocusTime", "generateProposal");
-  workflow.addEdge("generateProposal", END);
-
-  return workflow.compile();
-}
-```
 
 ## Key Node Implementations
 
@@ -554,6 +485,159 @@ async function generateResolutionsNode(state: CalendarState): Promise<Partial<Ca
   }
   
   return { proposedChanges };
+}
+```
+
+## Helper Functions to Create
+
+**File**: `apps/web/modules/workflows/utils/scheduleHelpers.ts`
+
+```typescript
+import { format, parse, addMinutes, differenceInMinutes } from 'date-fns';
+import { toMilitaryTime } from '@/modules/ai/utils/time-parser';
+
+// Types
+interface TimeGap {
+  startTime: string;
+  endTime: string;
+  duration: number; // minutes
+}
+
+interface Inefficiency {
+  type: 'gap' | 'fragmentation' | 'poor_timing' | 'task_mismatch';
+  description: string;
+  severity: 'low' | 'medium' | 'high';
+  affectedBlocks: string[];
+}
+
+// Find gaps in schedule
+export function findScheduleGaps(
+  blocks: TimeBlock[], 
+  preferences: UserPreferences
+): TimeGap[] {
+  const gaps: TimeGap[] = [];
+  const sortedBlocks = [...blocks].sort((a, b) => 
+    parseTime(a.startTime).getTime() - parseTime(b.startTime).getTime()
+  );
+
+  const workStart = parseTime(preferences.work_start_time || "9:00");
+  const workEnd = parseTime(preferences.work_end_time || "17:00");
+
+  // Check gap at start of day
+  if (sortedBlocks.length === 0 || parseTime(sortedBlocks[0].startTime) > workStart) {
+    const gapEnd = sortedBlocks[0] ? parseTime(sortedBlocks[0].startTime) : workEnd;
+    gaps.push({
+      startTime: format(workStart, 'HH:mm'),
+      endTime: format(gapEnd, 'HH:mm'),
+      duration: differenceInMinutes(gapEnd, workStart),
+    });
+  }
+
+  // Check gaps between blocks
+  for (let i = 0; i < sortedBlocks.length - 1; i++) {
+    const currentEnd = parseTime(sortedBlocks[i].endTime);
+    const nextStart = parseTime(sortedBlocks[i + 1].startTime);
+    const gapDuration = differenceInMinutes(nextStart, currentEnd);
+
+    if (gapDuration > 15) {
+      gaps.push({
+        startTime: sortedBlocks[i].endTime,
+        endTime: sortedBlocks[i + 1].startTime,
+        duration: gapDuration,
+      });
+    }
+  }
+
+  return gaps;
+}
+
+// Detect schedule inefficiencies
+export function detectInefficiencies(blocks: TimeBlock[]): Inefficiency[] {
+  const inefficiencies: Inefficiency[] = [];
+  
+  // Check for small gaps
+  const gaps = findScheduleGaps(blocks, { work_start_time: '9:00', work_end_time: '17:00' });
+  gaps.forEach(gap => {
+    if (gap.duration >= 15 && gap.duration < 30) {
+      inefficiencies.push({
+        type: 'gap',
+        description: `${gap.duration}-minute gap is too short for productive work`,
+        severity: 'medium',
+        affectedBlocks: [], // Would need block IDs
+      });
+    }
+  });
+  
+  // Check for fragmented focus time
+  const focusBlocks = blocks.filter(b => b.type === 'work');
+  if (focusBlocks.length > 3) {
+    inefficiencies.push({
+      type: 'fragmentation',
+      description: 'Focus time is fragmented across too many blocks',
+      severity: 'high',
+      affectedBlocks: focusBlocks.map(b => b.id),
+    });
+  }
+  
+  return inefficiencies;
+}
+
+// Calculate duration in minutes
+export function calculateDuration(startTime: string, endTime: string): number {
+  const start = parseTime(startTime);
+  const end = parseTime(endTime);
+  return differenceInMinutes(end, start);
+}
+
+// Check if block is lunch time
+export function isLunchTime(block: TimeBlock): boolean {
+  const blockStart = parseTime(block.startTime);
+  const lunchStart = parseTime("11:30");
+  const lunchEnd = parseTime("13:30");
+  
+  return blockStart >= lunchStart && blockStart <= lunchEnd && 
+         block.type === "break";
+}
+
+// Parse time helper (uses existing time-parser)
+function parseTime(timeStr: string): Date {
+  const today = new Date();
+  const militaryTime = toMilitaryTime(timeStr);
+  const [hours, minutes] = militaryTime.split(':').map(Number);
+  today.setHours(hours, minutes, 0, 0);
+  return today;
+}
+
+// Check if schedule has available time slots
+export function hasAvailableTimeSlots(data: SchedulingState['data']): boolean {
+  const gaps = findScheduleGaps(data.currentSchedule, data.preferences);
+  return gaps.some(gap => gap.duration >= 30);
+}
+
+// Generate natural language summary
+export function generateNaturalSummary(changes: Change[]): string {
+  const parts = [];
+  
+  // Group by type
+  const creates = changes.filter(c => c.type === 'create');
+  const moves = changes.filter(c => c.type === 'move');
+  const deletes = changes.filter(c => c.type === 'delete');
+  const assigns = changes.filter(c => c.type === 'assign');
+  
+  if (creates.length > 0) {
+    parts.push(`Creating ${creates.length} new blocks`);
+  }
+  if (moves.length > 0) {
+    parts.push(`Moving ${moves.length} blocks`);
+  }
+  if (deletes.length > 0) {
+    parts.push(`Removing ${deletes.length} blocks`);
+  }
+  if (assigns.length > 0) {
+    parts.push(`Assigning ${assigns.length} tasks`);
+  }
+  
+  return parts.join(', ') + '.';
 }
 ```
 
@@ -718,6 +802,343 @@ export const optimizeCalendar = tool({
 });
 ```
 
+## Complete Implementation Details
+
+### 1. Adaptive Scheduling Workflow (Full Implementation)
+
+**File**: `apps/web/modules/workflows/graphs/adaptiveScheduling.ts`
+
+```typescript
+import { StateGraph, END } from "@langchain/langgraph";
+import { BaseMessage, AIMessage, HumanMessage } from "@langchain/core/messages";
+import { ServiceFactory } from '@/services/factory/service.factory';
+import { 
+  createTimeBlock,
+  moveTimeBlock,
+  deleteTimeBlock,
+  findTimeBlock,
+  assignTaskToBlock,
+  findTasks,
+  getSchedule
+} from "@/modules/ai/tools";
+import { getCurrentUserId } from '@/lib/utils';
+import { format } from 'date-fns';
+import { 
+  findScheduleGaps, 
+  detectInefficiencies, 
+  calculateDuration,
+  isLunchTime,
+  hasAvailableTimeSlots,
+  generateNaturalSummary
+} from '../utils/scheduleHelpers';
+
+// Types
+interface SchedulingState extends DomainWorkflowState<{
+  date: string;
+  currentSchedule: TimeBlock[];
+  gaps: TimeGap[];
+  inefficiencies: Inefficiency[];
+  strategy?: "full" | "partial" | "optimize" | "task_only";
+  preferences: UserPreferences;
+  availableTasks: Task[];
+  emailBacklog: EmailBacklog[];
+}> {}
+
+export function createAdaptiveSchedulingWorkflow() {
+  const workflow = new StateGraph<SchedulingState>({
+    channels: {
+      userId: null,
+      intent: null,
+      ragContext: null,
+      data: {
+        date: null,
+        currentSchedule: [],
+        gaps: [],
+        inefficiencies: [],
+        strategy: null,
+        preferences: null,
+        availableTasks: [],
+        emailBacklog: [],
+      },
+      proposedChanges: [],
+      messages: [],
+    },
+  });
+
+  // Add all nodes
+  workflow.addNode("fetchScheduleData", fetchScheduleDataNode);
+  workflow.addNode("analyzeScheduleState", analyzeScheduleStateNode);
+  workflow.addNode("fetchRAGContext", fetchRAGContextNode);
+  workflow.addNode("determineStrategy", determineStrategyNode);
+  workflow.addNode("executeStrategy", executeStrategyNode);
+  workflow.addNode("protectTimeBlocks", protectTimeBlocksNode);
+  workflow.addNode("validateSchedule", validateScheduleNode);
+  workflow.addNode("generateProposal", generateProposalNode);
+
+  // Define flow
+  workflow.setEntryPoint("fetchScheduleData");
+  workflow.addEdge("fetchScheduleData", "analyzeScheduleState");
+  workflow.addEdge("analyzeScheduleState", "fetchRAGContext");
+  workflow.addEdge("fetchRAGContext", "determineStrategy");
+  workflow.addEdge("determineStrategy", "executeStrategy");
+  workflow.addEdge("executeStrategy", "protectTimeBlocks");
+  workflow.addEdge("protectTimeBlocks", "validateSchedule");
+  workflow.addEdge("validateSchedule", "generateProposal");
+  workflow.addEdge("generateProposal", END);
+
+  return workflow.compile();
+}
+
+// Fetch all needed data in parallel
+async function fetchScheduleDataNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
+  try {
+    const factory = ServiceFactory.getInstance();
+    const scheduleService = factory.getScheduleService();
+    const preferenceService = factory.getPreferenceService();
+    
+    const [schedule, preferences, tasksResult] = await Promise.all([
+      scheduleService.getScheduleForDate(state.data.date, state.userId),
+      preferenceService.getUserPreferences(state.userId),
+      findTasks.execute({
+        status: 'pending',
+        priority: 'high',
+        limit: 20
+      })
+    ]);
+    
+    return {
+      data: {
+        ...state.data,
+        currentSchedule: schedule.blocks,
+        preferences,
+        availableTasks: tasksResult.data?.results || [],
+      },
+      messages: [
+        ...state.messages,
+        new AIMessage(`Fetched ${schedule.blocks.length} blocks and ${tasksResult.data?.results?.length || 0} tasks`)
+      ]
+    };
+  } catch (error) {
+    console.error('[adaptiveScheduling] Error in fetchScheduleData:', error);
+    return {
+      messages: [
+        ...state.messages,
+        new AIMessage(`Error fetching data: ${error.message}. Continuing with defaults.`)
+      ]
+    };
+  }
+}
+
+// Analyze current state
+async function analyzeScheduleStateNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
+  try {
+    const gaps = findScheduleGaps(state.data.currentSchedule, state.data.preferences);
+    const inefficiencies = detectInefficiencies(state.data.currentSchedule);
+    
+    return {
+      data: {
+        ...state.data,
+        gaps,
+        inefficiencies,
+      },
+      messages: [
+        ...state.messages,
+        new AIMessage(`Found ${gaps.length} gaps and ${inefficiencies.length} inefficiencies`)
+      ]
+    };
+  } catch (error) {
+    console.error('[adaptiveScheduling] Error in analyzeScheduleState:', error);
+    return {
+      messages: [
+        ...state.messages,
+        new AIMessage(`Error analyzing schedule: ${error.message}`)
+      ]
+    };
+  }
+}
+
+// Placeholder for RAG context (Sprint 03.04)
+async function fetchRAGContextNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
+  // For now, just pass through
+  return {
+    ragContext: {
+      patterns: [],
+      recentDecisions: [],
+      similarDays: [],
+    }
+  };
+}
+
+// Execute chosen strategy
+async function executeStrategyNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
+  const proposedChanges: Change[] = [];
+  
+  try {
+    switch (state.data.strategy) {
+      case "full":
+        // Create complete schedule
+        proposedChanges.push({
+          type: "create",
+          entity: "block",
+          data: {
+            type: "work",
+            title: "Morning Deep Work",
+            startTime: "09:00",
+            endTime: "11:00",
+          },
+          reason: "Starting your day with focused work",
+        });
+        
+        proposedChanges.push({
+          type: "create",
+          entity: "block",
+          data: {
+            type: "email",
+            title: "Email Processing",
+            startTime: "11:00",
+            endTime: "11:30",
+          },
+          reason: "Dedicated time for email management",
+        });
+        
+        proposedChanges.push({
+          type: "create",
+          entity: "block",
+          data: {
+            type: "break",
+            title: "Lunch",
+            startTime: state.data.preferences.lunch_start_time || "12:00",
+            endTime: "13:00",
+          },
+          reason: "Protected lunch break",
+        });
+        break;
+        
+      case "optimize":
+        // Fix inefficiencies
+        state.data.inefficiencies.forEach(inefficiency => {
+          if (inefficiency.type === "gap" && inefficiency.severity === "high") {
+            proposedChanges.push({
+              type: "consolidate",
+              entity: "schedule",
+              data: {
+                affectedBlocks: inefficiency.affectedBlocks,
+              },
+              reason: inefficiency.description,
+            });
+          }
+        });
+        break;
+        
+      case "partial":
+        // Fill gaps
+        state.data.gaps.forEach(gap => {
+          if (gap.duration >= 60) {
+            proposedChanges.push({
+              type: "create",
+              entity: "block",
+              data: {
+                type: "work",
+                title: "Focus Block",
+                startTime: gap.startTime,
+                endTime: gap.endTime,
+              },
+              reason: `Utilizing ${gap.duration}-minute gap`,
+            });
+          }
+        });
+        break;
+        
+      case "task_only":
+        // Just assign tasks
+        const workBlocks = state.data.currentSchedule.filter(b => b.type === "work");
+        state.data.availableTasks.slice(0, 5).forEach((task, index) => {
+          if (workBlocks[index]) {
+            proposedChanges.push({
+              type: "assign",
+              entity: "task",
+              data: {
+                taskId: task.id,
+                blockId: workBlocks[index].id,
+              },
+              reason: `Assigning high-priority task to work block`,
+            });
+          }
+        });
+        break;
+    }
+    
+    return { proposedChanges };
+  } catch (error) {
+    console.error('[adaptiveScheduling] Error in executeStrategy:', error);
+    return {
+      messages: [
+        ...state.messages,
+        new AIMessage(`Error executing strategy: ${error.message}`)
+      ]
+    };
+  }
+}
+
+// Ensure breaks are protected
+async function protectTimeBlocksNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
+  // Check if lunch is protected
+  const hasLunch = state.proposedChanges.some(c => 
+    c.entity === "block" && c.data?.type === "break"
+  ) || state.data.currentSchedule.some(b => isLunchTime(b));
+  
+  if (!hasLunch && state.data.preferences.lunch_start_time) {
+    state.proposedChanges.push({
+      type: "create",
+      entity: "block",
+      data: {
+        type: "break",
+        title: "Lunch",
+        startTime: state.data.preferences.lunch_start_time,
+        endTime: format(
+          new Date(`2000-01-01 ${state.data.preferences.lunch_start_time}`).getTime() + 60 * 60 * 1000,
+          'HH:mm'
+        ),
+      },
+      reason: "Protecting lunch break",
+    });
+  }
+  
+  return state;
+}
+
+// Validate no conflicts
+async function validateScheduleNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
+  // Simple validation for now
+  return {
+    messages: [
+      ...state.messages,
+      new AIMessage(`Validated ${state.proposedChanges.length} proposed changes`)
+    ]
+  };
+}
+
+// Generate natural language proposal
+async function generateProposalNode(state: SchedulingState): Promise<Partial<SchedulingState>> {
+  const summary = generateNaturalSummary(state.proposedChanges);
+  
+  return {
+    messages: [
+      ...state.messages,
+      new AIMessage(summary)
+    ],
+    data: {
+      ...state.data,
+      summary,
+    }
+  };
+}
+```
+
+### 2. Email Management Workflow (Full Implementation)
+
+// ... existing code ...
+
 ## Testing Strategy
 
 ### Day 1: Core Workflow Implementation
@@ -811,6 +1232,129 @@ async function startOfDayOrchestration(userId: string) {
 4. **Maintainability**: Clear boundaries between domains
 5. **Scalability**: Easy to add new domain workflows
 
+## Critical Notes for Implementation
+
+### 1. Import Paths
+```typescript
+// CORRECT - tools are exported from index
+import { createTimeBlock, findTasks } from '@/modules/ai/tools';
+
+// WRONG - don't import from subdirectories
+import { createTimeBlock } from '@/modules/ai/tools/schedule/createTimeBlock';
+```
+
+### 2. Service Factory Usage
+```typescript
+// CORRECT - get instance and then services
+const factory = ServiceFactory.getInstance();
+const scheduleService = factory.getScheduleService();
+
+// WRONG - ServiceFactory is not a namespace
+const scheduleService = ServiceFactory.getScheduleService();
+```
+
+### 3. Tool Response Handling
+```typescript
+// CORRECT - check for error in response
+const result = await findTasks.execute({ status: 'pending' });
+if (result.error) {
+  // Handle error
+} else {
+  const tasks = result.data?.results || [];
+}
+
+// WRONG - assuming success
+const tasks = result.data.results; // Could throw if error
+```
+
+### 4. Workflow State Updates
+```typescript
+// CORRECT - return partial state updates
+return {
+  data: {
+    ...state.data,
+    newField: value
+  }
+};
+
+// WRONG - mutating state
+state.data.newField = value; // Don't mutate!
+return state;
+```
+
+### 5. LangGraph Edge Definitions
+```typescript
+// CORRECT - use string node names
+workflow.addEdge("fetchData", "analyzeData");
+
+// WRONG - using function references
+workflow.addEdge(fetchDataNode, analyzeDataNode);
+```
+
+## Common Pitfalls to Avoid
+
+1. **Don't Call Tools Within Tools**
+   - Tools should be atomic operations
+   - Workflows orchestrate multiple tools
+
+2. **Don't Forget Error Handling**
+   - Every node needs try-catch
+   - Return error in state, don't throw
+
+3. **Don't Skip Parallel Fetching**
+   - Use Promise.all for performance
+   - 3 sequential calls = 3x slower
+
+4. **Don't Hardcode User IDs**
+   - Always get from state or getCurrentUserId()
+   - Never assume a specific user
+
+5. **Don't Mix Concerns**
+   - Workflows orchestrate, tools execute
+   - Keep domain logic in appropriate workflow
+
+6. **Don't Forget Confirmation Flow**
+   - Destructive operations need confirmation
+   - Store proposals with TTL
+
+7. **Don't Ignore Time Zones**
+   - All times are in user's local time
+   - Use date-fns for manipulation
+
+## Debugging Tips
+
+1. **Enable Workflow Logging**
+```typescript
+const DEBUG = true;
+if (DEBUG) {
+  workflow.beforeNode = async (node, state) => {
+    console.log(`[Workflow] Entering ${node}`, state);
+  };
+}
+```
+
+2. **Test Individual Nodes**
+```typescript
+// Test node in isolation
+const testState = { /* mock state */ };
+const result = await fetchDataNode(testState);
+console.log('Node result:', result);
+```
+
+3. **Check Tool Registry**
+```typescript
+// In chat route or test
+console.log('Registered tools:', toolRegistry.listTools());
+```
+
+4. **Trace Execution Path**
+```typescript
+// Add to each node
+console.log(`[${workflowName}] ${nodeName} executed`);
+```
+
 ---
 
 **Remember**: These workflows are the intelligence layer of dayli. They should make smart, context-aware decisions while remaining stateless and composable. Focus on clear domain boundaries and consistent interfaces.
+
+The executor should reference the old workflows for LangGraph syntax but create entirely new implementations following these patterns. Delete the old workflows after understanding their structure.

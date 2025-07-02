@@ -1,4 +1,13 @@
 export { createTask } from './createTask';
 export { editTask } from './editTask';
 export { deleteTask } from './deleteTask';
-export { findTasks } from './findTasks'; 
+export { findTasks } from './findTasks';
+export { scoreTask } from './scoreTask';
+export { findTasksForTimeSlot } from './findTasksForTimeSlot';
+export { analyzeTaskPatterns } from './analyzeTaskPatterns';
+export { updateTaskBacklog } from './updateTaskBacklog';
+export { getTaskBacklogHealth } from './getTaskBacklogHealth';
+export { batchSimilarTasks } from './batchSimilarTasks';
+export { estimateTaskDuration } from './estimateTaskDuration';
+export { findTaskDependencies } from './findTaskDependencies';
+export { suggestTaskOrder } from './suggestTaskOrder'; 

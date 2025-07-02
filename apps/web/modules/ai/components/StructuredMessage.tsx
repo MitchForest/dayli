@@ -68,7 +68,7 @@ export const StructuredMessage = memo(function StructuredMessage({
           priority={display.priority}
         >
           {display.components.map((component, idx) => (
-            <ComponentRenderer key={idx} component={component} />
+            <ComponentRenderer key={idx} component={component} onAction={onAction} />
           ))}
         </DataCard>
       )}
@@ -78,7 +78,7 @@ export const StructuredMessage = memo(function StructuredMessage({
           title={display.title}
           description={display.description}
           items={display.components.map((component, idx) => (
-            <ComponentRenderer key={idx} component={component} />
+            <ComponentRenderer key={idx} component={component} onAction={onAction} />
           ))}
         />
       )}
@@ -91,7 +91,7 @@ export const StructuredMessage = memo(function StructuredMessage({
               <p className="text-sm text-muted-foreground mt-1">{display.description}</p>
             )}
           </div>
-          <TimelineRenderer components={display.components} />
+          <TimelineRenderer components={display.components} onAction={onAction} />
         </div>
       )}
       
@@ -100,7 +100,7 @@ export const StructuredMessage = memo(function StructuredMessage({
           <h3 className="text-sm font-medium mb-2">{display.title}</h3>
           <div className="grid grid-cols-2 gap-2">
             {display.components.map((component, idx) => (
-              <ComponentRenderer key={idx} component={component} />
+              <ComponentRenderer key={idx} component={component} onAction={onAction} />
             ))}
           </div>
         </div>
@@ -127,7 +127,13 @@ export const StructuredMessage = memo(function StructuredMessage({
 });
 
 // Timeline renderer for schedule blocks
-function TimelineRenderer({ components }: { components: Component[] }) {
+function TimelineRenderer({ 
+  components,
+  onAction 
+}: { 
+  components: Component[];
+  onAction?: (action: Action | { type: 'message'; message: string }) => void;
+}) {
   // Group blocks by time period
   const morningBlocks: Component[] = [];
   const afternoonBlocks: Component[] = [];
@@ -171,6 +177,7 @@ function TimelineRenderer({ components }: { components: Component[] }) {
           title="Morning"
           icon={<Sun className="h-4 w-4" />}
           blocks={morningBlocks}
+          onAction={onAction}
         />
       )}
       
@@ -179,6 +186,7 @@ function TimelineRenderer({ components }: { components: Component[] }) {
           title="Afternoon"
           icon={<Cloud className="h-4 w-4" />}
           blocks={afternoonBlocks}
+          onAction={onAction}
         />
       )}
       
@@ -187,6 +195,7 @@ function TimelineRenderer({ components }: { components: Component[] }) {
           title="Evening"
           icon={<Moon className="h-4 w-4" />}
           blocks={eveningBlocks}
+          onAction={onAction}
         />
       )}
     </div>
@@ -197,11 +206,13 @@ function TimelineRenderer({ components }: { components: Component[] }) {
 function TimePeriodSection({ 
   title, 
   icon, 
-  blocks 
+  blocks,
+  onAction
 }: { 
   title: string; 
   icon: React.ReactNode;
-  blocks: Component[] 
+  blocks: Component[];
+  onAction?: (action: Action | { type: 'message'; message: string }) => void;
 }) {
   return (
     <div className="space-y-2">
@@ -211,7 +222,7 @@ function TimePeriodSection({
       </div>
       <div className="space-y-2 ml-6">
         {blocks.map((block, idx) => (
-          <ComponentRenderer key={idx} component={block} />
+          <ComponentRenderer key={idx} component={block} onAction={onAction} />
         ))}
       </div>
     </div>
@@ -219,14 +230,20 @@ function TimePeriodSection({
 }
 
 // Component renderer for different component types
-function ComponentRenderer({ component }: { component: Component }) {
+function ComponentRenderer({ 
+  component, 
+  onAction 
+}: { 
+  component: Component;
+  onAction?: (action: Action | { type: 'message'; message: string }) => void;
+}) {
   switch (component.type) {
     case 'scheduleBlock':
       return <ScheduleBlockComponent data={component.data} />;
     case 'taskCard':
-      return <TaskCardComponent data={component.data} />;
+      return <TaskCardComponent data={component.data} onAction={onAction} />;
     case 'emailPreview':
-      return <EmailPreviewComponent data={component.data} />;
+      return <EmailPreviewComponent data={component.data} onAction={onAction} />;
     case 'meetingCard':
       return <MeetingCardComponent data={component.data} />;
     case 'preferenceForm':
@@ -403,7 +420,13 @@ function ScheduleBlockComponent({ data }: { data: any }) {
 }
 
 // Enhanced task card component
-function TaskCardComponent({ data }: { data: any }) {
+function TaskCardComponent({ 
+  data,
+  onAction 
+}: { 
+  data: any;
+  onAction?: (action: Action | { type: 'message'; message: string }) => void;
+}) {
   return (
     <AICard
       type="task"
@@ -419,8 +442,10 @@ function TaskCardComponent({ data }: { data: any }) {
         {
           label: 'Assign to Block',
           onClick: () => {
-            // This will be handled by the parent onAction handler
-            console.log('Assign task:', data.id);
+            onAction?.({
+              type: 'message',
+              message: `Assign task "${data.title}" to a time block`
+            });
           }
         }
       ] : []}
@@ -429,7 +454,13 @@ function TaskCardComponent({ data }: { data: any }) {
 }
 
 // Enhanced email preview component
-function EmailPreviewComponent({ data }: { data: any }) {
+function EmailPreviewComponent({ 
+  data,
+  onAction 
+}: { 
+  data: any;
+  onAction?: (action: Action | { type: 'message'; message: string }) => void;
+}) {
   const timeAgo = data.receivedAt ? formatDistanceToNow(new Date(data.receivedAt), { addSuffix: true }) : '';
   
   return (
@@ -450,11 +481,17 @@ function EmailPreviewComponent({ data }: { data: any }) {
       actions={[
         {
           label: 'Read',
-          onClick: () => console.log('Read email:', data.id)
+          onClick: () => onAction?.({
+            type: 'message',
+            message: `Read email with ID ${data.id}`
+          })
         },
         {
           label: 'Reply',
-          onClick: () => console.log('Reply to email:', data.id)
+          onClick: () => onAction?.({
+            type: 'message',
+            message: `Reply to email from ${data.from}`
+          })
         }
       ]}
     />
@@ -479,7 +516,9 @@ function MeetingCardComponent({ data }: { data: any }) {
         data.meetingUrl ? [
           {
             label: 'Join Meeting',
-            onClick: () => window.open(data.meetingUrl, '_blank')
+            onClick: () => {
+              window.open(data.meetingUrl, '_blank');
+            }
           }
         ] : []
       }

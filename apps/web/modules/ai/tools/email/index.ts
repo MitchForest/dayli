@@ -1,4 +1,13 @@
+export { listEmails } from './listEmails';
 export { readEmailContent } from './readEmailContent';
-export { draftEmailResponse } from './draftEmailResponse';
 export { processEmailToTask } from './processEmailToTask';
-export { listEmails } from './listEmails'; 
+export { draftEmailResponse } from './draftEmailResponse';
+export { analyzeSingleEmail } from './analyzeSingleEmail';
+export { batchEmailsByStrategy } from './batchEmailsByStrategy';
+export { calculateEmailProcessingTime } from './calculateEmailProcessingTime';
+export { extractActionItems } from './extractActionItems';
+export { updateEmailBacklog } from './updateEmailBacklog';
+export { getEmailBacklogSummary } from './getEmailBacklogSummary';
+export { analyzeSenderPatterns } from './analyzeSenderPatterns';
+export { getEmailStats } from './getEmailStats';
+export { findSimilarEmails } from './findSimilarEmails'; 

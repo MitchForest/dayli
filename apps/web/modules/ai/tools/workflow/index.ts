@@ -1,1 +1,2 @@
-export { scheduleDay } from './scheduleDay'; 
+export { scheduleDay } from './scheduleDay';
+export { confirmProposal } from './confirmProposal'; 

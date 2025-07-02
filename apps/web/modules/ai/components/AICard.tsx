@@ -1,6 +1,6 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { 
   Clock, 
@@ -13,7 +13,8 @@ import {
   Users,
   MapPin,
   Video,
-  Star
+  Star,
+  Loader2
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,7 +37,7 @@ interface AICardProps {
   priority?: 'high' | 'medium' | 'low';
   actions?: Array<{
     label: string;
-    onClick: () => void;
+    onClick: () => void | Promise<void>;
     variant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'ghost' | 'link';
   }>;
   className?: string;
@@ -56,6 +57,8 @@ export const AICard = memo(function AICard({
   className,
   data
 }: AICardProps) {
+  const [loadingActionIndex, setLoadingActionIndex] = useState<number | null>(null);
+
   // Get type-specific styling and icons
   const getTypeConfig = () => {
     switch (type) {
@@ -216,9 +219,20 @@ export const AICard = memo(function AICard({
                 key={idx}
                 size="sm"
                 variant={action.variant || (idx === 0 ? 'default' : 'secondary')}
-                onClick={action.onClick}
+                onClick={async () => {
+                  setLoadingActionIndex(idx);
+                  try {
+                    await action.onClick();
+                  } finally {
+                    setLoadingActionIndex(null);
+                  }
+                }}
                 className="text-xs h-7"
+                disabled={loadingActionIndex === idx}
               >
+                {loadingActionIndex === idx && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 {action.label}
               </Button>
             ))}
