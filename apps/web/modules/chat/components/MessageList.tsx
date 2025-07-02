@@ -96,29 +96,54 @@ export function MessageList({
 
     const structuredResponses = message.toolInvocations
       .filter((invocation: any) => {
-        // Check if the result has the structure of a UniversalToolResponse
-        const hasStructure = invocation.state === 'result' && 
-               invocation.result && 
-               typeof invocation.result === 'object' &&
-               'metadata' in invocation.result &&
-               'display' in invocation.result &&
-               'ui' in invocation.result;
-        
-        // Debug logging
-        if (invocation.state === 'result') {
-          console.log('[MessageList] Tool result structure check:', {
-            toolName: invocation.toolName,
-            hasResult: !!invocation.result,
-            hasMetadata: invocation.result && 'metadata' in invocation.result,
-            hasDisplay: invocation.result && 'display' in invocation.result,
-            hasUi: invocation.result && 'ui' in invocation.result,
-            result: invocation.result
-          });
+        // Check if we have a result
+        if (invocation.state !== 'result' || !invocation.result) {
+          return false;
         }
         
-        return hasStructure;
+        const result = invocation.result;
+        
+        // Check if the result itself is a UniversalToolResponse
+        const hasDirectStructure = 
+          typeof result === 'object' &&
+          'metadata' in result &&
+          'display' in result &&
+          'ui' in result;
+        
+        // Also check if it's wrapped in a success/data structure (legacy format)
+        const hasWrappedStructure = 
+          typeof result === 'object' &&
+          'success' in result &&
+          'data' in result &&
+          result.data &&
+          typeof result.data === 'object' &&
+          'metadata' in result.data &&
+          'display' in result.data &&
+          'ui' in result.data;
+        
+        // Debug logging
+        console.log('[MessageList] Tool result structure check:', {
+          toolName: invocation.toolName,
+          hasResult: !!result,
+          hasDirectStructure,
+          hasWrappedStructure,
+          resultKeys: result ? Object.keys(result) : [],
+          result: result
+        });
+        
+        return hasDirectStructure || hasWrappedStructure;
       })
-      .map((invocation: any) => invocation.result);
+      .map((invocation: any) => {
+        const result = invocation.result;
+        
+        // If it's wrapped in success/data, unwrap it
+        if (result.success && result.data && 'metadata' in result.data) {
+          return result.data;
+        }
+        
+        // Otherwise, it's already in the right format
+        return result;
+      });
 
     console.log('[MessageList] Structured responses found:', structuredResponses.length);
     return structuredResponses.length > 0 ? structuredResponses : undefined;

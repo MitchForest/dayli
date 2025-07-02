@@ -2,21 +2,20 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { type UniversalToolResponse } from '../../schemas/universal.schema';
 import { type TimeBlock, type ScheduleChange } from '../../schemas/schedule.schema';
-import { buildToolResponse, buildErrorResponse, formatTime12Hour } from '../../utils/tool-helpers';
+import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatTimeRange } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
 import { ensureServicesConfigured } from '../utils/auth';
+import { toMilitaryTime } from '../../utils/time-parser';
 
 export const deleteTimeBlock = tool({
   description: 'Delete a time block from the schedule',
   parameters: z.object({
-    blockId: z.string().optional().describe('The ID of the block to delete'),
-    blockDescription: z.string().optional().describe('Description of the block (time, title, or type)'),
-    date: z.string().optional().describe('YYYY-MM-DD format, defaults to today'),
-    reason: z.string().optional(),
-    confirm: z.boolean().default(false).describe('Set to true to confirm deletion'),
+    blockDescription: z.string().describe('Description or title of the block to delete'),
+    date: z.string().optional().describe('Date in YYYY-MM-DD format, defaults to today'),
+    confirmationId: z.string().optional().describe('Confirmation ID for deletion'),
   }),
-  execute: async ({ blockId, blockDescription, date, reason, confirm }): Promise<UniversalToolResponse> => {
+  execute: async ({ blockDescription, date, confirmationId }): Promise<UniversalToolResponse> => {
     const startTime = Date.now();
     const toolOptions = {
       toolName: 'deleteTimeBlock',
@@ -29,65 +28,64 @@ export const deleteTimeBlock = tool({
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
       
-      const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
+      const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       
-      console.log('[AI Tools] Delete request:', { blockId, blockDescription, date: targetDate });
+      // Get current schedule
+      const schedule = await scheduleService.getScheduleForDate(targetDate);
       
-      // Find the block if description provided
-      let actualBlockId = blockId;
-      if (!actualBlockId && blockDescription) {
-        const blocks = await scheduleService.getScheduleForDate(targetDate);
-        const found = blocks.find(b => 
-          b.title.toLowerCase().includes(blockDescription.toLowerCase()) ||
-          b.type === blockDescription.toLowerCase() ||
-          format(b.startTime, 'h:mm a').includes(blockDescription)
-        );
+      // Find the block by searching through titles and times
+      let blockToDelete = null;
+      const searchLower = blockDescription.toLowerCase().trim();
+      
+      // First, try exact title match
+      blockToDelete = schedule.find(block => 
+        block.title.toLowerCase() === searchLower
+      );
+      
+      // If not found, try partial matches and time references
+      if (!blockToDelete) {
+        // Check if searching by time
+        const timeMatch = searchLower.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
+        if (timeMatch && timeMatch[1]) {
+          const searchTime = toMilitaryTime(timeMatch[1]);
+          blockToDelete = schedule.find(block => {
+            const blockStart = format(block.startTime, 'HH:mm');
+            return blockStart === searchTime;
+          });
+        }
         
-        if (!found) {
-          const availableBlocks = blocks.map(b => 
-            `• ${format(b.startTime, 'h:mm a')} - ${b.title} (${b.type})`
-          );
-          
-          return buildErrorResponse(
-            toolOptions,
-            {
-              code: 'BLOCK_NOT_FOUND',
-              message: `Could not find block matching "${blockDescription}"`,
-              availableBlocks,
-            },
-            {
-              title: 'Block Not Found',
-              description: `No block found matching "${blockDescription}". ${availableBlocks.length > 0 ? 'Available blocks:' : 'No blocks scheduled for this date.'}`,
-              components: blocks.map(block => ({
-                type: 'scheduleBlock' as const,
-                data: {
-                  id: block.id,
-                  type: block.type as TimeBlock['type'],
-                  title: block.title,
-                  startTime: formatTime12Hour(block.startTime),
-                  endTime: formatTime12Hour(block.endTime),
-                  description: block.description,
-                },
-              })),
-            }
+        // Try partial title match
+        if (!blockToDelete) {
+          blockToDelete = schedule.find(block => 
+            block.title.toLowerCase().includes(searchLower) ||
+            searchLower.includes(block.title.toLowerCase())
           );
         }
-        actualBlockId = found.id;
+        
+        // Try type match
+        if (!blockToDelete) {
+          blockToDelete = schedule.find(block => 
+            block.type.toLowerCase() === searchLower
+          );
+        }
       }
       
-      if (!actualBlockId) {
+      if (!blockToDelete) {
         return buildErrorResponse(
           toolOptions,
-          { code: 'MISSING_IDENTIFIER', message: 'Please provide either blockId or blockDescription' },
-          { title: 'Missing Block Identifier' }
+          { code: 'BLOCK_NOT_FOUND', message: 'Could not find a matching block' },
+          {
+            title: 'Block Not Found',
+            description: `No block matching "${blockDescription}" found on ${targetDate}`,
+          }
         );
       }
       
       // Get the block details before deleting
-      const block = await scheduleService.getTimeBlock(actualBlockId);
+      const block = await scheduleService.getTimeBlock(blockToDelete.id);
       if (!block) {
-        console.log('[AI Tools] Block not found:', actualBlockId);
+        console.log('[AI Tools] Block not found:', blockToDelete.id);
         return buildErrorResponse(
           toolOptions,
           { code: 'BLOCK_NOT_FOUND', message: 'Time block not found' },
@@ -96,7 +94,7 @@ export const deleteTimeBlock = tool({
       }
       
       // Check if confirmation is needed
-      if (!confirm) {
+      if (!confirmationId) {
         const confirmationId = crypto.randomUUID();
         
         const blockData: TimeBlock = {
@@ -110,7 +108,7 @@ export const deleteTimeBlock = tool({
         
         return buildToolResponse(
           toolOptions,
-          { blockId: actualBlockId, block: blockData },
+          { blockId: block.id, block: blockData },
           {
             type: 'confirmation',
             title: 'Confirm Deletion',
@@ -133,7 +131,7 @@ export const deleteTimeBlock = tool({
                 action: {
                   type: 'tool',
                   tool: 'deleteTimeBlock',
-                  params: { blockId: actualBlockId, confirm: true, reason },
+                  params: { blockDescription, date, confirmationId },
                 },
               },
               {
@@ -151,9 +149,9 @@ export const deleteTimeBlock = tool({
       }
       
       // Delete the block
-      await scheduleService.deleteTimeBlock(actualBlockId);
+      await scheduleService.deleteTimeBlock(block.id);
       
-      console.log(`[AI Tools] Deleted block ${actualBlockId} for date: ${targetDate}`);
+      console.log(`[AI Tools] Deleted block ${block.id} for date: ${targetDate}`);
       
       const previousState: TimeBlock = {
         id: block.id,
@@ -166,9 +164,9 @@ export const deleteTimeBlock = tool({
       
       const scheduleChange: ScheduleChange = {
         type: 'remove',
-        blockId: actualBlockId,
+        blockId: block.id,
         previousState,
-        reason,
+        reason: blockDescription,
       };
       
       return buildToolResponse(
@@ -177,7 +175,7 @@ export const deleteTimeBlock = tool({
         {
           type: 'card',
           title: 'Deleted Time Block',
-          description: `"${block.title}" at ${formatTime12Hour(block.startTime)} has been deleted${reason ? ` (${reason})` : ''}`,
+          description: `"${block.title}" at ${formatTime12Hour(block.startTime)} has been deleted`,
           priority: 'medium',
           components: [],
         },

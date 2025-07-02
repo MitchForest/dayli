@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { toolSuccess, toolError, TimeBlock } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { ensureServicesConfigured } from '../utils/auth';
 import { format, parseISO } from 'date-fns';
@@ -132,7 +134,15 @@ export const suggestTasksForBlock = tool({
     maxSuggestions: z.number().default(5).describe('Maximum number of suggestions'),
     includeReasoning: z.boolean().default(true).describe('Include reasoning for each suggestion'),
   }),
-  execute: async ({ blockId, maxSuggestions, includeReasoning }) => {
+  execute: async ({ blockId, maxSuggestions, includeReasoning }): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'suggestTasksForBlock',
+      operation: 'read' as const,
+      resourceType: 'task' as const,
+      startTime,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -142,9 +152,13 @@ export const suggestTasksForBlock = tool({
       // Get the block details
       const block = await scheduleService.getTimeBlock(blockId);
       if (!block) {
-        return toolError(
-          'BLOCK_NOT_FOUND',
-          'Time block not found'
+        return buildErrorResponse(
+          toolOptions,
+          { code: 'BLOCK_NOT_FOUND', message: 'Time block not found' },
+          {
+            title: 'Block Not Found',
+            description: 'The specified time block was not found',
+          }
         );
       }
       
@@ -188,20 +202,29 @@ export const suggestTasksForBlock = tool({
       );
       
       if (fittingTasks.length === 0) {
-        return toolSuccess({
-          suggestions: [],
-          blockInfo: {
-            type: block.type,
-            duration: blockMinutes,
-            timeOfDay
+        return buildToolResponse(
+          toolOptions,
+          {
+            suggestions: [],
+            blockInfo: {
+              type: block.type,
+              duration: blockMinutes,
+              timeOfDay
+            },
+            message: `No tasks found that fit in this ${blockMinutes}-minute ${block.type} block`
           },
-          message: `No tasks found that fit in this ${blockMinutes}-minute ${block.type} block`
-        }, {
-          type: 'text',
-          content: `No tasks small enough for this ${blockMinutes}-minute block. Consider breaking down larger tasks.`
-        }, {
-          suggestions: ['Break down large tasks', 'Create smaller subtasks', 'Extend the block duration']
-        });
+          {
+            type: 'card',
+            title: 'No Tasks Available',
+            description: `No tasks small enough for this ${blockMinutes}-minute block. Consider breaking down larger tasks.`,
+            priority: 'low',
+            components: []
+          },
+          {
+            suggestions: ['Break down large tasks', 'Create smaller subtasks', 'Extend the block duration'],
+            actions: []
+          }
+        );
       }
       
       // Calculate fit scores for each task
@@ -251,26 +274,59 @@ export const suggestTasksForBlock = tool({
         summary: `Found ${suggestions.length} tasks that fit this ${blockMinutes}-minute ${timeOfDay} ${block.type} block`
       };
       
-      return toolSuccess(result, {
-        type: 'list',
-        content: suggestions.map(s => ({
-          title: s.task.title,
-          fitScore: s.fitScore,
-          minutes: s.task.estimatedMinutes,
-          reasoning: s.reasoning
-        }))
-      }, {
-        suggestions: suggestions.length > 0
-          ? ['Assign the top suggestion', 'View more details', 'Try different criteria']
-          : ['Break down large tasks', 'Create new tasks', 'Adjust block duration']
-      });
+      return buildToolResponse(
+        toolOptions,
+        result,
+        {
+          type: 'list',
+          title: `Suggested Tasks for ${result.blockInfo.title}`,
+          description: `${suggestions.length} tasks that fit this ${blockMinutes}-minute ${timeOfDay} block`,
+          priority: 'medium',
+          components: suggestions.map(s => ({
+            type: 'taskCard' as const,
+            data: {
+              id: s.task.id,
+              title: s.task.title,
+              estimatedMinutes: s.task.estimatedMinutes,
+              priority: s.task.priority as 'high' | 'medium' | 'low',
+              status: 'backlog' as const,
+              description: s.reasoning,
+              score: s.fitScore, // Use fitScore as it's more relevant for this context
+            }
+          }))
+        },
+        {
+          suggestions: suggestions.length > 0
+            ? ['Assign the top suggestion', 'View more details', 'Try different criteria']
+            : ['Break down large tasks', 'Create new tasks', 'Adjust block duration'],
+          actions: suggestions.length > 0 ? [
+            {
+              id: 'assign-top-task',
+              label: 'Assign Top Task',
+              icon: 'plus',
+              variant: 'primary',
+              action: {
+                type: 'tool',
+                tool: 'assignTaskToBlock',
+                params: {
+                  taskId: suggestions[0]?.task.id,
+                  blockId: blockId
+                }
+              }
+            }
+          ] : []
+        }
+      );
       
     } catch (error) {
       console.error('Error in suggestTasksForBlock:', error);
-      return toolError(
-        'SUGGESTION_FAILED',
-        `Failed to suggest tasks: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Failed to suggest tasks',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },

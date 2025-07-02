@@ -4,8 +4,9 @@ import { type UniversalToolResponse } from '../../schemas/universal.schema';
 import { type TimeBlock } from '../../schemas/schedule.schema';
 import { buildToolResponse, buildErrorResponse, formatTime12Hour } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ensureServicesConfigured } from '../utils/auth';
+import { toMilitaryTime } from '../../utils/time-parser';
 
 export const findTimeBlock = tool({
   description: 'Find a time block by time, title, or description. Use this before trying to move or delete blocks.',
@@ -31,95 +32,174 @@ export const findTimeBlock = tool({
       
       console.log(`[AI Tools] Finding block by description: "${description}" on ${targetDate}`);
       
+      // Get current schedule
       const blocks = await scheduleService.getScheduleForDate(targetDate);
       
-      // Search for matching block
-      const searchLower = description.toLowerCase();
-      const found = blocks.find(block => {
-        // Check title
-        if (block.title.toLowerCase().includes(searchLower)) return true;
-        
-        // Check type
-        if (block.type === searchLower) return true;
-        
-        // Check time (various formats)
-        const blockTime = format(block.startTime, 'h:mm a').toLowerCase();
-        const blockTime24 = format(block.startTime, 'HH:mm');
-        const blockTimeNoSpace = format(block.startTime, 'h:mma').toLowerCase();
-        
-        if (blockTime.includes(searchLower) || 
-            blockTime24.includes(searchLower) ||
-            blockTimeNoSpace.includes(searchLower)) {
-          return true;
-        }
-        
-        // Check if search is just a number (hour)
-        const hourMatch = searchLower.match(/^(\d{1,2})$/);
-        if (hourMatch && hourMatch[1]) {
-          const searchHour = parseInt(hourMatch[1], 10);
-          const blockHour = block.startTime.getHours();
-          const blockHour12 = blockHour > 12 ? blockHour - 12 : blockHour;
-          return searchHour === blockHour || searchHour === blockHour12;
-        }
-        
-        return false;
-      });
-      
-      if (found) {
-        const timeBlock: TimeBlock = {
-          id: found.id,
-          type: found.type as TimeBlock['type'],
-          title: found.title,
-          startTime: formatTime12Hour(found.startTime),
-          endTime: formatTime12Hour(found.endTime),
-          description: found.description,
-        };
-        
+      if (blocks.length === 0) {
         return buildToolResponse(
           toolOptions,
+          { blocks: [], query: description },
           {
-            blockId: found.id,
-            block: timeBlock,
+            type: 'list',
+            title: 'No Blocks Found',
+            description: `No time blocks scheduled for ${targetDate}`,
+            priority: 'low',
+            components: [],
+          },
+          {
+            suggestions: ['View another date', 'Create a new block'],
+          }
+        );
+      }
+      
+      // Find matching blocks using flexible search
+      const searchLower = description.toLowerCase().trim();
+      const matchingBlocks: Array<{
+        id: string;
+        title: string;
+        type: TimeBlock['type'];
+        startTime: string;
+        endTime: string;
+        description?: string;
+        metadata?: Record<string, any>;
+      }> = [];
+      
+      // First, try exact title match
+      const exactMatches = blocks.filter(block => 
+        block.title.toLowerCase() === searchLower
+      );
+      matchingBlocks.push(...exactMatches.map(block => ({
+        id: block.id,
+        title: block.title,
+        type: block.type,
+        startTime: format(block.startTime, 'HH:mm'),
+        endTime: format(block.endTime, 'HH:mm'),
+        description: block.description,
+        metadata: block.metadata,
+      })));
+      
+      // If not found, check if searching by time
+      if (matchingBlocks.length === 0) {
+        const timeMatch = searchLower.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
+        if (timeMatch && timeMatch[1]) {
+          const searchTime = toMilitaryTime(timeMatch[1]);
+          const timeMatches = blocks.filter(block => {
+            const blockStart = format(block.startTime, 'HH:mm');
+            return blockStart === searchTime;
+          });
+          matchingBlocks.push(...timeMatches.map(block => ({
+            id: block.id,
+            title: block.title,
+            type: block.type,
+            startTime: format(block.startTime, 'HH:mm'),
+            endTime: format(block.endTime, 'HH:mm'),
+            description: block.description,
+            metadata: block.metadata,
+          })));
+        }
+      }
+      
+      // If still not found, try partial title matches
+      if (matchingBlocks.length === 0) {
+        const partialMatches = blocks.filter(block =>
+          block.title.toLowerCase().includes(searchLower)
+        );
+        matchingBlocks.push(...partialMatches.map(block => ({
+          id: block.id,
+          title: block.title,
+          type: block.type,
+          startTime: format(block.startTime, 'HH:mm'),
+          endTime: format(block.endTime, 'HH:mm'),
+          description: block.description,
+          metadata: block.metadata,
+        })));
+      }
+      
+      // If still not found, try by type
+      if (matchingBlocks.length === 0) {
+        const typeMatches = blocks.filter(block =>
+          block.type === searchLower
+        );
+        matchingBlocks.push(...typeMatches.map(block => ({
+          id: block.id,
+          title: block.title,
+          type: block.type,
+          startTime: format(block.startTime, 'HH:mm'),
+          endTime: format(block.endTime, 'HH:mm'),
+          description: block.description,
+          metadata: block.metadata,
+        })));
+      }
+      
+      // Last resort: search in description
+      if (matchingBlocks.length === 0 && searchLower.length > 2) {
+        const descMatches = blocks.filter(block =>
+          block.description?.toLowerCase().includes(searchLower)
+        );
+        matchingBlocks.push(...descMatches.map(block => ({
+          id: block.id,
+          title: block.title,
+          type: block.type,
+          startTime: format(block.startTime, 'HH:mm'),
+          endTime: format(block.endTime, 'HH:mm'),
+          description: block.description,
+          metadata: block.metadata,
+        })));
+      }
+      
+      if (matchingBlocks.length > 0) {
+        const firstMatch = matchingBlocks[0]!; // We know it exists because length > 0
+        return buildToolResponse(
+          toolOptions,
+          { 
+            blocks: [{
+              id: firstMatch.id,
+              type: firstMatch.type,
+              title: firstMatch.title,
+              startTime: formatTime12Hour(parseISO(`2024-01-01T${firstMatch.startTime}:00`)),
+              endTime: formatTime12Hour(parseISO(`2024-01-01T${firstMatch.endTime}:00`)),
+              description: firstMatch.description,
+            }], 
+            query: description 
           },
           {
             type: 'card',
-            title: 'Found Time Block',
-            description: `Found "${found.title}" at ${formatTime12Hour(found.startTime)}`,
-            priority: 'medium',
+            title: 'Block Found',
+            description: `Found "${firstMatch.title}" at ${formatTime12Hour(parseISO(`2024-01-01T${firstMatch.startTime}:00`))}`,
+            priority: 'low',
             components: [{
               type: 'scheduleBlock',
-              data: timeBlock,
+              data: {
+                id: firstMatch.id,
+                type: firstMatch.type,
+                title: firstMatch.title,
+                startTime: formatTime12Hour(parseISO(`2024-01-01T${firstMatch.startTime}:00`)),
+                endTime: formatTime12Hour(parseISO(`2024-01-01T${firstMatch.endTime}:00`)),
+                description: firstMatch.description,
+                tasks: firstMatch.metadata?.tasks || undefined,
+              },
             }],
           },
           {
-            suggestions: [
-              'Move this block',
-              'Delete this block',
-              'View full schedule',
-            ],
-            actions: [
-              {
-                id: 'move-block',
-                label: 'Move Block',
-                icon: 'move',
-                variant: 'primary',
-                action: {
-                  type: 'message',
-                  message: `Move the ${found.title} block to a new time`,
-                },
+            suggestions: matchingBlocks.length > 1 
+              ? ['Show all matches', 'Filter by type'] 
+              : ['Edit this block', 'Delete this block'],
+            actions: [{
+              id: 'move-block',
+              label: 'Move Block',
+              variant: 'primary',
+              action: {
+                type: 'message',
+                message: `Move the ${firstMatch.title} block to a new time`,
               },
-              {
-                id: 'delete-block',
-                label: 'Delete Block',
-                icon: 'trash',
-                variant: 'danger',
-                action: {
-                  type: 'tool',
-                  tool: 'deleteTimeBlock',
-                  params: { blockId: found.id },
-                },
-              },
-            ],
+            }],
+            notification: {
+              show: true,
+              type: 'success',
+              message: `Found ${matchingBlocks.length} matching block${matchingBlocks.length > 1 ? 's' : ''}`,
+              duration: 3000,
+            },
+            confirmationRequired: false,
           }
         );
       }

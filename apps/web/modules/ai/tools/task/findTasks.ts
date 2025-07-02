@@ -169,7 +169,7 @@ export const findTasks = tool({
               ? 'No tasks found matching your criteria'
               : `Found ${formattedTasks.length} task${formattedTasks.length !== 1 ? 's' : ''}`),
           priority: 'medium',
-          components: formattedTasks.slice(0, 5).map(task => ({
+          components: formattedTasks.slice(0, 10).map(task => ({
             type: 'taskCard' as const,
             data: task,
           })),

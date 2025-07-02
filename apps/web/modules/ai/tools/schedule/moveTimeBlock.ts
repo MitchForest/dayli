@@ -6,63 +6,28 @@ import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatTimeRang
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
 import { ensureServicesConfigured } from '../utils/auth';
-
-// Helper to parse natural language times
-function parseTimeToMilitary(timeStr: string): string | null {
-  const cleaned = timeStr.toLowerCase().trim();
-  const match = cleaned.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
-  if (!match) return null;
-  
-  let hours = parseInt(match[1] || '0');
-  const minutes = match[2] ? parseInt(match[2]) : 0;
-  const period = match[3];
-  
-  if (period === 'pm' && hours !== 12) {
-    hours += 12;
-  } else if (period === 'am' && hours === 12) {
-    hours = 0;
-  }
-  
-  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-    return null;
-  }
-  
-  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-}
+import { toMilitaryTime, findBlockByFlexibleDescription, getSimilarBlockSuggestions } from '../../utils/time-parser';
 
 // Helper to calculate end time based on duration
-function calculateEndTime(startTime: string, existingBlock: any): string {
-  const [startHours, startMinutes] = startTime.split(':').map(Number);
-  const startDate = typeof existingBlock.startTime === 'string' 
-    ? new Date(existingBlock.startTime) 
-    : existingBlock.startTime;
-  const endDate = typeof existingBlock.endTime === 'string'
-    ? new Date(existingBlock.endTime)
-    : existingBlock.endTime;
-  const duration = endDate.getTime() - startDate.getTime();
-  const durationMinutes = Math.floor(duration / 60000);
-  
-  let endHours = startHours || 0;
-  let endMinutes = (startMinutes || 0) + durationMinutes;
-  
-  while (endMinutes >= 60) {
-    endHours++;
-    endMinutes -= 60;
-  }
-  
-  return `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+function calculateEndTime(startTime: string, originalBlock: any): string {
+  const parts = startTime.split(':');
+  const startHours = parseInt(parts[0] || '0', 10);
+  const startMinutes = parseInt(parts[1] || '0', 10);
+  const duration = (originalBlock.endTime.getTime() - originalBlock.startTime.getTime()) / (1000 * 60);
+  const endMinutes = startMinutes + duration;
+  const endHours = startHours + Math.floor(endMinutes / 60);
+  return `${endHours.toString().padStart(2, '0')}:${(endMinutes % 60).toString().padStart(2, '0')}`;
 }
 
 export const moveTimeBlock = tool({
   description: 'Move an existing time block to a new time',
   parameters: z.object({
-    blockId: z.string().optional().describe('The ID of the block to move'),
-    blockDescription: z.string().optional().describe('Description of the block (time, title, or type)'),
-    newStartTime: z.string().describe('New start time in HH:MM format or natural language (e.g., "2pm")'),
-    newEndTime: z.string().optional().describe('New end time in HH:MM format or natural language'),
-    date: z.string().optional().describe('YYYY-MM-DD format, defaults to today'),
+    blockDescription: z.string().describe('Description or title of the block to move'),
+    newStartTime: z.string().describe('New start time in any format (e.g., "9am", "3:30 pm")'),
+    newEndTime: z.string().describe('New end time in any format (e.g., "10am", "4:30 pm")'),
+    date: z.string().optional().describe('Date in YYYY-MM-DD format, defaults to today'),
   }),
-  execute: async ({ blockId, blockDescription, newStartTime, newEndTime, date }): Promise<UniversalToolResponse> => {
+  execute: async ({ blockDescription, newStartTime, newEndTime, date }): Promise<UniversalToolResponse> => {
     const startTimeMs = Date.now();
     const toolOptions = {
       toolName: 'moveTimeBlock',
@@ -75,46 +40,80 @@ export const moveTimeBlock = tool({
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
       
-      const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
+      const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       
-      // Find the block if description provided
-      let actualBlockId = blockId;
-      if (!actualBlockId && blockDescription) {
-        const blocks = await scheduleService.getScheduleForDate(targetDate);
-        const found = blocks.find(b => 
-          b.title.toLowerCase().includes(blockDescription.toLowerCase()) ||
-          b.type === blockDescription.toLowerCase() ||
-          format(b.startTime, 'h:mm a').includes(blockDescription)
-        );
+      // Get current schedule
+      const schedule = await scheduleService.getScheduleForDate(targetDate);
+      
+      // Find the block by searching through titles and times
+      let blockToMove = null;
+      const searchLower = blockDescription.toLowerCase().trim();
+      
+      // First, try exact title match
+      blockToMove = schedule.find(block => 
+        block.title.toLowerCase() === searchLower
+      );
+      
+      // If not found, try partial matches and time references
+      if (!blockToMove) {
+        // Check if searching by time
+        const timeMatch = searchLower.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
+        if (timeMatch && timeMatch[1]) {
+          const searchTime = toMilitaryTime(timeMatch[1]);
+          blockToMove = schedule.find(block => {
+            const blockStart = format(block.startTime, 'HH:mm');
+            return blockStart === searchTime;
+          });
+        }
         
-        if (!found) {
-          return buildErrorResponse(
-            toolOptions,
-            {
-              code: 'BLOCK_NOT_FOUND',
-              message: `Could not find block matching "${blockDescription}"`,
-              availableBlocks: blocks.map(b => `${format(b.startTime, 'h:mm a')} - ${b.title}`),
-            },
-            {
-              title: 'Block Not Found',
-              description: `No block found matching "${blockDescription}". Please check the schedule first.`,
-            }
+        // Try partial title match
+        if (!blockToMove) {
+          blockToMove = schedule.find(block => 
+            block.title.toLowerCase().includes(searchLower) ||
+            searchLower.includes(block.title.toLowerCase())
           );
         }
-        actualBlockId = found.id;
+        
+        // Try type match
+        if (!blockToMove) {
+          blockToMove = schedule.find(block => 
+            block.type.toLowerCase() === searchLower
+          );
+        }
       }
       
-      if (!actualBlockId) {
+      if (!blockToMove) {
+        // Get suggestions - show first 3 blocks
+        const suggestions = schedule.slice(0, 3);
+        
         return buildErrorResponse(
           toolOptions,
-          { code: 'MISSING_IDENTIFIER', message: 'Please provide either blockId or blockDescription' },
-          { title: 'Missing Block Identifier' }
+          { code: 'BLOCK_NOT_FOUND', message: 'Could not find a matching block' },
+          {
+            title: 'Block Not Found',
+            description: `No block matching "${blockDescription}" found on ${targetDate}`,
+            components: suggestions.map(block => ({
+              type: 'scheduleBlock' as const,
+              data: {
+                id: block.id,
+                type: block.type as TimeBlock['type'],
+                title: block.title,
+                startTime: formatTime12Hour(block.startTime),
+                endTime: formatTime12Hour(block.endTime),
+                description: block.description || undefined,
+              },
+            })),
+          }
         );
       }
       
+      // Parse new times using flexible parser
+      const militaryStartTime = toMilitaryTime(newStartTime);
+      const militaryEndTime = toMilitaryTime(newEndTime);
+      
       // Get the existing block
-      const existingBlock = await scheduleService.getTimeBlock(actualBlockId);
+      const existingBlock = await scheduleService.getTimeBlock(blockToMove.id);
       if (!existingBlock) {
         return buildErrorResponse(
           toolOptions,
@@ -123,27 +122,21 @@ export const moveTimeBlock = tool({
         );
       }
       
-      // Parse the new times
-      const parsedStartTime = parseTimeToMilitary(newStartTime) || newStartTime;
-      const parsedEndTime = newEndTime 
-        ? (parseTimeToMilitary(newEndTime) || newEndTime) 
-        : calculateEndTime(parsedStartTime, existingBlock);
-      
       // Check for conflicts
       const hasConflict = await scheduleService.checkForConflicts(
-        parsedStartTime, 
-        parsedEndTime, 
+        militaryStartTime, 
+        militaryEndTime, 
         targetDate,
-        actualBlockId
+        blockToMove.id
       );
       
       if (hasConflict) {
         const conflicts = await scheduleService.getScheduleForDate(targetDate);
         const conflictingBlocks = conflicts.filter(block => {
-          if (block.id === actualBlockId) return false;
+          if (block.id === blockToMove.id) return false;
           const blockStart = format(block.startTime, 'HH:mm');
           const blockEnd = format(block.endTime, 'HH:mm');
-          return (parsedStartTime < blockEnd && parsedEndTime > blockStart);
+          return (militaryStartTime < blockEnd && militaryEndTime > blockStart);
         });
         
         return buildErrorResponse(
@@ -176,9 +169,9 @@ export const moveTimeBlock = tool({
       
       // Update the block
       const updated = await scheduleService.updateTimeBlock({
-        id: actualBlockId,
-        startTime: parsedStartTime,
-        endTime: parsedEndTime,
+        id: blockToMove.id,
+        startTime: militaryStartTime,
+        endTime: militaryEndTime,
       });
       
       const previousState: TimeBlock = {
@@ -201,7 +194,7 @@ export const moveTimeBlock = tool({
       
       const scheduleChange: ScheduleChange = {
         type: 'move',
-        blockId: actualBlockId,
+        blockId: blockToMove.id,
         previousState,
         newState,
       };

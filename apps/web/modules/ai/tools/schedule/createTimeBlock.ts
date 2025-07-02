@@ -6,41 +6,16 @@ import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatTimeRang
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
 import { ensureServicesConfigured } from '../utils/auth';
-
-// Helper to parse natural language times
-function parseTimeToMilitary(timeStr: string): string | null {
-  const cleaned = timeStr.toLowerCase().trim();
-  
-  // Handle "2pm", "2:30pm", etc.
-  const match = cleaned.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
-  if (!match) return null;
-  
-  let hours = parseInt(match[1] || '0');
-  const minutes = match[2] ? parseInt(match[2]) : 0;
-  const period = match[3];
-  
-  if (period === 'pm' && hours !== 12) {
-    hours += 12;
-  } else if (period === 'am' && hours === 12) {
-    hours = 0;
-  }
-  
-  // Validate
-  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-    return null;
-  }
-  
-  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-}
+import { toMilitaryTime } from '../../utils/time-parser';
 
 export const createTimeBlock = tool({
   description: 'Create a new time block in the schedule',
   parameters: z.object({
-    type: z.enum(['work', 'email', 'break', 'meeting', 'blocked']).describe('Type of time block'),
+    type: z.enum(['work', 'email', 'break', 'meeting', 'blocked']),
     title: z.string(),
-    startTime: z.string().describe('Time in HH:MM format or natural language (e.g., "2pm", "14:00")'),
-    endTime: z.string().describe('Time in HH:MM format or natural language'),
-    date: z.string().optional().describe('YYYY-MM-DD format, defaults to today'),
+    startTime: z.string().describe('Time in any format (e.g., "9am", "3:30 pm", "15:00")'),
+    endTime: z.string().describe('Time in any format (e.g., "10am", "4:30 pm", "16:00")'),
+    date: z.string().optional().describe('Date in YYYY-MM-DD format, defaults to today'),
     description: z.string().optional(),
   }),
   execute: async ({ type, title, startTime, endTime, date, description }): Promise<UniversalToolResponse> => {
@@ -56,73 +31,73 @@ export const createTimeBlock = tool({
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
       
-      const targetDate = date || format(new Date(), 'yyyy-MM-dd');
-      
-      // Parse natural language times
-      const parsedStartTime = parseTimeToMilitary(startTime) || startTime;
-      const parsedEndTime = parseTimeToMilitary(endTime) || endTime;
-      
-      console.log('[AI Tools] Creating block:', { 
-        type, 
-        title, 
-        startTime: `${startTime} -> ${parsedStartTime}`,
-        endTime: `${endTime} -> ${parsedEndTime}`,
-        date: targetDate 
-      });
-      
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
+      
+      // Parse times using flexible parser
+      const militaryStartTime = toMilitaryTime(startTime);
+      const militaryEndTime = toMilitaryTime(endTime);
+      const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       
       // Check for conflicts
       const hasConflict = await scheduleService.checkForConflicts(
-        parsedStartTime, 
-        parsedEndTime, 
+        militaryStartTime, 
+        militaryEndTime, 
         targetDate
       );
       
+      let conflictWarning = '';
       if (hasConflict) {
-        // Get the current schedule to show what's blocking
+        // Get the current schedule to show what's overlapping
         const currentSchedule = await scheduleService.getScheduleForDate(targetDate);
-        const blockingBlocks = currentSchedule.filter(block => {
+        const overlappingBlocks = currentSchedule.filter(block => {
           const blockStart = format(block.startTime, 'HH:mm');
           const blockEnd = format(block.endTime, 'HH:mm');
-          return (parsedStartTime < blockEnd && parsedEndTime > blockStart);
+          return (militaryStartTime < blockEnd && militaryEndTime > blockStart);
         });
         
-        return buildErrorResponse(
-          toolOptions,
-          {
-            code: 'TIME_CONFLICT',
-            message: 'Time conflict detected',
-            conflicts: blockingBlocks.map(b => ({
-              id: b.id,
-              time: formatTimeRange(formatTime12Hour(b.startTime), formatTime12Hour(b.endTime)),
-              title: b.title,
-            })),
-          },
-          {
-            title: 'Schedule Conflict Detected',
-            description: `Cannot create block from ${formatTimeRange(startTime, endTime)}. This time overlaps with existing blocks.`,
-            components: blockingBlocks.map(block => ({
-              type: 'scheduleBlock' as const,
-              data: {
-                id: block.id,
-                type: block.type as TimeBlock['type'],
-                title: block.title,
-                startTime: formatTime12Hour(block.startTime),
-                endTime: formatTime12Hour(block.endTime),
-                description: block.description,
-              },
-            })),
-          }
-        );
+        // Check if we're at the 4-block limit
+        if (overlappingBlocks.length >= 4) {
+          return buildErrorResponse(
+            toolOptions,
+            {
+              code: 'MAX_OVERLAPS_REACHED',
+              message: 'Maximum of 4 overlapping blocks reached',
+              conflicts: overlappingBlocks.map(b => ({
+                id: b.id,
+                time: formatTimeRange(formatTime12Hour(b.startTime), formatTime12Hour(b.endTime)),
+                title: b.title,
+              })),
+            },
+            {
+              title: 'Maximum Overlapping Blocks Reached',
+              description: `Cannot create block from ${formatTimeRange(startTime, endTime)}. There are already 4 blocks scheduled during this time.`,
+              components: overlappingBlocks.map(block => ({
+                type: 'scheduleBlock' as const,
+                data: {
+                  id: block.id,
+                  type: block.type as TimeBlock['type'],
+                  title: block.title,
+                  startTime: formatTime12Hour(block.startTime),
+                  endTime: formatTime12Hour(block.endTime),
+                  description: block.description,
+                },
+              })),
+            }
+          );
+        }
+        
+        // Build conflict warning message
+        conflictWarning = overlappingBlocks.length === 1 
+          ? `Note: This overlaps with "${overlappingBlocks[0]?.title}" block`
+          : `Note: This overlaps with ${overlappingBlocks.length} other blocks`;
       }
       
-      // Create the block
+      // Create the time block
       const block = await scheduleService.createTimeBlock({
         type,
         title,
-        startTime: parsedStartTime,
-        endTime: parsedEndTime,
+        startTime: militaryStartTime,
+        endTime: militaryEndTime,
         date: targetDate,
         description,
       });
@@ -150,8 +125,8 @@ export const createTimeBlock = tool({
         {
           type: 'card',
           title: `Created ${type} block`,
-          description: `"${title}" scheduled for ${formatTimeRange(timeBlock.startTime, timeBlock.endTime)}`,
-          priority: 'high',
+          description: `"${title}" scheduled for ${formatTimeRange(timeBlock.startTime, timeBlock.endTime)}${conflictWarning ? `. ${conflictWarning}` : ''}`,
+          priority: conflictWarning ? 'high' : 'medium',
           components: [{
             type: 'scheduleBlock',
             data: timeBlock,
@@ -161,10 +136,12 @@ export const createTimeBlock = tool({
           notification: {
             show: true,
             type: 'success',
-            message: 'Time block created successfully',
-            duration: 3000,
+            message: conflictWarning || 'Time block created successfully',
+            duration: conflictWarning ? 5000 : 3000,
           },
-          suggestions: type === 'work'
+          suggestions: conflictWarning
+            ? ['Move overlapping blocks', 'View full schedule', 'Adjust this block']
+            : type === 'work'
             ? ['Assign tasks to this block', 'Create another block', 'View full schedule']
             : ['Create another block', 'View full schedule', 'Move this block'],
           actions: [
@@ -187,6 +164,16 @@ export const createTimeBlock = tool({
               action: {
                 type: 'message' as const,
                 message: `Show me tasks I can add to the ${title} block`,
+              },
+            }] : []),
+            ...(conflictWarning ? [{
+              id: 'resolve-conflicts',
+              label: 'Resolve Overlaps',
+              icon: 'shuffle',
+              variant: 'secondary' as const,
+              action: {
+                type: 'message' as const,
+                message: 'Help me reorganize the overlapping blocks',
               },
             }] : []),
           ],

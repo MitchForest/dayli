@@ -1,20 +1,22 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { type UniversalToolResponse } from '../../schemas/universal.schema';
-import { type TimeBlock, type ScheduleUpdate } from '../../schemas/schedule.schema';
+import { type ScheduleChange, type TimeBlock } from '../../schemas/schedule.schema';
 import { type Task } from '../../schemas/task.schema';
 import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatTimeRange } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
 import { ensureServicesConfigured } from '../utils/auth';
+import { toMilitaryTime } from '../../utils/time-parser';
 
 export const assignTaskToBlock = tool({
-  description: 'Assign a task to a specific time block',
+  description: 'Assign a task to a time block',
   parameters: z.object({
-    taskId: z.string(),
-    blockId: z.string(),
+    taskId: z.string().describe('ID of the task to assign'),
+    blockDescription: z.string().describe('Description or title of the block'),
+    date: z.string().optional().describe('Date in YYYY-MM-DD format, defaults to today'),
   }),
-  execute: async ({ taskId, blockId }): Promise<UniversalToolResponse> => {
+  execute: async ({ taskId, blockDescription, date }): Promise<UniversalToolResponse> => {
     const startTime = Date.now();
     const toolOptions = {
       toolName: 'assignTaskToBlock',
@@ -27,42 +29,84 @@ export const assignTaskToBlock = tool({
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
       
-      const taskService = ServiceFactory.getInstance().getTaskService();
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
+      const taskService = ServiceFactory.getInstance().getTaskService();
+      const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       
-      // Verify both exist
+      // Get current schedule
+      const schedule = await scheduleService.getScheduleForDate(targetDate);
+      
+      // Find the block by searching through titles and times
+      let targetBlock = null;
+      const searchLower = blockDescription.toLowerCase().trim();
+      
+      // First, try exact title match
+      targetBlock = schedule.find(block => 
+        block.title.toLowerCase() === searchLower
+      );
+      
+      // If not found, try partial matches and time references
+      if (!targetBlock) {
+        // Check if searching by time
+        const timeMatch = searchLower.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
+        if (timeMatch && timeMatch[1]) {
+          const searchTime = toMilitaryTime(timeMatch[1]);
+          targetBlock = schedule.find(block => {
+            const blockStart = format(block.startTime, 'HH:mm');
+            return blockStart === searchTime;
+          });
+        }
+        
+        // Try partial title match
+        if (!targetBlock) {
+          targetBlock = schedule.find(block => 
+            block.title.toLowerCase().includes(searchLower) ||
+            searchLower.includes(block.title.toLowerCase())
+          );
+        }
+        
+        // Try type match
+        if (!targetBlock) {
+          targetBlock = schedule.find(block => 
+            block.type.toLowerCase() === searchLower
+          );
+        }
+      }
+      
+      if (!targetBlock) {
+        return buildErrorResponse(
+          toolOptions,
+          { code: 'BLOCK_NOT_FOUND', message: 'Could not find a matching block' },
+          {
+            title: 'Block Not Found',
+            description: `No block matching "${blockDescription}" found on ${targetDate}`,
+          }
+        );
+      }
+      
+      // Verify block type is appropriate
+      if (targetBlock.type === 'break' || targetBlock.type === 'meeting') {
+        return buildErrorResponse(
+          toolOptions,
+          {
+            code: 'INVALID_BLOCK_TYPE',
+            message: `Cannot assign tasks to ${targetBlock.type} blocks`,
+            blockType: targetBlock.type,
+          },
+          {
+            title: 'Invalid Block Type',
+            description: `Tasks can only be assigned to work, email, or focus blocks, not ${targetBlock.type} blocks.`,
+          }
+        );
+      }
+      
+      // Verify task exists
       const task = await taskService.getTask(taskId);
-      const block = await scheduleService.getTimeBlock(blockId);
-      
       if (!task) {
         return buildErrorResponse(
           toolOptions,
           { code: 'TASK_NOT_FOUND', message: 'Task not found' },
           { title: 'Task Not Found' }
-        );
-      }
-      
-      if (!block) {
-        return buildErrorResponse(
-          toolOptions,
-          { code: 'BLOCK_NOT_FOUND', message: 'Time block not found' },
-          { title: 'Block Not Found' }
-        );
-      }
-      
-      // Verify block type is appropriate
-      if (block.type === 'break' || block.type === 'meeting') {
-        return buildErrorResponse(
-          toolOptions,
-          {
-            code: 'INVALID_BLOCK_TYPE',
-            message: `Cannot assign tasks to ${block.type} blocks`,
-            blockType: block.type,
-          },
-          {
-            title: 'Invalid Block Type',
-            description: `Tasks can only be assigned to work, email, or focus blocks, not ${block.type} blocks.`,
-          }
         );
       }
       
@@ -83,7 +127,7 @@ export const assignTaskToBlock = tool({
       }
       
       // Calculate if task fits in block
-      const blockDuration = (block.endTime.getTime() - block.startTime.getTime()) / (1000 * 60); // minutes
+      const blockDuration = (targetBlock.endTime.getTime() - targetBlock.startTime.getTime()) / (1000 * 60); // minutes
       if (task.estimatedMinutes > blockDuration) {
         return buildErrorResponse(
           toolOptions,
@@ -100,9 +144,9 @@ export const assignTaskToBlock = tool({
         );
       }
       
-      await taskService.assignTaskToBlock(taskId, blockId);
+      await taskService.assignTaskToBlock(taskId, targetBlock.id);
       
-      console.log(`[AI Tools] Assigned task ${taskId} to block ${blockId}`);
+      console.log(`[AI Tools] Assigned task ${taskId} to block ${targetBlock.id}`);
       
       const taskData: Task = {
         id: task.id,
@@ -112,16 +156,16 @@ export const assignTaskToBlock = tool({
         estimatedMinutes: task.estimatedMinutes,
         description: task.description,
         source: task.source === 'chat' ? 'ai' : task.source as Task['source'],
-        assignedToBlockId: blockId,
+        assignedToBlockId: targetBlock.id,
       };
       
       const blockData: TimeBlock = {
-        id: block.id,
-        type: block.type as TimeBlock['type'],
-        title: block.title,
-        startTime: formatTime12Hour(block.startTime),
-        endTime: formatTime12Hour(block.endTime),
-        description: block.description,
+        id: targetBlock.id,
+        type: targetBlock.type as TimeBlock['type'],
+        title: targetBlock.title,
+        startTime: formatTime12Hour(targetBlock.startTime),
+        endTime: formatTime12Hour(targetBlock.endTime),
+        description: targetBlock.description,
         tasks: [{
           id: task.id,
           title: task.title,
@@ -137,14 +181,14 @@ export const assignTaskToBlock = tool({
           block: blockData,
           assignment: {
             taskId,
-            blockId,
+            blockId: targetBlock.id,
             assignedAt: new Date().toISOString(),
           },
         },
         {
           type: 'card',
           title: 'Task Assigned',
-          description: `"${task.title}" assigned to ${block.title} block at ${formatTime12Hour(block.startTime)}`,
+          description: `"${task.title}" assigned to ${targetBlock.title} block at ${formatTime12Hour(targetBlock.startTime)}`,
           priority: 'medium',
           components: [
             {

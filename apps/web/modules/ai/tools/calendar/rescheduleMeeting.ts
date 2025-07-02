@@ -4,8 +4,9 @@ import { type UniversalToolResponse } from '../../schemas/universal.schema';
 import { type CalendarEvent } from '../../schemas/calendar.schema';
 import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatDate } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
-import { format, parseISO } from 'date-fns';
 import { ensureServicesConfigured } from '../utils/auth';
+import { parseFlexibleTime } from '../../utils/time-parser';
+import { addMinutes, format } from 'date-fns';
 
 // Helper to get Date from event start/end
 function getEventDate(eventTime: { dateTime?: string; date?: string }): Date {
@@ -17,27 +18,22 @@ function getEventDate(eventTime: { dateTime?: string; date?: string }): Date {
   throw new Error('Event has no valid date');
 }
 
-// Helper to parse natural language time
-function parseNaturalTime(timeStr: string): Date {
-  // Simple implementation - in production would use a proper NLP library
+// Helper to parse natural language date/time
+function parseNaturalDateTime(input: string): Date {
   const now = new Date();
-  const lower = timeStr.toLowerCase();
+  const lower = input.toLowerCase();
   
+  // Handle relative days
   if (lower.includes('tomorrow')) {
     now.setDate(now.getDate() + 1);
+  } else if (lower.includes('next week')) {
+    now.setDate(now.getDate() + 7);
   }
   
-  // Extract time like "3pm", "15:00", etc
-  const timeMatch = timeStr.match(/(\d{1,2}):?(\d{0,2})\s*(am|pm)?/i);
-  if (timeMatch) {
-    let hours = parseInt(timeMatch[1] || '0', 10);
-    const minutes = parseInt(timeMatch[2] || '0', 10);
-    const meridiem = timeMatch[3]?.toLowerCase();
-    
-    if (meridiem === 'pm' && hours < 12) hours += 12;
-    if (meridiem === 'am' && hours === 12) hours = 0;
-    
-    now.setHours(hours, minutes, 0, 0);
+  // Extract time using flexible parser
+  const timeResult = parseFlexibleTime(input);
+  if (timeResult) {
+    now.setHours(timeResult.hour, timeResult.minute, 0, 0);
   }
   
   return now;
@@ -84,7 +80,7 @@ export const rescheduleMeeting = tool({
       const currentEnd = getEventDate(event.end);
       
       // Parse new time
-      const parsed = parseNaturalTime(params.newTime);
+      const parsed = parseNaturalDateTime(params.newTime);
       const duration = currentEnd.getTime() - currentStart.getTime();
       const newEnd = new Date(parsed.getTime() + duration);
       

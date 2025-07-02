@@ -6,6 +6,7 @@ import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatDate } f
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format, addMinutes } from 'date-fns';
 import { ensureServicesConfigured } from '../utils/auth';
+import { parseFlexibleTime } from '../../utils/time-parser';
 
 export const scheduleMeeting = tool({
   description: "Schedule a new meeting with smart time finding",
@@ -37,7 +38,7 @@ export const scheduleMeeting = tool({
       // In a real implementation, this would check attendee availability
       const now = new Date();
       const meetingStart = params.preferredTimes?.[0] 
-        ? new Date(params.preferredTimes[0])
+        ? parseNaturalDateTime(params.preferredTimes[0])
         : addMinutes(now, 60); // Default to 1 hour from now
       
       const meetingEnd = addMinutes(meetingStart, params.duration);
@@ -196,4 +197,25 @@ export const scheduleMeeting = tool({
       );
     }
   },
-}); 
+});
+
+// Helper to parse natural language date/time
+function parseNaturalDateTime(input: string): Date {
+  const now = new Date();
+  const lower = input.toLowerCase();
+  
+  // Handle relative days
+  if (lower.includes('tomorrow')) {
+    now.setDate(now.getDate() + 1);
+  } else if (lower.includes('next week')) {
+    now.setDate(now.getDate() + 7);
+  }
+  
+  // Extract time using flexible parser
+  const timeResult = parseFlexibleTime(input);
+  if (timeResult) {
+    now.setHours(timeResult.hour, timeResult.minute, 0, 0);
+  }
+  
+  return now;
+} 
