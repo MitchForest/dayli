@@ -144,6 +144,17 @@ function randomFrom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
+// Helper to add minutes to a time string and return properly formatted time
+function addMinutesToTime(timeStr: string, minutesToAdd: number): string {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  let totalMinutes = (hours || 0) * 60 + (minutes || 0) + minutesToAdd;
+  
+  const newHours = Math.floor(totalMinutes / 60);
+  const newMinutes = totalMinutes % 60;
+  
+  return `${newHours.toString().padStart(2, '0')}:${newMinutes.toString().padStart(2, '0')}`;
+}
+
 // Helper to check if a time slot conflicts with existing blocks
 function hasConflict(
   newStart: Date, 
@@ -471,10 +482,9 @@ async function handleMockData() {
       // Add daily planning block (most days)
       if (Math.random() < 0.8) {
         const planningStart = createLocalTimestamp(scheduleDate, workStartTime, userTimezone);
-        const [planHour, planMinute] = workStartTime.split(':').map(Number);
         const planningEnd = createLocalTimestamp(
           scheduleDate,
-          `${planHour}:${(planMinute! + 15) % 60}`,
+          addMinutesToTime(workStartTime, 15),
           userTimezone
         );
         
@@ -500,10 +510,9 @@ async function handleMockData() {
       // Add morning email triage
       const morningEmailTime = randomFrom(schedulePatterns.morningEmailTimes);
       const morningEmailStart = createLocalTimestamp(scheduleDate, morningEmailTime, userTimezone);
-      const [emailHour, emailMinute] = morningEmailTime.split(':').map(Number);
       const morningEmailEnd = createLocalTimestamp(
         scheduleDate,
-        `${emailMinute! + 30 >= 60 ? emailHour! + 1 : emailHour}:${(emailMinute! + 30) % 60}`,
+        addMinutesToTime(morningEmailTime, 30),
         userTimezone
       );
       
@@ -532,7 +541,7 @@ async function handleMockData() {
       const morningFocusStart = createLocalTimestamp(scheduleDate, '09:00', userTimezone);
       const morningFocusEnd = createLocalTimestamp(
         scheduleDate, 
-        `${9 + Math.floor(focusDuration / 60)}:${focusDuration % 60}`,
+        addMinutesToTime('09:00', focusDuration),
         userTimezone
       );
       
@@ -560,10 +569,9 @@ async function handleMockData() {
       if (Math.random() < 0.5) {
         const breakTime = randomFrom(schedulePatterns.morningBreakTimes);
         const breakStart = createLocalTimestamp(scheduleDate, breakTime, userTimezone);
-        const [breakHour, breakMinute] = breakTime.split(':').map(Number);
         const breakEnd = createLocalTimestamp(
           scheduleDate,
-          `${breakHour}:${(breakMinute! + 15) % 60}`,
+          addMinutesToTime(breakTime, 15),
           userTimezone
         );
         
@@ -590,10 +598,9 @@ async function handleMockData() {
       // Add mid-morning email check
       const midMorningEmailTime = randomFrom(schedulePatterns.midMorningEmailTimes);
       const midMorningEmailStart = createLocalTimestamp(scheduleDate, midMorningEmailTime, userTimezone);
-      const [midEmailHour, midEmailMinute] = midMorningEmailTime.split(':').map(Number);
       const midMorningEmailEnd = createLocalTimestamp(
         scheduleDate,
-        `${midEmailMinute! + 15 >= 60 ? midEmailHour! + 1 : midEmailHour}:${(midEmailMinute! + 15) % 60}`,
+        addMinutesToTime(midMorningEmailTime, 15),
         userTimezone
       );
       
@@ -622,7 +629,7 @@ async function handleMockData() {
       const lunchDuration = isFriday ? 90 : 60; // Longer lunch on Friday
       const lunchEnd = createLocalTimestamp(
         scheduleDate, 
-        `${parseInt(lunchTime.split(':')[0]!) + Math.floor(lunchDuration / 60)}:${parseInt(lunchTime.split(':')[1]!) + (lunchDuration % 60)}`,
+        addMinutesToTime(lunchTime, lunchDuration),
         userTimezone
       );
       
@@ -731,10 +738,9 @@ async function handleMockData() {
       if (Math.random() < 0.3) {
         const breakTime = randomFrom(schedulePatterns.afternoonBreakTimes);
         const breakStart = createLocalTimestamp(scheduleDate, breakTime, userTimezone);
-        const [breakHour, breakMinute] = breakTime.split(':').map(Number);
         const breakEnd = createLocalTimestamp(
           scheduleDate,
-          `${breakHour}:${(breakMinute! + 15) % 60}`,
+          addMinutesToTime(breakTime, 15),
           userTimezone
         );
         
@@ -762,10 +768,9 @@ async function handleMockData() {
       // Add afternoon email block
       const afternoonEmailTime = randomFrom(schedulePatterns.afternoonEmailTimes);
       const afternoonEmailStart = createLocalTimestamp(scheduleDate, afternoonEmailTime, userTimezone);
-      const [afternoonHour, afternoonMinute] = afternoonEmailTime.split(':').map(Number);
       const afternoonEmailEnd = createLocalTimestamp(
         scheduleDate,
-        `${afternoonMinute! + 30 >= 60 ? afternoonHour! + 1 : afternoonHour}:${(afternoonMinute! + 30) % 60}`,
+        addMinutesToTime(afternoonEmailTime, 30),
         userTimezone
       );
       
@@ -792,10 +797,9 @@ async function handleMockData() {
       // Add end-of-day wrap-up
       const wrapUpTime = randomFrom(schedulePatterns.eveningEmailTimes);
       const wrapUpStart = createLocalTimestamp(scheduleDate, wrapUpTime, userTimezone);
-      const [wrapUpHour, wrapUpMinute] = wrapUpTime.split(':').map(Number);
       const wrapUpEnd = createLocalTimestamp(
         scheduleDate,
-        `${wrapUpMinute! + 30 >= 60 ? wrapUpHour! + 1 : wrapUpHour}:${(wrapUpMinute! + 30) % 60}`,
+        addMinutesToTime(wrapUpTime, 30),
         userTimezone
       );
       
@@ -827,7 +831,7 @@ async function handleMockData() {
         const personalStart = createLocalTimestamp(scheduleDate, personalTime, userTimezone);
         const personalEnd = createLocalTimestamp(
           scheduleDate,
-          `${parseInt(personalTime.split(':')[0]!) + 2}:${personalTime.split(':')[1]}`,
+          addMinutesToTime(personalTime, 120), // 2 hours
           userTimezone
         );
         

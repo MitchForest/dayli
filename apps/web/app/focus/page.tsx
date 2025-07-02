@@ -6,11 +6,13 @@ import { useChatStore } from '@/modules/chat/store/chatStore';
 import { ChatPanel } from '@/modules/chat/components/ChatPanel';
 import { SchedulePanel } from '@/modules/schedule/components/SchedulePanel';
 import { DailyPlanningTrigger } from '@/modules/schedule/components/DailyPlanningTrigger';
+import { useAuth } from '@repo/auth/hooks';
 
 export default function FocusPage() {
   const chatPanelRef = useRef<ImperativePanelHandle>(null);
   const isCollapsed = useChatStore(state => state.isCollapsed);
   const toggleCollapsed = useChatStore(state => state.toggleCollapsed);
+  const { loading } = useAuth();
   
   // Handle panel resize
   const handleResize = (size: number) => {
@@ -29,6 +31,15 @@ export default function FocusPage() {
       chatPanelRef.current.resize(33);
     }
   };
+  
+  // Show loading state while auth is being verified
+  if (loading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-background">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
   
   return (
     <div className="h-screen w-screen overflow-hidden bg-background">

@@ -1,8 +1,6 @@
 import { streamText } from 'ai';
 import { openai } from '@ai-sdk/openai';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import type { Database } from '@repo/database/types';
+import { createServerActionClient } from '@/lib/supabase-server';
 import { ServiceFactory } from '@/services/factory/service.factory';
 
 // Import all tools
@@ -10,10 +8,12 @@ import {
   createTimeBlock,
   moveTimeBlock,
   deleteTimeBlock,
+  findTimeBlock,
   assignTaskToBlock,
   completeTask,
   getSchedule,
   getUnassignedTasks,
+  regenerateSchedule,
   updatePreference,
   getPreferences,
 } from '@/modules/ai/tools';
@@ -78,13 +78,19 @@ BEHAVIORAL RULES:
 
 6. WORKING WITH SCHEDULES:
    - ALWAYS check the current schedule first before making changes
-   - Use the actual block IDs from the schedule (they are UUIDs, not descriptive names)
-   - When user refers to a block by description (e.g., "the 7pm block"), first get the schedule to find the actual ID
-   - Never assume block IDs - they are unique identifiers like "550e8400-e29b-41d4-a716-446655440000"
+   - When user refers to a block by time/description, use that description directly
+   - Support natural language times: "2pm", "3:30 PM", "15:00" are all valid
+   - For any date other than today, always specify the date
+
+SCHEDULE MANIPULATION EXAMPLES:
+- User: "Delete the 7pm block" → Use blockDescription="7pm"
+- User: "Move my lunch to 11:30" → Use blockDescription="lunch", newStartTime="11:30am"
+- User: "Remove the meeting at 2" → Use blockDescription="2pm"
+- User: "Schedule focus time from 9 to 11" → Use startTime="9am", endTime="11am"
 
 EXAMPLES OF GOOD RESPONSES:
 - "Let me check your schedule first... I see you have a blocked time at 7pm. I'll remove that for you."
-- "I'll schedule a 2-hour focus block this morning for your strategy deck, followed by 30 minutes for emails."
+- "I'll schedule a 2-hour focus block from 9-11am for your strategy deck."
 - "Your afternoon is free. Shall I add time for the project review?"
 - "You have 3 unscheduled tasks. Let me find the best times for them based on your energy patterns."
 
@@ -93,7 +99,7 @@ NEVER:
 - Use technical jargon
 - Mention databases or systems
 - Ask users to click buttons
-- Assume block IDs without checking the schedule first`;
+- Use block IDs directly unless absolutely necessary`;
 
 export async function POST(req: Request) {
   // Add CORS headers for Tauri
@@ -110,11 +116,11 @@ export async function POST(req: Request) {
   }
 
   try {
-    console.log('Chat API called');
+    console.log('[Chat API] Request received');
     
     // Check for OpenAI API key
     if (!process.env.OPENAI_API_KEY) {
-      console.error('OPENAI_API_KEY is not set');
+      console.error('[Chat API] OPENAI_API_KEY is not set');
       return new Response('OpenAI API key not configured', { 
         status: 500,
         headers 
@@ -122,24 +128,7 @@ export async function POST(req: Request) {
     }
 
     // Create server-side Supabase client
-    const cookieStore = await cookies();
-    const supabase = createServerClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            cookieStore.set({ name, value, ...options });
-          },
-          remove(name: string, options: CookieOptions) {
-            cookieStore.delete({ name, ...options });
-          },
-        },
-      }
-    );
+    const supabase = await createServerActionClient();
 
     // Get current user - try both cookie auth and bearer token
     let user = null;
@@ -168,23 +157,28 @@ export async function POST(req: Request) {
     }
     
     if (!user) {
-      console.error('Auth error:', userError);
+      console.error('[Chat API] Auth error:', userError);
       return new Response('Unauthorized', { 
         status: 401,
         headers 
       });
     }
 
-    // Configure ServiceFactory with Supabase client BEFORE setting up the global user ID
+    console.log('[Chat API] Authenticated user:', user.id);
+
+    // Configure ServiceFactory with authenticated user context
     const factory = ServiceFactory.getInstance();
-    factory.configure({ userId: user.id, supabaseClient: supabase }, false); // Use real services
-    
-    // Set up global user ID for tools
-    (global as Record<string, unknown>).getCurrentUserId = () => user.id;
+    if (!factory.isConfigured()) {
+      console.log('[Chat API] Configuring ServiceFactory for user:', user.id);
+      factory.configure({ 
+        userId: user.id, 
+        supabaseClient: supabase 
+      }, true); // Use mock services for development
+    }
 
     const { messages } = await req.json();
     
-    console.log('Chat request received:', { 
+    console.log('[Chat API] Processing request:', { 
       userId: user.id, 
       messageCount: messages.length,
       lastMessage: messages[messages.length - 1]?.content?.substring(0, 100) 
@@ -195,10 +189,12 @@ export async function POST(req: Request) {
       createTimeBlock,
       moveTimeBlock,
       deleteTimeBlock,
+      findTimeBlock,
       assignTaskToBlock,
       completeTask,
       getSchedule,
       getUnassignedTasks,
+      regenerateSchedule,
       updatePreference,
       getPreferences,
     };
@@ -214,20 +210,20 @@ export async function POST(req: Request) {
         onStepFinish: async ({ toolCalls, toolResults }) => {
           // Log tool execution results for debugging
           if (toolCalls && toolCalls.length > 0) {
-            console.log('Tools executed:', toolCalls.map(tc => ({
+            console.log('[Chat API] Tools executed:', toolCalls.map(tc => ({
               name: tc.toolName,
               args: tc.args
             })));
           }
           if (toolResults && toolResults.length > 0) {
-            console.log('Tool results:', toolResults.map(tr => ({
+            console.log('[Chat API] Tool results:', toolResults.map(tr => ({
               toolName: tr.toolName,
               result: tr.result
             })));
           }
         },
         onError: (error) => {
-          console.error('Stream error:', error);
+          console.error('[Chat API] Stream error:', error);
         },
       });
 
@@ -239,14 +235,11 @@ export async function POST(req: Request) {
       
       return response;
     } catch (streamError) {
-      console.error('Stream creation error:', streamError);
+      console.error('[Chat API] Stream creation error:', streamError);
       throw streamError;
-    } finally {
-      // Restore original function
-      (global as Record<string, unknown>).getCurrentUserId = undefined;
     }
   } catch (error) {
-    console.error('Chat API error:', error);
+    console.error('[Chat API] Error:', error);
     
     // More detailed error response for debugging
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -276,9 +269,4 @@ export async function OPTIONS() {
       'Access-Control-Allow-Credentials': 'true',
     },
   });
-}
-
-// Type declaration for global context
-declare global {
-  var getCurrentUserId: () => string;
 } 

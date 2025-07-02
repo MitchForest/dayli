@@ -1,42 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerActionClient } from '@/lib/supabase-server';
 import { createDailyPlanningWorkflow } from '@/modules/workflows/graphs/dailyPlanning';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import type { Database } from '@repo/database/types';
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
     // Create server-side Supabase client
-    const cookieStore = await cookies();
-    const supabase = createServerClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            cookieStore.set({ name, value, ...options });
-          },
-          remove(name: string, options: CookieOptions) {
-            cookieStore.delete({ name, ...options });
-          },
-        },
-      }
-    );
+    const supabase = await createServerActionClient();
 
-    // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     
-    if (userError || !user) {
-      console.error('Auth error:', userError);
+    if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { date } = await request.json();
+    const { date } = await req.json();
     const workflow = createDailyPlanningWorkflow(supabase);
-
+    
     // Get initial state
     const initialState = {
       userId: user.id,
@@ -67,7 +47,6 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false });
 
     // Transform tasks to match workflow expectations
-    // For MVP, we'll use simple priority assignment
     initialState.backlogTasks = (tasks || []).map((task, index) => ({
       id: task.id,
       title: task.title,
@@ -84,9 +63,9 @@ export async function POST(request: NextRequest) {
       schedule: result.generatedSchedule,
     });
   } catch (error) {
-    console.error('Daily planning error:', error);
+    console.error('Daily planning workflow error:', error);
     return NextResponse.json(
-      { error: 'Failed to generate schedule' },
+      { error: 'Failed to run daily planning workflow' },
       { status: 500 }
     );
   }

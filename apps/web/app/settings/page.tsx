@@ -1,8 +1,22 @@
+'use client';
+
 import Link from 'next/link';
 import { ArrowLeft, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@repo/auth/hooks';
 
 export default function SettingsPage() {
+  const { loading } = useAuth();
+  
+  // Show loading state while auth is being verified
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+  
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-2xl mx-auto">

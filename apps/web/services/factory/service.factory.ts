@@ -27,9 +27,15 @@ export class ServiceFactory {
     return ServiceFactory.instance;
   }
 
-  configure(config: ServiceConfig, useMock = true): void {
+  configure(config: ServiceConfig | null, useMock = true): void {
     this.config = config;
     this.useMockServices = useMock;
+    
+    if (config) {
+      console.log('[ServiceFactory] Configured with user:', config.userId);
+    } else {
+      console.log('[ServiceFactory] Configuration cleared');
+    }
   }
 
   getScheduleService(): ScheduleService {
@@ -65,5 +71,10 @@ export class ServiceFactory {
   // Helper to check if using mock services
   isUsingMockServices(): boolean {
     return this.useMockServices;
+  }
+  
+  // Helper to check if configured
+  isConfigured(): boolean {
+    return this.config !== null;
   }
 } 

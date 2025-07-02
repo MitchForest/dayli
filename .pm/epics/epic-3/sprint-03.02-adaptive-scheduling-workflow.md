@@ -257,6 +257,9 @@ This ensures fast, predictable behavior for common cases while maintaining flexi
 - [ ] All strategies (full/partial/optimize/task_only) implemented
 - [ ] Time helper functions have unit tests
 - [ ] Mock calendar protection service ready for real implementation
+- [ ] [ADDITION] Schedule Optimization Workflow implemented and tested
+- [ ] [ADDITION] Optimization respects all constraints (meetings, lunch, work hours)
+- [ ] [ADDITION] Both workflows share helper utilities effectively
 
 ## Key Concepts
 
@@ -973,6 +976,337 @@ export class CalendarProtectionService {
   }
 }
 ```
+
+### 7. [ADDITION] Schedule Optimization Workflow
+
+**Note**: This workflow was identified as missing from the original sprint planning but is listed in the epic tracker under "Core Workflows to Implement". It complements the Adaptive Scheduling Workflow by providing non-destructive schedule improvements.
+
+**File**: `apps/web/modules/workflows/graphs/scheduleOptimization.ts`
+
+```typescript
+import { StateGraph, END } from "@langchain/langgraph";
+import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
+import { ChatOpenAI } from "@langchain/openai";
+
+interface OptimizationState {
+  userId: string;
+  date: string;
+  currentSchedule: TimeBlock[];
+  userPreferences: UserPreferences;
+  ragContext?: RAGContext;
+  inefficiencies: Inefficiency[];
+  optimizations: ScheduleOptimization[];
+  messages: BaseMessage[];
+}
+
+interface Inefficiency {
+  type: "gap" | "fragmentation" | "poor_timing" | "task_mismatch";
+  description: string;
+  blocks: TimeBlock[];
+  impact: "low" | "medium" | "high";
+}
+
+interface ScheduleOptimization {
+  description: string;
+  changes: ScheduleChange[];
+  benefit: string;
+  estimatedTimeGain: number; // in minutes
+}
+
+export function createScheduleOptimizationWorkflow() {
+  const workflow = new StateGraph<OptimizationState>({
+    channels: {
+      userId: null,
+      date: null,
+      currentSchedule: null,
+      userPreferences: null,
+      ragContext: null,
+      inefficiencies: [],
+      optimizations: [],
+      messages: [],
+    },
+  });
+
+  // Add nodes
+  workflow.addNode("analyzeEfficiency", analyzeEfficiencyNode);
+  workflow.addNode("identifyOptimizations", identifyOptimizationsNode);
+  workflow.addNode("respectConstraints", respectConstraintsNode);
+  workflow.addNode("proposeChanges", proposeChangesNode);
+  workflow.addNode("calculateBenefits", calculateBenefitsNode);
+
+  // Define flow
+  workflow.addEdge("analyzeEfficiency", "identifyOptimizations");
+  workflow.addEdge("identifyOptimizations", "respectConstraints");
+  workflow.addEdge("respectConstraints", "proposeChanges");
+  workflow.addEdge("proposeChanges", "calculateBenefits");
+  workflow.addEdge("calculateBenefits", END);
+
+  workflow.setEntryPoint("analyzeEfficiency");
+
+  return workflow.compile();
+}
+
+// Analyze current schedule for inefficiencies
+async function analyzeEfficiencyNode(state: OptimizationState): Promise<Partial<OptimizationState>> {
+  const inefficiencies: Inefficiency[] = [];
+  
+  // 1. Find small gaps (15-30 minutes) that are too short to be productive
+  const gaps = findScheduleGaps(state.currentSchedule, state.userPreferences);
+  gaps.forEach(gap => {
+    if (gap.duration >= 15 && gap.duration < 30) {
+      inefficiencies.push({
+        type: "gap",
+        description: `${gap.duration}-minute gap between blocks is too short for productive work`,
+        blocks: getAdjacentBlocks(state.currentSchedule, gap),
+        impact: "medium",
+      });
+    }
+  });
+
+  // 2. Find fragmented focus time (multiple small focus blocks instead of consolidated ones)
+  const focusBlocks = state.currentSchedule.filter(b => b.type === "focus");
+  if (focusBlocks.length > 2) {
+    const totalFocusTime = focusBlocks.reduce((sum, block) => 
+      sum + calculateDuration(block.startTime, block.endTime), 0
+    );
+    if (totalFocusTime < 240) { // Less than 4 hours total
+      inefficiencies.push({
+        type: "fragmentation",
+        description: "Focus time is fragmented across multiple small blocks",
+        blocks: focusBlocks,
+        impact: "high",
+      });
+    }
+  }
+
+  // 3. Check for poor timing (e.g., deep work scheduled right after lunch)
+  const lunchBlock = state.currentSchedule.find(b => 
+    b.type === "break" && isLunchTime(b)
+  );
+  if (lunchBlock) {
+    const postLunchBlock = state.currentSchedule.find(b => 
+      b.startTime === lunchBlock.endTime && b.type === "focus"
+    );
+    if (postLunchBlock) {
+      inefficiencies.push({
+        type: "poor_timing",
+        description: "Deep work scheduled immediately after lunch (low energy time)",
+        blocks: [postLunchBlock],
+        impact: "medium",
+      });
+    }
+  }
+
+  return { inefficiencies };
+}
+
+// Identify possible optimizations
+async function identifyOptimizationsNode(state: OptimizationState): Promise<Partial<OptimizationState>> {
+  const optimizations: ScheduleOptimization[] = [];
+
+  // For each inefficiency, generate optimization suggestions
+  state.inefficiencies.forEach(inefficiency => {
+    switch (inefficiency.type) {
+      case "gap":
+        // Suggest extending adjacent blocks to fill gaps
+        const [before, after] = inefficiency.blocks;
+        if (before && before.type === "focus") {
+          optimizations.push({
+            description: "Extend focus block to eliminate unproductive gap",
+            changes: [{
+              action: "move",
+              description: `Extend ${before.title} by ${inefficiency.description.match(/\d+/)[0]} minutes`,
+              details: {
+                blockId: before.id,
+                newEndTime: after.startTime,
+              },
+            }],
+            benefit: "Eliminates context switching and maximizes deep work time",
+            estimatedTimeGain: 15,
+          });
+        }
+        break;
+
+      case "fragmentation":
+        // Suggest consolidating focus blocks
+        const focusBlocks = inefficiency.blocks;
+        const totalDuration = focusBlocks.reduce((sum, b) => 
+          sum + calculateDuration(b.startTime, b.endTime), 0
+        );
+        
+        optimizations.push({
+          description: "Consolidate fragmented focus time into 2 larger blocks",
+          changes: [
+            // This would be more complex in practice, showing simplified version
+            {
+              action: "delete",
+              description: "Remove small focus blocks",
+              details: { blockIds: focusBlocks.slice(2).map(b => b.id) },
+            },
+            {
+              action: "move",
+              description: "Extend morning focus block",
+              details: {
+                blockId: focusBlocks[0].id,
+                newEndTime: addMinutes(parseTime(focusBlocks[0].startTime), totalDuration * 0.6),
+              },
+            },
+          ],
+          benefit: "Deeper focus with less context switching",
+          estimatedTimeGain: 30,
+        });
+        break;
+
+      case "poor_timing":
+        // Suggest moving deep work to high-energy times
+        optimizations.push({
+          description: "Move deep work to morning high-energy time",
+          changes: [{
+            action: "move",
+            description: "Swap post-lunch deep work with email time",
+            details: {
+              blockId: inefficiency.blocks[0].id,
+              newStartTime: "09:00",
+              newEndTime: "11:00",
+            },
+          }],
+          benefit: "Align challenging work with peak mental energy",
+          estimatedTimeGain: 20,
+        });
+        break;
+    }
+  });
+
+  return { optimizations };
+}
+
+// Ensure optimizations respect constraints
+async function respectConstraintsNode(state: OptimizationState): Promise<Partial<OptimizationState>> {
+  // Filter out optimizations that would violate constraints
+  const validOptimizations = state.optimizations.filter(opt => {
+    // Never move or modify meetings
+    const affectsMeetings = opt.changes.some(change => {
+      const block = state.currentSchedule.find(b => b.id === change.details.blockId);
+      return block?.type === "meeting";
+    });
+    if (affectsMeetings) return false;
+
+    // Never touch lunch break
+    const affectsLunch = opt.changes.some(change => {
+      const block = state.currentSchedule.find(b => b.id === change.details.blockId);
+      return block?.type === "break" && isLunchTime(block);
+    });
+    if (affectsLunch) return false;
+
+    // Respect user preferences (e.g., no work before work_start_time)
+    const respectsWorkHours = opt.changes.every(change => {
+      if (change.details.newStartTime) {
+        const time = parseTime(change.details.newStartTime);
+        const workStart = parseTime(state.userPreferences.work_start_time);
+        const workEnd = parseTime(state.userPreferences.work_end_time);
+        return time >= workStart && time <= workEnd;
+      }
+      return true;
+    });
+    if (!respectsWorkHours) return false;
+
+    return true;
+  });
+
+  return { optimizations: validOptimizations };
+}
+
+// Create the tool for this workflow
+export const optimizeScheduleTool = tool({
+  description: 'Analyze and optimize an existing schedule for better efficiency',
+  parameters: z.object({
+    date: z.string().optional().describe("Date to optimize (defaults to today)"),
+  }),
+  execute: async (params) => {
+    const workflow = createScheduleOptimizationWorkflow();
+    const userId = await getCurrentUserId();
+    
+    const result = await workflow.invoke({
+      userId,
+      date: params.date || format(new Date(), 'yyyy-MM-dd'),
+      currentSchedule: await scheduleService.getScheduleForDate(params.date, userId),
+      userPreferences: await preferencesService.getUserPreferences(userId),
+    });
+
+    if (result.optimizations.length === 0) {
+      return {
+        message: "Your schedule looks well-optimized! No improvements needed.",
+      };
+    }
+
+    // Store optimization proposal
+    const proposalId = crypto.randomUUID();
+    optimizationProposals.set(proposalId, {
+      optimizations: result.optimizations,
+      timestamp: new Date(),
+      userId,
+    });
+
+    // Clean summary for user
+    const totalTimeGain = result.optimizations.reduce((sum, opt) => sum + opt.estimatedTimeGain, 0);
+    const summary = `I found ${result.optimizations.length} ways to optimize your schedule:
+
+${result.optimizations.map((opt, i) => 
+  `${i + 1}. ${opt.description}
+   Benefit: ${opt.benefit}
+   Time saved: ~${opt.estimatedTimeGain} minutes`
+).join('\n\n')}
+
+Total potential time savings: ${totalTimeGain} minutes
+
+Would you like me to apply these optimizations? (Confirmation ID: ${proposalId})`;
+
+    return { message: summary, proposalId };
+  }
+});
+```
+
+#### Integration with Adaptive Scheduling
+
+The Schedule Optimization Workflow complements the Adaptive Scheduling Workflow:
+
+1. **When to use each**:
+   - **Adaptive Scheduling**: When creating or modifying schedule (morning planning, adding new tasks)
+   - **Schedule Optimization**: When improving existing schedule (finding inefficiencies, consolidating blocks)
+
+2. **Shared utilities**: Both workflows can use the same helper functions from `scheduleHelpers.ts`
+
+3. **User experience**:
+   - "Plan my day" → Adaptive Scheduling
+   - "Optimize my schedule" → Schedule Optimization
+   - "Make my day more efficient" → Schedule Optimization
+
+4. **Key differences**:
+   - Adaptive creates/fills, Optimization improves
+   - Adaptive is constructive, Optimization is analytical
+   - Adaptive handles any state, Optimization requires existing schedule
+
+#### Testing the Optimization Workflow
+
+**Test Case 1: Gap Elimination**
+- Create schedule with 20-minute gaps between blocks
+- Run optimization
+- Should suggest extending blocks to fill gaps
+
+**Test Case 2: Focus Consolidation**
+- Create 4 small 45-minute focus blocks
+- Run optimization  
+- Should suggest combining into 2 larger blocks
+
+**Test Case 3: Constraint Respect**
+- Create schedule with meetings and lunch
+- Run optimization
+- Should never suggest moving meetings or lunch
+
+**Test Case 4: Energy Alignment**
+- Put deep work after lunch
+- Run optimization
+- Should suggest moving to morning
 
 ## Testing Guide
 

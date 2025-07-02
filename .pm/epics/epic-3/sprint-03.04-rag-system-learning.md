@@ -932,6 +932,459 @@ const testLearning = async () => {
 };
 ```
 
+### 4. Test Daily Review Workflow
+
+```typescript
+// Test end-of-day review and learning
+const testDailyReview = async () => {
+  // Trigger daily review
+  const response = await fetch('/api/workflows/daily-review', {
+    method: 'POST',
+    body: JSON.stringify({
+      date: '2024-01-15',
+      includeBacklogReview: true
+    })
+  });
+  
+  const { summary, patterns, tomorrowSuggestions } = await response.json();
+  
+  console.log('Today Summary:', summary);
+  console.log('Patterns Found:', patterns);
+  console.log('Tomorrow:', tomorrowSuggestions);
+};
+```
+
+## Daily Review Workflow Implementation
+
+### 7. Create Daily Review Workflow
+
+**File**: `apps/web/modules/workflows/graphs/dailyReview.ts`
+
+```typescript
+import { StateGraph, END } from "@langchain/langgraph";
+import { BaseMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
+import { LearningPatternsService } from '@/modules/rag/services/learningPatterns';
+import { RAGContextService } from '@/modules/rag/services/ragContext.service';
+
+interface DailyReviewState {
+  userId: string;
+  date: string;
+  todaySchedule: TimeBlock[];
+  completedTasks: Task[];
+  incompleteTasks: Task[];
+  emailStats: EmailStatistics;
+  backlogStatus: BacklogSummary;
+  patterns: Pattern[];
+  tomorrowSuggestions: Suggestion[];
+  reviewSummary: string;
+  messages: BaseMessage[];
+}
+
+interface Pattern {
+  type: 'productivity' | 'timing' | 'preference' | 'behavior';
+  description: string;
+  confidence: number;
+  actionable: boolean;
+}
+
+interface Suggestion {
+  priority: 'high' | 'medium' | 'low';
+  description: string;
+  reasoning: string;
+  timeBlock?: Partial<TimeBlock>;
+}
+
+export function createDailyReviewWorkflow() {
+  const workflow = new StateGraph<DailyReviewState>({
+    channels: {
+      userId: null,
+      date: null,
+      todaySchedule: null,
+      completedTasks: null,
+      incompleteTasks: null,
+      emailStats: null,
+      backlogStatus: null,
+      patterns: [],
+      tomorrowSuggestions: [],
+      reviewSummary: '',
+      messages: [],
+    },
+  });
+
+  // Add nodes
+  workflow.addNode("fetchTodayData", fetchTodayDataNode);
+  workflow.addNode("extractTodayPatterns", extractTodayPatternsNode);
+  workflow.addNode("analyzeProductivity", analyzeProductivityNode);
+  workflow.addNode("reviewBacklog", reviewBacklogNode);
+  workflow.addNode("prepareTomorrow", prepareTomorrowNode);
+  workflow.addNode("updateLearnings", updateLearningsNode);
+  workflow.addNode("generateReviewSummary", generateReviewSummaryNode);
+
+  // Define flow
+  workflow.addEdge("fetchTodayData", "extractTodayPatterns");
+  workflow.addEdge("extractTodayPatterns", "analyzeProductivity");
+  workflow.addEdge("analyzeProductivity", "reviewBacklog");
+  workflow.addEdge("reviewBacklog", "prepareTomorrow");
+  workflow.addEdge("prepareTomorrow", "updateLearnings");
+  workflow.addEdge("updateLearnings", "generateReviewSummary");
+  workflow.addEdge("generateReviewSummary", END);
+
+  workflow.setEntryPoint("fetchTodayData");
+
+  return workflow.compile();
+}
+
+// Fetch all data from today
+async function fetchTodayDataNode(state: DailyReviewState): Promise<Partial<DailyReviewState>> {
+  const [schedule, tasks, emailStats, backlog] = await Promise.all([
+    scheduleService.getScheduleForDate(state.date, state.userId),
+    taskService.getTasksForDate(state.date, state.userId),
+    emailService.getEmailStatsForDate(state.date, state.userId),
+    backlogService.getBacklogSummary(state.userId),
+  ]);
+
+  const completedTasks = tasks.filter(t => t.completed);
+  const incompleteTasks = tasks.filter(t => !t.completed);
+
+  return {
+    todaySchedule: schedule.blocks,
+    completedTasks,
+    incompleteTasks,
+    emailStats,
+    backlogStatus: backlog,
+  };
+}
+
+// Extract patterns from today's activities
+async function extractTodayPatternsNode(state: DailyReviewState): Promise<Partial<DailyReviewState>> {
+  const patterns: Pattern[] = [];
+  
+  // 1. Analyze actual vs planned schedule
+  const scheduledVsActual = analyzeScheduleAdherence(state.todaySchedule);
+  if (scheduledVsActual.deviationPercent > 30) {
+    patterns.push({
+      type: 'behavior',
+      description: `You deviated from planned schedule by ${scheduledVsActual.deviationPercent}%`,
+      confidence: 0.9,
+      actionable: true,
+    });
+  }
+
+  // 2. Analyze task completion patterns
+  const completionRate = state.completedTasks.length / 
+    (state.completedTasks.length + state.incompleteTasks.length);
+  
+  const tasksByTimeOfDay = groupTasksByTimeOfDay(state.completedTasks);
+  const mostProductiveTime = findMostProductiveTime(tasksByTimeOfDay);
+  
+  patterns.push({
+    type: 'productivity',
+    description: `Most productive time: ${mostProductiveTime} (${tasksByTimeOfDay[mostProductiveTime]} tasks completed)`,
+    confidence: 0.85,
+    actionable: true,
+  });
+
+  // 3. Analyze break patterns
+  const breaksTaken = state.todaySchedule.filter(b => b.type === 'break');
+  const lunchTaken = breaksTaken.find(b => isLunchTime(b));
+  
+  if (!lunchTaken) {
+    patterns.push({
+      type: 'behavior',
+      description: 'Skipped lunch break today',
+      confidence: 1.0,
+      actionable: true,
+    });
+  }
+
+  // 4. Email response patterns
+  if (state.emailStats.averageResponseTime < 30) {
+    patterns.push({
+      type: 'behavior',
+      description: 'Quick email responder - average response time under 30 minutes',
+      confidence: 0.9,
+      actionable: false,
+    });
+  }
+
+  return { patterns };
+}
+
+// Analyze productivity metrics
+async function analyzeProductivityNode(state: DailyReviewState): Promise<Partial<DailyReviewState>> {
+  // Calculate deep work hours
+  const focusBlocks = state.todaySchedule.filter(b => b.type === 'focus');
+  const totalFocusHours = focusBlocks.reduce((sum, block) => 
+    sum + calculateDuration(block.startTime, block.endTime) / 60, 0
+  );
+
+  // Task velocity
+  const taskVelocity = state.completedTasks.length / totalFocusHours;
+
+  // Add productivity insights to patterns
+  const productivityPattern: Pattern = {
+    type: 'productivity',
+    description: `Completed ${state.completedTasks.length} tasks in ${totalFocusHours.toFixed(1)} focus hours (${taskVelocity.toFixed(1)} tasks/hour)`,
+    confidence: 1.0,
+    actionable: taskVelocity < 1,
+  };
+
+  return {
+    patterns: [...state.patterns, productivityPattern],
+  };
+}
+
+// Review backlog and prioritize
+async function reviewBacklogNode(state: DailyReviewState): Promise<Partial<DailyReviewState>> {
+  const { taskBacklog, emailBacklog } = state.backlogStatus;
+  
+  // Age analysis
+  const agedTasks = taskBacklog.filter(t => t.daysInBacklog > 3);
+  const urgentEmails = emailBacklog.filter(e => e.urgency === 'urgent' && e.daysInBacklog > 1);
+
+  // Update patterns if backlog is growing
+  if (agedTasks.length > 5) {
+    state.patterns.push({
+      type: 'behavior',
+      description: `${agedTasks.length} tasks have been in backlog for over 3 days`,
+      confidence: 1.0,
+      actionable: true,
+    });
+  }
+
+  // Prepare high-priority items for tomorrow
+  const tomorrowPriorities = [
+    ...agedTasks.slice(0, 3).map(t => ({
+      type: 'task',
+      item: t,
+      reason: `In backlog for ${t.daysInBacklog} days`,
+    })),
+    ...urgentEmails.slice(0, 2).map(e => ({
+      type: 'email',
+      item: e,
+      reason: 'Urgent email pending response',
+    })),
+  ];
+
+  return {
+    backlogStatus: {
+      ...state.backlogStatus,
+      tomorrowPriorities,
+    },
+  };
+}
+
+// Prepare suggestions for tomorrow
+async function prepareTomorrowNode(state: DailyReviewState): Promise<Partial<DailyReviewState>> {
+  const ragService = new RAGContextService();
+  const suggestions: Suggestion[] = [];
+
+  // Get similar past days for context
+  const tomorrowContext = await ragService.getContext(
+    state.userId,
+    `Planning for day after ${state.date}`,
+    { includeSimilar: true }
+  );
+
+  // 1. Suggest optimal focus time based on today's productivity
+  const optimalFocusTime = state.patterns.find(p => 
+    p.description.includes('Most productive time')
+  );
+  
+  if (optimalFocusTime) {
+    suggestions.push({
+      priority: 'high',
+      description: 'Schedule deep work during your most productive time',
+      reasoning: optimalFocusTime.description,
+      timeBlock: {
+        type: 'focus',
+        title: 'Deep Work - High Priority Tasks',
+        startTime: extractTimeFromPattern(optimalFocusTime.description),
+        duration: 120,
+      },
+    });
+  }
+
+  // 2. Address backlog items
+  if (state.backlogStatus.tomorrowPriorities?.length > 0) {
+    suggestions.push({
+      priority: 'high',
+      description: `Address ${state.backlogStatus.tomorrowPriorities.length} high-priority backlog items`,
+      reasoning: 'Items have been pending too long',
+    });
+  }
+
+  // 3. Protect lunch if skipped today
+  const skippedLunch = state.patterns.find(p => 
+    p.description.includes('Skipped lunch')
+  );
+  
+  if (skippedLunch) {
+    suggestions.push({
+      priority: 'high',
+      description: 'Block lunch time in calendar',
+      reasoning: 'You skipped lunch today - protect tomorrow\'s break',
+      timeBlock: {
+        type: 'break',
+        title: 'Lunch Break',
+        startTime: '12:00',
+        duration: 60,
+      },
+    });
+  }
+
+  // 4. Adjust schedule based on incomplete tasks
+  if (state.incompleteTasks.length > 3) {
+    suggestions.push({
+      priority: 'medium',
+      description: 'Start with incomplete tasks from today',
+      reasoning: `${state.incompleteTasks.length} tasks carried over`,
+    });
+  }
+
+  return { tomorrowSuggestions: suggestions };
+}
+
+// Update RAG system with learnings
+async function updateLearningsNode(state: DailyReviewState): Promise<Partial<DailyReviewState>> {
+  const learningService = new LearningPatternsService();
+  const ragService = new RAGContextService();
+
+  // Store significant patterns
+  for (const pattern of state.patterns) {
+    if (pattern.confidence > 0.7 && pattern.actionable) {
+      await ragService.storeContext({
+        userId: state.userId,
+        type: 'pattern',
+        content: pattern.description,
+        metadata: {
+          date: state.date,
+          patternType: pattern.type,
+          confidence: pattern.confidence,
+        },
+      });
+    }
+  }
+
+  // Store daily summary for future reference
+  const dailySummary = {
+    date: state.date,
+    completionRate: state.completedTasks.length / 
+      (state.completedTasks.length + state.incompleteTasks.length),
+    focusHours: state.todaySchedule.filter(b => b.type === 'focus').length,
+    emailsProcessed: state.emailStats.totalProcessed,
+    backlogGrowth: state.backlogStatus.growthRate,
+  };
+
+  await ragService.storeContext({
+    userId: state.userId,
+    type: 'decision',
+    content: `Daily review for ${state.date}: ${JSON.stringify(dailySummary)}`,
+    metadata: dailySummary,
+  });
+
+  return { messages: [...state.messages, new AIMessage('Learnings updated')] };
+}
+
+// Generate human-readable summary
+async function generateReviewSummaryNode(state: DailyReviewState): Promise<Partial<DailyReviewState>> {
+  const summary = `# Daily Review for ${formatDate(state.date)}
+
+## Today's Performance
+- ✅ Completed ${state.completedTasks.length} tasks
+- ⏳ ${state.incompleteTasks.length} tasks carried to tomorrow
+- 📧 Processed ${state.emailStats.totalProcessed} emails (avg response: ${state.emailStats.averageResponseTime}min)
+- 🎯 ${state.todaySchedule.filter(b => b.type === 'focus').length} focus sessions
+
+## Key Insights
+${state.patterns.map(p => `- ${p.description}`).join('\n')}
+
+## Tomorrow's Priorities
+${state.tomorrowSuggestions.map((s, i) => 
+  `${i + 1}. [${s.priority.toUpperCase()}] ${s.description}\n   → ${s.reasoning}`
+).join('\n\n')}
+
+## Backlog Status
+- 📋 Tasks: ${state.backlogStatus.taskBacklog.length} items
+- 📧 Emails: ${state.backlogStatus.emailBacklog.length} pending
+${state.backlogStatus.tomorrowPriorities?.length > 0 ? 
+  `- ⚡ High priority: ${state.backlogStatus.tomorrowPriorities.length} items need attention` : ''}
+
+Ready to plan tomorrow? Just say "Plan my day" in the morning!`;
+
+  return { reviewSummary: summary };
+}
+
+// Helper functions
+function analyzeScheduleAdherence(blocks: TimeBlock[]): { deviationPercent: number } {
+  // Simplified - in practice would compare planned vs actual
+  return { deviationPercent: Math.random() * 50 };
+}
+
+function groupTasksByTimeOfDay(tasks: Task[]): Record<string, number> {
+  const groups: Record<string, number> = {
+    morning: 0,
+    afternoon: 0,
+    evening: 0,
+  };
+  
+  tasks.forEach(task => {
+    const hour = new Date(task.completedAt).getHours();
+    if (hour < 12) groups.morning++;
+    else if (hour < 17) groups.afternoon++;
+    else groups.evening++;
+  });
+  
+  return groups;
+}
+
+function findMostProductiveTime(tasksByTime: Record<string, number>): string {
+  return Object.entries(tasksByTime)
+    .sort(([,a], [,b]) => b - a)[0][0];
+}
+
+// Create the tool for daily review
+export const dailyReviewTool = tool({
+  description: 'Perform end-of-day review and prepare for tomorrow',
+  parameters: z.object({
+    date: z.string().optional().describe("Date to review (defaults to today)"),
+    includeBacklogReview: z.boolean().default(true),
+  }),
+  execute: async (params) => {
+    const workflow = createDailyReviewWorkflow();
+    const userId = await getCurrentUserId();
+    
+    const result = await workflow.invoke({
+      userId,
+      date: params.date || format(new Date(), 'yyyy-MM-dd'),
+    });
+
+    return {
+      summary: result.reviewSummary,
+      patterns: result.patterns,
+      suggestions: result.tomorrowSuggestions,
+    };
+  }
+});
+```
+
+### Integration with Chat
+
+Update the chat endpoint to trigger daily review automatically:
+
+```typescript
+// In chat route, add time-based triggers
+if (isEndOfDay() && !hasRunDailyReview(userId, today)) {
+  // Automatically suggest daily review
+  return new Response(
+    "It's the end of your workday! Would you like me to review today and prepare for tomorrow?",
+    {
+      headers: { 'Content-Type': 'text/plain' },
+    }
+  );
+}
+```
+
 ## Common Issues & Solutions
 
 ### Issue 1: pgvector Not Installed
@@ -972,6 +1425,10 @@ SUPABASE_SERVICE_KEY=eyJ...
 - [ ] Pattern recognition improves with more data
 - [ ] No errors in console during normal operation
 - [ ] Database queries are performant (<100ms for searches)
+- [ ] Daily Review Workflow implemented and functional
+- [ ] Daily patterns extracted and stored in RAG
+- [ ] Tomorrow suggestions based on today's performance
+- [ ] Backlog review integrated into daily workflow
 
 ## Architecture Decisions
 

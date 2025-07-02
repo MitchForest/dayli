@@ -10,6 +10,7 @@ import {
 import type { DailySchedule, TimeBlock as AppTimeBlock } from '../types/schedule.types';
 import type { TimeBlock as DbTimeBlock, Task as DbTask, Email as DbEmail } from '@repo/database';
 import { format, addDays, subDays, startOfDay, endOfDay } from 'date-fns';
+import { isTauri } from '@/lib/utils';
 
 export function useSchedule() {
   const { user, supabase } = useAuth();
@@ -19,13 +20,25 @@ export function useSchedule() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchScheduleForDate = useCallback(async (date: Date, forceRefresh = false) => {
-    if (!user || !supabase) return null;
+    if (!user || !supabase) {
+      console.log('[useSchedule] No user or supabase client available');
+      return null;
+    }
 
     const dateString = format(date, 'yyyy-MM-dd');
     
     // Check if we already have this schedule (unless forcing refresh)
     const existingSchedule = getSchedule(dateString);
-    if (existingSchedule && !forceRefresh) return existingSchedule;
+    if (existingSchedule && !forceRefresh) {
+      console.log(`[useSchedule] Using cached schedule for ${dateString}`);
+      return existingSchedule;
+    }
+
+    console.log(`[useSchedule] Fetching schedule for ${dateString}`, {
+      userId: user.id,
+      forceRefresh,
+      isDesktop: isTauri()
+    });
 
     try {
       // Skip daily_schedules and fetch time blocks directly
@@ -41,9 +54,28 @@ export function useSchedule() {
         .order('start_time', { ascending: true });
 
       if (blocksError) {
-        console.error('Error fetching time blocks:', blocksError);
+        console.error(`[useSchedule] Database error for ${dateString}:`, {
+          error: blocksError,
+          code: blocksError.code,
+          message: blocksError.message,
+          details: blocksError.details,
+          hint: blocksError.hint
+        });
+        
+        // If it's an auth error in desktop, log more details
+        if (isTauri() && blocksError.code === 'PGRST301') {
+          const session = await supabase.auth.getSession();
+          console.error('[useSchedule] Desktop auth issue:', {
+            hasSession: !!session.data.session,
+            sessionUser: session.data.session?.user?.id,
+            expectedUser: user.id
+          });
+        }
+        
         throw blocksError;
       }
+
+      console.log(`[useSchedule] Retrieved ${dbTimeBlocks?.length || 0} blocks for ${dateString}`);
 
       const blocksWithDetails = await Promise.all(
         (dbTimeBlocks || []).map(async (block: DbTimeBlock) => {
@@ -96,10 +128,11 @@ export function useSchedule() {
         stats: { emailsProcessed: 0, tasksCompleted: 0, focusMinutes: 0 },
       };
 
+      console.log(`[useSchedule] Setting schedule for ${dateString} with ${fullSchedule.timeBlocks.length} blocks`);
       setSchedule(dateString, fullSchedule);
       return fullSchedule;
     } catch (e: any) {
-      console.error('Failed to fetch schedule for', dateString, ':', e);
+      console.error(`[useSchedule] Failed to fetch schedule for ${dateString}:`, e);
       setError('Failed to load schedule.');
       return null;
     }

@@ -3,10 +3,12 @@ export {
   createTimeBlock,
   moveTimeBlock,
   deleteTimeBlock,
+  findTimeBlock,
   assignTaskToBlock,
   completeTask,
   getSchedule,
   getUnassignedTasks,
+  regenerateSchedule,
 } from './schedule-tools';
 
 // Export all preference tools

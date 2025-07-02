@@ -315,6 +315,35 @@ None required - exceptional implementation quality.
 3. Component composition pattern (base + variants) keeps code DRY
 4. Tailwind's OKLCH color functions work well for gradients
 
+## Authentication Architecture Fix
+
+### Issue Identified
+- Users not being redirected to login when unauthenticated
+- Auth state showing correctly (no session) but middleware not redirecting
+- Client-side redirects are a backup, not the primary solution
+
+### Correct Architecture
+1. **Server-side middleware** should handle ALL auth redirects
+   - Security: No flash of protected content
+   - Performance: Redirect happens before page render
+   - Consistency: Single source of truth for auth logic
+
+2. **Client-side** should only show loading states
+   - No redirects in components
+   - Only display loading while auth checks happen
+
+### Implementation Plan
+1. Fix middleware to properly check Supabase session for both web and desktop
+2. Ensure middleware redirects unauthenticated users to `/login`
+3. Remove client-side redirects from `/focus` page
+4. Add proper loading states without redirects
+5. Verify auth flow works identically for web and desktop
+
+### Files to Modify
+- `apps/web/middleware.ts` - Fix auth checking and redirects
+- `apps/web/app/focus/page.tsx` - Remove client-side redirect, keep loading state
+- `apps/web/app/settings/page.tsx` - Add loading state for consistency
+
 ---
 
 *Sprint Started: 2024-12-30*  

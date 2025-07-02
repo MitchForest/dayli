@@ -7,46 +7,62 @@ import { isTauri } from './utils';
 // Create a singleton instance
 let browserClient: ReturnType<typeof createBrowserClient<Database>> | null = null;
 
+// Custom storage for Tauri (desktop app)
+const customStorage = {
+  getItem: (key: string) => {
+    if (typeof window !== 'undefined') {
+      return window.localStorage.getItem(key);
+    }
+    return null;
+  },
+  setItem: (key: string, value: string) => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(key, value);
+    }
+  },
+  removeItem: (key: string) => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(key);
+    }
+  },
+};
+
 export function createClient() {
   if (browserClient) return browserClient;
 
-  // For Tauri desktop app, use localStorage-based auth
-  if (isTauri()) {
-    browserClient = createBrowserClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        auth: {
-          persistSession: true,
-          storageKey: 'dayli-auth',
-          storage: {
-            getItem: (key: string) => {
-              if (typeof window !== 'undefined') {
-                return window.localStorage.getItem(key);
-              }
-              return null;
-            },
-            setItem: (key: string, value: string) => {
-              if (typeof window !== 'undefined') {
-                window.localStorage.setItem(key, value);
-              }
-            },
-            removeItem: (key: string) => {
-              if (typeof window !== 'undefined') {
-                window.localStorage.removeItem(key);
-              }
-            },
-          },
-        },
+  const isDesktop = isTauri();
+  
+  // Create client with proper PKCE configuration
+  // Note: Browser client in @supabase/ssr automatically handles cookies for web
+  browserClient = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        persistSession: true,
+        storage: isDesktop ? customStorage : undefined, // Use localStorage for desktop only
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce', // Explicitly set PKCE flow
+      },
+      realtime: {
+        params: {
+          eventsPerSecond: 10
+        }
+      },
+      global: {
+        headers: {
+          'X-Client-Info': isDesktop ? 'dayli-desktop' : 'dayli-web'
+        }
       }
-    );
-  } else {
-    // For web app, use default cookie-based auth
-    browserClient = createBrowserClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-  }
+    }
+  );
+
+  console.log('[Supabase Client] Initialized with:', {
+    isDesktop,
+    storageType: isDesktop ? 'localStorage' : 'cookies (auto-handled)',
+    flowType: 'pkce'
+  });
 
   return browserClient;
 }
@@ -55,8 +71,54 @@ export function createClient() {
 // For example: in non-React contexts or utility functions
 // ALWAYS prefer useAuth() hook when possible
 export const createSupabaseBrowserClient = () => {
-  return createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-}; 
+  // Deprecated - use createClient() instead
+  console.warn('createSupabaseBrowserClient is deprecated. Use createClient() instead.');
+  return createClient();
+};
+
+// Function to reset the client (useful when auth is broken)
+export function resetClient() {
+  browserClient = null;
+  console.log('[Supabase Client] Client reset - will create new instance on next call');
+}
+
+// Debug function to check auth state
+export async function debugAuthState() {
+  const client = createClient();
+  console.log('[Supabase Debug] Checking auth state...');
+  
+  try {
+    const { data: { session }, error } = await client.auth.getSession();
+    console.log('[Supabase Debug] Session:', {
+      hasSession: !!session,
+      userId: session?.user?.id,
+      email: session?.user?.email,
+      error: error
+    });
+    
+    const { data: { user }, error: userError } = await client.auth.getUser();
+    console.log('[Supabase Debug] User:', {
+      hasUser: !!user,
+      userId: user?.id,
+      email: user?.email,
+      error: userError
+    });
+    
+    // Check storage based on platform
+    if (isTauri()) {
+      // Check default Supabase storage keys in localStorage
+      const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-'));
+      console.log('[Supabase Debug] Desktop auth storage:', {
+        keys: keys,
+        hasData: keys.length > 0
+      });
+    } else {
+      // Check cookies for web
+      console.log('[Supabase Debug] Web cookie storage:', {
+        cookies: document.cookie.split(';').filter(c => c.includes('sb-')).map(c => c.trim().split('=')[0])
+      });
+    }
+  } catch (e) {
+    console.error('[Supabase Debug] Error:', e);
+  }
+} 
