@@ -187,16 +187,22 @@ export async function POST(req: Request) {
         onStepFinish: async ({ toolCalls, toolResults }) => {
           // Log tool execution results for debugging
           if (toolCalls && toolCalls.length > 0) {
-            console.log('[Chat API] Tools executed:', toolCalls.map(tc => ({
-              name: tc.toolName,
-              args: tc.args
-            })));
+            console.log('[Chat API] Tools executed:', toolCalls.map((tc: unknown) => {
+              const call = tc as { toolName?: string; args?: unknown };
+              return {
+                name: call.toolName,
+                args: call.args
+              };
+            }));
           }
           if (toolResults && toolResults.length > 0) {
-            console.log('[Chat API] Tool results:', toolResults.map(tr => ({
-              toolName: tr.toolName,
-              result: tr.result
-            })));
+            console.log('[Chat API] Tool results:', toolResults.map((tr: unknown) => {
+              const result = tr as { toolName?: string; result?: unknown };
+              return {
+                toolName: result.toolName,
+                result: result.result
+              };
+            }));
           }
         },
         onError: (error) => {

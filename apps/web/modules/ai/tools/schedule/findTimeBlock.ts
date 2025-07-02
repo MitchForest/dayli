@@ -41,8 +41,8 @@ export const findTimeBlock = tool({
         
         // Check if search is just a number (hour)
         const hourMatch = searchLower.match(/^(\d{1,2})$/);
-        if (hourMatch) {
-          const searchHour = parseInt(hourMatch[1]);
+        if (hourMatch && hourMatch[1]) {
+          const searchHour = parseInt(hourMatch[1], 10);
           const blockHour = block.startTime.getHours();
           const blockHour12 = blockHour > 12 ? blockHour - 12 : blockHour;
           return searchHour === blockHour || searchHour === blockHour12;

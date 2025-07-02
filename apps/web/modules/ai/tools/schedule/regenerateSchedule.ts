@@ -133,8 +133,8 @@ function generateOptimalSchedule(params: {
       type: 'break',
       title: 'Lunch',
       startTime: lunchStart,
-      endTime: addMinutesToTime(lunchStart, params.lunchDuration),
-      duration: params.lunchDuration
+      endTime: addMinutesToTime(lunchStart, params.preferences.breakSchedule.lunchDuration),
+      duration: params.preferences.breakSchedule.lunchDuration
     });
   }
   
@@ -233,8 +233,8 @@ function calculateScheduleChanges(current: any[], proposed: any[]): any[] {
 function timeToMinutes(time: string): number {
   const parts = time.split(':');
   if (parts.length !== 2) return 0;
-  const hours = parseInt(parts[0], 10) || 0;
-  const minutes = parseInt(parts[1], 10) || 0;
+  const hours = parseInt(parts[0] || '0', 10);
+  const minutes = parseInt(parts[1] || '0', 10);
   return hours * 60 + minutes;
 }
 
@@ -244,8 +244,8 @@ function parseTime(timeStr: string): Date {
   if (parts.length !== 2) {
     throw new Error(`Invalid time format: ${timeStr}`);
   }
-  const hours = parseInt(parts[0], 10) || 0;
-  const minutes = parseInt(parts[1], 10) || 0;
+  const hours = parseInt(parts[0] || '0', 10);
+  const minutes = parseInt(parts[1] || '0', 10);
   const date = new Date();
   date.setHours(hours, minutes, 0, 0);
   return date;
@@ -256,12 +256,4 @@ function addMinutesToTime(time: Date | string, minutes: number): string {
   const date = typeof time === 'string' ? parseTime(time) : new Date(time);
   date.setMinutes(date.getMinutes() + minutes);
   return format(date, 'HH:mm');
-}
-
-// Helper function to format time range
-function formatTimeRange(start: string | undefined, end: string | undefined): string {
-  if (!start || !end) return 'Invalid time range';
-  const startTime = parseTime(start);
-  const endTime = parseTime(end);
-  return `${format(startTime, 'h:mm a')} - ${format(endTime, 'h:mm a')}`;
 } 
