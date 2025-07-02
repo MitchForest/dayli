@@ -1,11 +1,21 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError, toolConfirmation, ProposedChange } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { type WorkflowResult } from '../../schemas/workflow.schema';
+import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
 import { createDailyPlanningWorkflow } from '@/modules/workflows/graphs/dailyPlanning';
 import { format } from 'date-fns';
 import { createServerActionClient } from '@/lib/supabase-server';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { ensureServicesConfigured } from '../utils/auth';
+
+interface ProposedChange {
+  type: 'create' | 'move' | 'delete' | 'assign';
+  block?: any;
+  task?: any;
+  newStartTime?: string;
+  description?: string;
+}
 
 // Helper to store proposed changes for confirmation
 async function storeProposedChanges(confirmationId: string, changes: ProposedChange[]): Promise<void> {
@@ -19,7 +29,15 @@ export const scheduleDay = tool({
     date: z.string().optional().describe("YYYY-MM-DD format, defaults to today"),
     includeBacklog: z.boolean().default(true),
   }),
-  execute: async ({ date, includeBacklog }) => {
+  execute: async ({ date, includeBacklog }): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'scheduleDay',
+      operation: 'execute' as const,
+      resourceType: 'workflow' as const,
+      startTime,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -31,9 +49,13 @@ export const scheduleDay = tool({
       // Get userId from the authenticated session
       const { data: { user }, error } = await supabase.auth.getUser();
       if (error || !user) {
-        return toolError(
-          'AUTH_REQUIRED',
-          'User not authenticated'
+        return buildErrorResponse(
+          toolOptions,
+          new Error('User not authenticated'),
+          {
+            title: 'Authentication required',
+            description: 'Please log in to use this feature',
+          }
         );
       }
       const userId = user.id;
@@ -66,51 +88,154 @@ export const scheduleDay = tool({
           }
         }).join('\n');
         
-        return toolConfirmation(
-          {
-            proposedChanges: result.proposedChanges,
-            summary: result.summary,
-            changeCount: result.proposedChanges.length
-          },
+        const workflowResult: WorkflowResult = {
+          workflowId: 'daily-planning',
+          type: 'schedule_optimization',
+          summary: `Proposed ${result.proposedChanges.length} schedule changes`,
+          changes: result.proposedChanges.map((change: ProposedChange) => ({
+            type: change.type,
+            description: getChangeDescription(change),
+            entityType: change.type === 'assign' ? 'task' : 'schedule' as const,
+          })),
+          requiresConfirmation: true,
           confirmationId,
-          `I've analyzed your schedule and have ${result.proposedChanges.length} suggested changes:\n\n${changesSummary}\n\nWould you like me to apply these changes?`
+          metrics: {
+            blocksOptimized: result.proposedChanges.filter((c: ProposedChange) => c.type === 'move').length,
+            tasksProcessed: result.proposedChanges.filter((c: ProposedChange) => c.type === 'assign').length,
+          },
+        };
+        
+        return buildToolResponse(
+          toolOptions,
+          workflowResult,
+          {
+            type: 'confirmation',
+            title: 'Schedule Optimization Ready',
+            description: `I've analyzed your schedule and have ${result.proposedChanges.length} suggested changes`,
+            priority: 'high',
+            components: [
+              {
+                type: 'confirmationDialog',
+                data: {
+                  title: 'Confirm Schedule Changes',
+                  message: changesSummary,
+                  confirmText: 'Apply Changes',
+                  cancelText: 'Cancel',
+                  variant: 'info',
+                },
+              },
+            ],
+          },
+          {
+            confirmationRequired: true,
+            confirmationId,
+            suggestions: [
+              'Apply these changes',
+              'Review each change individually',
+              'Cancel optimization',
+            ],
+            actions: [],
+          }
         );
       }
       
       // No changes needed
-      return toolSuccess(
+      const workflowResult: WorkflowResult = {
+        workflowId: 'daily-planning',
+        type: 'schedule_optimization',
+        summary: 'Schedule is already optimized',
+        changes: [],
+        requiresConfirmation: false,
+        metrics: {
+          blocksOptimized: 0,
+          tasksProcessed: 0,
+        },
+      };
+      
+      return buildToolResponse(
+        toolOptions,
+        workflowResult,
         {
-          message: 'Your schedule is already well-optimized!',
-          stats: result.stats || {}
+          type: 'card',
+          title: 'Schedule Optimized',
+          description: 'Your schedule looks good - no changes needed.',
+          priority: 'low',
+          components: [],
         },
         {
-          type: 'text',
-          content: 'Your schedule looks good - no changes needed.'
-        },
-        {
+          notification: {
+            show: true,
+            type: 'info',
+            message: 'Schedule is already optimized',
+            duration: 3000,
+          },
           suggestions: [
             'View current schedule',
             'Add a new task',
-            'Check tomorrow\'s schedule'
-          ]
+            'Check tomorrow\'s schedule',
+          ],
+          actions: [
+            {
+              id: 'view-schedule',
+              label: 'View Schedule',
+              icon: 'calendar',
+              variant: 'primary',
+              action: {
+                type: 'tool',
+                tool: 'getSchedule',
+                params: { date: targetDate },
+              },
+            },
+            {
+              id: 'add-task',
+              label: 'Add Task',
+              icon: 'plus',
+              variant: 'secondary',
+              action: {
+                type: 'message',
+                message: 'Create a new task',
+              },
+            },
+          ],
         }
       );
       
     } catch (error) {
       // Handle authentication errors specifically
       if (error instanceof Error && error.message.includes('not configured')) {
-        return toolError(
-          'AUTH_REQUIRED',
-          'Please log in to use this feature',
-          error
+        return buildErrorResponse(
+          toolOptions,
+          error,
+          {
+            title: 'Authentication required',
+            description: 'Please log in to use this feature',
+          }
         );
       }
       
-      return toolError(
-        'WORKFLOW_FAILED',
-        `Failed to plan schedule: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Workflow failed',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },
-}); 
+});
+
+function getChangeDescription(change: ProposedChange): string {
+  switch (change.type) {
+    case 'create':
+      return `Create ${change.block?.type} block "${change.block?.title}" at ${change.block?.startTime}`;
+    case 'move':
+      return `Move "${change.block?.title}" to ${change.newStartTime}`;
+    case 'delete':
+      return `Remove "${change.block?.title}"`;
+    case 'assign':
+      return `Assign "${change.task?.title}" to ${change.block?.title}`;
+    default:
+      return `${change.type} ${change.description}`;
+  }
+} 

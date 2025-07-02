@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { type CalendarEvent } from '../../schemas/calendar.schema';
+import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatDate } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format, parseISO } from 'date-fns';
 import { ensureServicesConfigured } from '../utils/auth';
@@ -49,7 +51,15 @@ export const rescheduleMeeting = tool({
     reason: z.string().optional().describe("Reason for rescheduling"),
     notifyAttendees: z.boolean().default(true),
   }),
-  execute: async (params) => {
+  execute: async (params): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'rescheduleMeeting',
+      operation: 'update' as const,
+      resourceType: 'meeting' as const,
+      startTime,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -59,9 +69,13 @@ export const rescheduleMeeting = tool({
       // Get current event
       const event = await calendarService.getEvent(params.eventId);
       if (!event) {
-        return toolError(
-          'MEETING_NOT_FOUND',
-          'Meeting not found'
+        return buildErrorResponse(
+          toolOptions,
+          new Error('Meeting not found'),
+          {
+            title: 'Meeting not found',
+            description: `Could not find meeting with ID ${params.eventId}`,
+          }
         );
       }
       
@@ -82,14 +96,12 @@ export const rescheduleMeeting = tool({
       });
       
       if (conflicts.length > 0) {
-        return toolError(
-          'TIME_CONFLICT',
-          `Cannot reschedule - conflicts with: ${conflicts.map(c => c.summary).join(', ')}`,
+        return buildErrorResponse(
+          toolOptions,
+          new Error(`Cannot reschedule - conflicts with: ${conflicts.map(c => c.summary).join(', ')}`),
           {
-            conflicts: conflicts.map(c => ({
-              title: c.summary,
-              time: `${format(getEventDate(c.start), 'h:mm a')} - ${format(getEventDate(c.end), 'h:mm a')}`
-            }))
+            title: 'Time conflict',
+            description: `Cannot reschedule - conflicts with: ${conflicts.map(c => c.summary).join(', ')}`,
           }
         );
       }
@@ -111,28 +123,117 @@ export const rescheduleMeeting = tool({
         });
       }
       
-      return toolSuccess({
-        meeting: updated,
-        oldTime: format(currentStart, 'PPpp'),
-        newTime: format(parsed, 'PPpp'),
-        attendeesNotified: params.notifyAttendees && (event.attendees?.length || 0) > 0
-      }, {
-        type: 'text',
-        content: `Rescheduled "${event.summary}" from ${format(currentStart, 'h:mm a')} to ${format(parsed, 'h:mm a')}`
-      }, {
-        affectedItems: [params.eventId],
-        suggestions: [
-          'View updated calendar',
-          'Send additional notes to attendees',
-          'Check for other conflicts'
-        ]
-      });
+      const calendarEvent: CalendarEvent = {
+        id: updated.id,
+        title: updated.summary || '',
+        description: updated.description,
+        startTime: parsed.toISOString(),
+        endTime: newEnd.toISOString(),
+        attendees: event.attendees?.map(a => ({
+          email: a.email || '',
+          responseStatus: a.responseStatus,
+          isOrganizer: false,
+          isOptional: false,
+        })),
+        location: updated.location,
+        isAllDay: false,
+        status: 'confirmed',
+        visibility: 'public',
+      };
+      
+      return buildToolResponse(
+        toolOptions,
+        {
+          event: calendarEvent,
+          oldTime: {
+            start: formatTime12Hour(currentStart),
+            end: formatTime12Hour(currentEnd),
+            date: formatDate(currentStart),
+          },
+          newTime: {
+            start: formatTime12Hour(parsed),
+            end: formatTime12Hour(newEnd),
+            date: formatDate(parsed),
+          },
+          attendeesNotified: params.notifyAttendees && (event.attendees?.length || 0) > 0,
+        },
+        {
+          type: 'card',
+          title: 'Meeting Rescheduled',
+          description: `"${event.summary}" moved from ${formatTime12Hour(currentStart)} to ${formatTime12Hour(parsed)}`,
+          priority: 'high',
+          components: [
+            {
+              type: 'meetingCard',
+              data: {
+                id: updated.id,
+                title: event.summary || '',
+                startTime: formatTime12Hour(parsed),
+                endTime: formatTime12Hour(newEnd),
+                date: formatDate(parsed),
+                attendees: event.attendees?.map(a => ({ 
+                  email: a.email || '', 
+                  name: a.displayName || a.email?.split('@')[0] || 'Unknown',
+                })) || [],
+                location: updated.location,
+                hasConflicts: false,
+              },
+            },
+          ],
+        },
+        {
+          notification: {
+            show: true,
+            type: 'success',
+            message: `Meeting rescheduled${params.notifyAttendees && event.attendees?.length ? ' and attendees notified' : ''}`,
+            duration: 3000,
+          },
+          suggestions: [
+            'View updated calendar',
+            'Send additional notes to attendees',
+            'Check for other conflicts',
+          ],
+          actions: [
+            {
+              id: 'view-calendar',
+              label: 'View Calendar',
+              icon: 'calendar',
+              variant: 'primary',
+              action: {
+                type: 'message',
+                message: 'Show my calendar',
+              },
+            },
+            ...(event.attendees && event.attendees.length > 0 ? [{
+              id: 'send-update',
+              label: 'Send Update',
+              icon: 'mail',
+              variant: 'secondary' as const,
+              action: {
+                type: 'tool' as const,
+                tool: 'draftEmailResponse',
+                params: {
+                  to: event.attendees.map(a => a.email).filter(Boolean),
+                  subject: `Meeting Update: ${event.summary}`,
+                  keyPoints: [
+                    `Meeting rescheduled to ${formatDate(parsed)} at ${formatTime12Hour(parsed)}`,
+                    params.reason || 'Schedule adjustment',
+                  ],
+                },
+              },
+            }] : []),
+          ],
+        }
+      );
       
     } catch (error) {
-      return toolError(
-        'RESCHEDULE_FAILED',
-        `Failed to reschedule meeting: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Failed to reschedule meeting',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },

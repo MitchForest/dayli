@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { type UserPreferences, type PreferenceGroup } from '../../schemas/preference.schema';
+import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { ensureServicesConfigured } from '../utils/auth';
 
@@ -9,7 +11,15 @@ export const getPreferences = tool({
   parameters: z.object({
     category: z.enum(['all', 'schedule', 'email', 'task', 'meeting']).default('all'),
   }),
-  execute: async ({ category }) => {
+  execute: async ({ category }): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'getPreferences',
+      operation: 'read' as const,
+      resourceType: 'preference' as const,
+      startTime,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -19,57 +29,160 @@ export const getPreferences = tool({
       
       const preferences = await preferenceService.getUserPreferences();
       
-      // Format preferences for display
-      const formatted = {
-        workHours: {
-          start: preferences.workStartTime || '09:00',
-          end: preferences.workEndTime || '17:00',
-          hoursPerDay: calculateWorkHours(
-            preferences.workStartTime || '09:00', 
-            preferences.workEndTime || '17:00'
-          )
+      // Extract key values from preferences
+      const workStartTime = preferences.workStartTime || '09:00';
+      const workEndTime = preferences.workEndTime || '17:00';
+      const lunchTime = preferences.breakSchedule?.lunchTime || preferences.lunchStartTime || '12:00';
+      const lunchDuration = preferences.breakSchedule?.lunchDuration || preferences.lunchDurationMinutes || 60;
+      const focusBlockDuration = 90; // Default value
+      const emailBatchSize = preferences.emailPreferences?.quickReplyMinutes || 30;
+      
+      // Build preference groups
+      const groups: PreferenceGroup[] = [
+        {
+          category: 'schedule',
+          label: 'Schedule Preferences',
+          description: 'Configure your work hours and breaks',
+          preferences: [
+            {
+              key: 'workStartTime',
+              value: workStartTime,
+              type: 'time',
+              category: 'schedule',
+              label: 'Work Start Time',
+              description: 'When your workday begins',
+            },
+            {
+              key: 'workEndTime',
+              value: workEndTime,
+              type: 'time',
+              category: 'schedule',
+              label: 'Work End Time',
+              description: 'When your workday ends',
+            },
+            {
+              key: 'lunchTime',
+              value: lunchTime,
+              type: 'time',
+              category: 'schedule',
+              label: 'Lunch Time',
+              description: 'When you typically have lunch',
+            },
+            {
+              key: 'lunchDuration',
+              value: lunchDuration,
+              type: 'number',
+              category: 'schedule',
+              label: 'Lunch Duration',
+              description: 'Duration of lunch break in minutes',
+            },
+            {
+              key: 'focusBlockDuration',
+              value: focusBlockDuration,
+              type: 'number',
+              category: 'schedule',
+              label: 'Focus Block Duration',
+              description: 'Default duration for deep work sessions (minutes)',
+            },
+          ],
         },
-        breaks: {
-          lunchTime: preferences.breakSchedule?.lunchTime || preferences.lunchStartTime || '12:00',
-          lunchDuration: preferences.breakSchedule?.lunchDuration || preferences.lunchDurationMinutes || 60,
-          breakFrequency: preferences.breakSchedule?.morningBreak || preferences.breakSchedule?.afternoonBreak ? 'Configured' : 'Not set'
+        {
+          category: 'email',
+          label: 'Email Preferences',
+          description: 'Configure email processing settings',
+          preferences: [
+            {
+              key: 'emailBatchSize',
+              value: emailBatchSize,
+              type: 'number',
+              category: 'email',
+              label: 'Email Batch Size',
+              description: 'Number of emails to process at once',
+            },
+          ],
         },
-        scheduling: {
-          focusBlockDuration: 90, // Default value since not in interface
-          emailBatchSize: preferences.emailPreferences?.quickReplyMinutes || 30,
-          meetingBuffer: 15 // Default value since not in interface
+      ];
+      
+      // Build structured preferences
+      const userPreferences: UserPreferences = {
+        userId: preferences.userId || 'current-user',
+        preferences: {
+          workStartTime,
+          workEndTime,
+          lunchTime,
+          lunchDuration,
+          focusBlockDuration,
+          emailBatchSize,
         },
-        lastUpdated: preferences.updatedAt
+        groups: category === 'all' ? groups : groups.filter(g => g.category === category),
+        lastUpdated: preferences.updatedAt ? preferences.updatedAt.toISOString() : new Date().toISOString(),
+        version: 1,
       };
       
-      const summary = `Work hours: ${formatted.workHours.start} - ${formatted.workHours.end} (${formatted.workHours.hoursPerDay} hours/day)
-Lunch: ${formatted.breaks.lunchTime} for ${formatted.breaks.lunchDuration} minutes
-Breaks: ${formatted.breaks.breakFrequency}
-Focus blocks: ${formatted.scheduling.focusBlockDuration} minutes
-Email batches: ${formatted.scheduling.emailBatchSize} emails
-Meeting buffer: ${formatted.scheduling.meetingBuffer} minutes`;
+      const workHours = calculateWorkHours(workStartTime, workEndTime);
       
-      return toolSuccess({
-        preferences: formatted,
-        raw: preferences,
-        summary
-      }, {
-        type: 'text',
-        content: summary
-      }, {
-        suggestions: [
-          'Update work hours',
-          'Change lunch time',
-          'Adjust focus block duration',
-          'Apply to today\'s schedule'
-        ]
-      });
+      return buildToolResponse(
+        toolOptions,
+        userPreferences,
+        {
+          type: 'form',
+          title: 'User Preferences',
+          description: `Work hours: ${workStartTime} - ${workEndTime} (${workHours} hours/day)`,
+          priority: 'medium',
+          components: userPreferences.groups.flatMap(group => 
+            group.preferences.map(pref => ({
+              type: 'preferenceForm' as const,
+              data: {
+                key: pref.key,
+                value: pref.value,
+                type: pref.type === 'string' ? 'text' : pref.type as 'number' | 'boolean' | 'text' | 'select' | 'time',
+                label: pref.label,
+                description: pref.description,
+              },
+            }))
+          ),
+        },
+        {
+          suggestions: [
+            'Update work hours',
+            'Change lunch time',
+            'Adjust focus block duration',
+            'Apply to today\'s schedule',
+          ],
+          actions: [
+            {
+              id: 'update-work-hours',
+              label: 'Update Work Hours',
+              icon: 'clock',
+              variant: 'primary',
+              action: {
+                type: 'message',
+                message: 'Update my work hours',
+              },
+            },
+            {
+              id: 'apply-to-schedule',
+              label: 'Apply to Schedule',
+              icon: 'calendar',
+              variant: 'secondary',
+              action: {
+                type: 'tool',
+                tool: 'scheduleDay',
+                params: { includeBacklog: true },
+              },
+            },
+          ],
+        }
+      );
       
     } catch (error) {
-      return toolError(
-        'PREFERENCES_FETCH_FAILED',
-        `Failed to get preferences: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Failed to get preferences',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },

@@ -88,6 +88,42 @@ export function MessageList({
     return metadata;
   };
 
+  // Extract structured data from tool results
+  const getStructuredData = (message: Message) => {
+    if (!message.toolInvocations || message.toolInvocations.length === 0) {
+      return undefined;
+    }
+
+    const structuredResponses = message.toolInvocations
+      .filter((invocation: any) => {
+        // Check if the result has the structure of a UniversalToolResponse
+        const hasStructure = invocation.state === 'result' && 
+               invocation.result && 
+               typeof invocation.result === 'object' &&
+               'metadata' in invocation.result &&
+               'display' in invocation.result &&
+               'ui' in invocation.result;
+        
+        // Debug logging
+        if (invocation.state === 'result') {
+          console.log('[MessageList] Tool result structure check:', {
+            toolName: invocation.toolName,
+            hasResult: !!invocation.result,
+            hasMetadata: invocation.result && 'metadata' in invocation.result,
+            hasDisplay: invocation.result && 'display' in invocation.result,
+            hasUi: invocation.result && 'ui' in invocation.result,
+            result: invocation.result
+          });
+        }
+        
+        return hasStructure;
+      })
+      .map((invocation: any) => invocation.result);
+
+    console.log('[MessageList] Structured responses found:', structuredResponses.length);
+    return structuredResponses.length > 0 ? structuredResponses : undefined;
+  };
+
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
       {messages.length === 0 && !showCommands && (
@@ -133,9 +169,16 @@ export function MessageList({
               content={message.content}
               role={message.role as 'user' | 'assistant' | 'system'}
               metadata={getMessageMetadata(message)}
+              structuredData={getStructuredData(message)}
               message={message}
-              onEntityClick={onEntityClick}
               onSuggestionSelect={onSuggestionSelect}
+              onAction={(action) => {
+                // Handle structured actions
+                if (action.type === 'message') {
+                  onSuggestionSelect?.(action.message);
+                }
+                // Add more action handlers as needed
+              }}
               isLoading={isLoading && message === messages[messages.length - 1]}
             />
             

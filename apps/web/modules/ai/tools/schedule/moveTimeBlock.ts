@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError, TimeBlock } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { type TimeBlock, type ScheduleChange } from '../../schemas/schedule.schema';
+import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatTimeRange } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
 import { ensureServicesConfigured } from '../utils/auth';
@@ -29,7 +31,7 @@ function parseTimeToMilitary(timeStr: string): string | null {
 }
 
 // Helper to calculate end time based on duration
-function calculateEndTime(startTime: string, existingBlock: TimeBlock): string {
+function calculateEndTime(startTime: string, existingBlock: any): string {
   const [startHours, startMinutes] = startTime.split(':').map(Number);
   const startDate = typeof existingBlock.startTime === 'string' 
     ? new Date(existingBlock.startTime) 
@@ -60,7 +62,15 @@ export const moveTimeBlock = tool({
     newEndTime: z.string().optional().describe('New end time in HH:MM format or natural language'),
     date: z.string().optional().describe('YYYY-MM-DD format, defaults to today'),
   }),
-  execute: async ({ blockId, blockDescription, newStartTime, newEndTime, date }) => {
+  execute: async ({ blockId, blockDescription, newStartTime, newEndTime, date }): Promise<UniversalToolResponse> => {
+    const startTimeMs = Date.now();
+    const toolOptions = {
+      toolName: 'moveTimeBlock',
+      operation: 'update' as const,
+      resourceType: 'schedule' as const,
+      startTime: startTimeMs,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -79,28 +89,37 @@ export const moveTimeBlock = tool({
         );
         
         if (!found) {
-          return toolError(
-            'BLOCK_NOT_FOUND',
-            `Could not find block matching "${blockDescription}". Please check the schedule first.`,
-            { availableBlocks: blocks.map(b => `${format(b.startTime, 'h:mm a')} - ${b.title}`) }
+          return buildErrorResponse(
+            toolOptions,
+            {
+              code: 'BLOCK_NOT_FOUND',
+              message: `Could not find block matching "${blockDescription}"`,
+              availableBlocks: blocks.map(b => `${format(b.startTime, 'h:mm a')} - ${b.title}`),
+            },
+            {
+              title: 'Block Not Found',
+              description: `No block found matching "${blockDescription}". Please check the schedule first.`,
+            }
           );
         }
         actualBlockId = found.id;
       }
       
       if (!actualBlockId) {
-        return toolError(
-          'MISSING_IDENTIFIER',
-          'Please provide either blockId or blockDescription'
+        return buildErrorResponse(
+          toolOptions,
+          { code: 'MISSING_IDENTIFIER', message: 'Please provide either blockId or blockDescription' },
+          { title: 'Missing Block Identifier' }
         );
       }
       
       // Get the existing block
       const existingBlock = await scheduleService.getTimeBlock(actualBlockId);
       if (!existingBlock) {
-        return toolError(
-          'BLOCK_NOT_FOUND',
-          'Time block not found'
+        return buildErrorResponse(
+          toolOptions,
+          { code: 'BLOCK_NOT_FOUND', message: 'Time block not found' },
+          { title: 'Block Not Found' }
         );
       }
       
@@ -127,14 +146,30 @@ export const moveTimeBlock = tool({
           return (parsedStartTime < blockEnd && parsedEndTime > blockStart);
         });
         
-        return toolError(
-          'TIME_CONFLICT',
-          'Cannot move block - time conflict detected',
-          { 
+        return buildErrorResponse(
+          toolOptions,
+          {
+            code: 'TIME_CONFLICT',
+            message: 'Cannot move block - time conflict detected',
             conflicts: conflictingBlocks.map(b => ({
-              time: `${format(b.startTime, 'h:mm a')}-${format(b.endTime, 'h:mm a')}`,
-              title: b.title
-            }))
+              time: formatTimeRange(formatTime12Hour(b.startTime), formatTime12Hour(b.endTime)),
+              title: b.title,
+            })),
+          },
+          {
+            title: 'Schedule Conflict',
+            description: 'Cannot move block due to time conflicts with existing blocks.',
+            components: conflictingBlocks.map(block => ({
+              type: 'scheduleBlock' as const,
+              data: {
+                id: block.id,
+                type: block.type as TimeBlock['type'],
+                title: block.title,
+                startTime: formatTime12Hour(block.startTime),
+                endTime: formatTime12Hour(block.endTime),
+                description: block.description,
+              },
+            })),
           }
         );
       }
@@ -146,35 +181,75 @@ export const moveTimeBlock = tool({
         endTime: parsedEndTime,
       });
       
-      const result = {
-        id: updated.id,
-        title: updated.title,
-        type: updated.type,
-        oldTime: {
-          start: format(existingBlock.startTime, 'h:mm a'),
-          end: format(existingBlock.endTime, 'h:mm a')
-        },
-        newTime: {
-          start: parsedStartTime,
-          end: parsedEndTime,
-          display: `${format(new Date(`2000-01-01 ${parsedStartTime}`), 'h:mm a')} - ${format(new Date(`2000-01-01 ${parsedEndTime}`), 'h:mm a')}`
-        }
+      const previousState: TimeBlock = {
+        id: existingBlock.id,
+        type: existingBlock.type as TimeBlock['type'],
+        title: existingBlock.title,
+        startTime: formatTime12Hour(existingBlock.startTime),
+        endTime: formatTime12Hour(existingBlock.endTime),
+        description: existingBlock.description,
       };
       
-      return toolSuccess(result, {
-        type: 'text',
-        content: `Moved "${updated.title}" from ${result.oldTime.start} to ${result.newTime.display}`
-      }, {
-        affectedItems: [actualBlockId],
-        suggestions: ['View updated schedule', 'Move another block', 'Undo move']
-      });
+      const newState: TimeBlock = {
+        id: updated.id,
+        type: updated.type as TimeBlock['type'],
+        title: updated.title,
+        startTime: formatTime12Hour(updated.startTime),
+        endTime: formatTime12Hour(updated.endTime),
+        description: updated.description,
+      };
+      
+      const scheduleChange: ScheduleChange = {
+        type: 'move',
+        blockId: actualBlockId,
+        previousState,
+        newState,
+      };
+      
+      return buildToolResponse(
+        toolOptions,
+        scheduleChange,
+        {
+          type: 'card',
+          title: 'Moved Time Block',
+          description: `"${updated.title}" moved from ${formatTimeRange(previousState.startTime, previousState.endTime)} to ${formatTimeRange(newState.startTime, newState.endTime)}`,
+          priority: 'medium',
+          components: [{
+            type: 'scheduleBlock',
+            data: newState,
+          }],
+        },
+        {
+          notification: {
+            show: true,
+            type: 'success',
+            message: 'Time block moved successfully',
+            duration: 3000,
+          },
+          suggestions: ['View updated schedule', 'Move another block', 'Undo move'],
+          actions: [{
+            id: 'view-schedule',
+            label: 'View Schedule',
+            icon: 'calendar',
+            variant: 'primary',
+            action: {
+              type: 'tool',
+              tool: 'getSchedule',
+              params: { date: targetDate },
+            },
+          }],
+        }
+      );
       
     } catch (error) {
       console.error('Error in moveTimeBlock:', error);
-      return toolError(
-        'BLOCK_MOVE_FAILED',
-        `Failed to move time block: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Failed to move time block',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },

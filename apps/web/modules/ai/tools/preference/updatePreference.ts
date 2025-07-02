@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { type PreferenceUpdate } from '../../schemas/preference.schema';
+import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { ensureServicesConfigured } from '../utils/auth';
 
@@ -19,7 +21,15 @@ export const updatePreference = tool({
     ]),
     value: z.string().describe('New value for the preference'),
   }),
-  execute: async ({ preference, value }) => {
+  execute: async ({ preference, value }): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'updatePreference',
+      operation: 'update' as const,
+      resourceType: 'preference' as const,
+      startTime,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -27,12 +37,20 @@ export const updatePreference = tool({
       const factory = ServiceFactory.getInstance();
       const preferenceService = factory.getPreferenceService();
       
+      // Get current value
+      const currentPrefs = await preferenceService.getUserPreferences();
+      const oldValue = (currentPrefs as any)[preference] || getDefaultValue(preference);
+      
       // Validate the value based on preference type
       const validation = validatePreferenceValue(preference, value);
       if (!validation.valid) {
-        return toolError(
-          'INVALID_VALUE',
-          validation.error || 'Invalid value for preference'
+        return buildErrorResponse(
+          toolOptions,
+          new Error(validation.error || 'Invalid value for preference'),
+          {
+            title: 'Invalid preference value',
+            description: validation.error || 'The provided value is not valid for this preference',
+          }
         );
       }
       
@@ -44,35 +62,97 @@ export const updatePreference = tool({
       // Get friendly description
       const description = getPreferenceDescription(preference, value);
       
-      const result = {
-        preference,
-        oldValue: validation.oldValue,
+      const preferenceUpdate: PreferenceUpdate = {
+        key: preference,
+        previousValue: oldValue,
         newValue: value,
-        description
+        validation: {
+          isValid: true,
+        },
+        impact: {
+          affectedFeatures: getAffectedFeatures(preference),
+          requiresRestart: false,
+          immediateEffect: true,
+        },
       };
       
-      return toolSuccess(result, {
-        type: 'text',
-        content: `Updated ${description}`
-      }, {
-        suggestions: [
-          'View all preferences',
-          'Update another preference',
-          'Apply preferences to schedule'
-        ]
-      });
+      return buildToolResponse(
+        toolOptions,
+        preferenceUpdate,
+        {
+          type: 'card',
+          title: 'Preference Updated',
+          description: `Updated ${description}`,
+          priority: 'medium',
+          components: [],
+        },
+        {
+          notification: {
+            show: true,
+            type: 'success',
+            message: `Updated ${description}`,
+            duration: 3000,
+          },
+          suggestions: [
+            'View all preferences',
+            'Update another preference',
+            'Apply preferences to schedule',
+          ],
+          actions: [
+            {
+              id: 'view-preferences',
+              label: 'View All Preferences',
+              icon: 'settings',
+              variant: 'secondary',
+              action: {
+                type: 'tool',
+                tool: 'getPreferences',
+                params: { category: 'all' },
+              },
+            },
+            {
+              id: 'apply-to-schedule',
+              label: 'Apply to Schedule',
+              icon: 'calendar',
+              variant: 'primary',
+              action: {
+                type: 'tool',
+                tool: 'scheduleDay',
+                params: { includeBacklog: true },
+              },
+            },
+          ],
+        }
+      );
       
     } catch (error) {
-      return toolError(
-        'PREFERENCE_UPDATE_FAILED',
-        `Failed to update preference: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Failed to update preference',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },
 });
 
-function validatePreferenceValue(preference: string, value: string): { valid: boolean; error?: string; oldValue?: string } {
+function getDefaultValue(preference: string): string {
+  const defaults: Record<string, string> = {
+    workStartTime: '09:00',
+    workEndTime: '17:00',
+    lunchTime: '12:00',
+    lunchDuration: '60',
+    focusBlockDuration: '90',
+    breakFrequency: '90',
+    emailBatchSize: '30',
+    meetingBuffer: '15',
+  };
+  return defaults[preference] || '';
+}
+
+function validatePreferenceValue(preference: string, value: string): { valid: boolean; error?: string } {
   // Time preferences should be in HH:MM format
   if (preference.includes('Time') && !preference.includes('Duration')) {
     const timeRegex = /^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/;
@@ -105,4 +185,19 @@ function getPreferenceDescription(preference: string, value: string): string {
   };
   
   return descriptions[preference] || `${preference} to ${value}`;
+}
+
+function getAffectedFeatures(preference: string): string[] {
+  const featureMap: Record<string, string[]> = {
+    workStartTime: ['Daily Schedule', 'Calendar Sync'],
+    workEndTime: ['Daily Schedule', 'Calendar Sync'],
+    lunchTime: ['Daily Schedule', 'Break Management'],
+    lunchDuration: ['Daily Schedule', 'Break Management'],
+    focusBlockDuration: ['Task Scheduling', 'Time Blocking'],
+    breakFrequency: ['Break Reminders', 'Health Tracking'],
+    emailBatchSize: ['Email Processing', 'Inbox Management'],
+    meetingBuffer: ['Meeting Scheduling', 'Calendar Management'],
+  };
+  
+  return featureMap[preference] || ['General Settings'];
 } 

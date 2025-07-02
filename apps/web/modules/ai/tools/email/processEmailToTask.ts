@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { type EmailToTask } from '../../schemas/email.schema';
+import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { ensureServicesConfigured } from '../utils/auth';
 
@@ -11,7 +13,15 @@ export const processEmailToTask = tool({
     taskTitle: z.string().optional().describe("Override auto-generated title"),
     schedule: z.enum(['today', 'tomorrow', 'next_week', 'backlog']).default('today'),
   }),
-  execute: async ({ emailId, taskTitle, schedule }) => {
+  execute: async ({ emailId, taskTitle, schedule }): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'processEmailToTask',
+      operation: 'create' as const,
+      resourceType: 'email' as const,
+      startTime,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -23,9 +33,13 @@ export const processEmailToTask = tool({
       const email = await gmailService.getMessage(emailId);
       
       if (!email) {
-        return toolError(
-          'EMAIL_NOT_FOUND',
-          `Email with ID ${emailId} not found`
+        return buildErrorResponse(
+          toolOptions,
+          new Error(`Email with ID ${emailId} not found`),
+          {
+            title: 'Email not found',
+            description: 'Could not find the email to convert to a task',
+          }
         );
       }
       
@@ -33,6 +47,7 @@ export const processEmailToTask = tool({
       const headers = email.payload?.headers || [];
       const subject = headers.find(h => h.name === 'Subject')?.value || '';
       const from = headers.find(h => h.name === 'From')?.value || '';
+      const date = headers.find(h => h.name === 'Date')?.value || '';
       
       // Extract body
       let body = '';
@@ -55,17 +70,22 @@ export const processEmailToTask = tool({
         (actionItems && actionItems.length > 0 ? actionItems[0] : null) ||
         `Follow up: ${subject}`;
       
+      // Determine priority
+      const priority = determineTaskPriority({ subject, body, from });
+      
       // Create task with email context
       const task = await taskService.createTask({
         title,
         description: `From: ${from}\nSubject: ${subject}\n\n---\n\n${body.substring(0, 500)}${body.length > 500 ? '...' : ''}`,
-        priority: determineTaskPriority({ subject, body, from }),
+        priority,
         source: 'email',
         estimatedMinutes: 30, // Default estimate
       });
       
       // Schedule based on preference
       let scheduled = false;
+      let blockId: string | undefined;
+      
       if (schedule !== 'backlog') {
         try {
           const scheduleService = ServiceFactory.getInstance().getScheduleService();
@@ -78,6 +98,7 @@ export const processEmailToTask = tool({
           if (workBlock) {
             await taskService.assignTaskToBlock(task.id, workBlock.id);
             scheduled = true;
+            blockId = workBlock.id;
           }
         } catch (error) {
           console.warn('Failed to schedule task:', error);
@@ -85,43 +106,131 @@ export const processEmailToTask = tool({
       }
       
       // Archive the email
+      let emailArchived = false;
       try {
         await gmailService.archiveMessage(emailId);
+        emailArchived = true;
       } catch (error) {
         console.warn('Failed to archive email:', error);
       }
       
-      const result = {
-        task: {
-          id: task.id,
-          title: task.title,
-          priority: task.priority,
-          status: scheduled ? 'scheduled' : 'backlog'
-        },
-        emailArchived: true,
-        scheduled,
-        emailSubject: subject
+      // Build email data for schema
+      const emailData = {
+        id: emailId,
+        threadId: email.threadId || emailId,
+        from: parseEmailAddress(from),
+        to: [],
+        subject,
+        bodyPreview: body.substring(0, 200),
+        bodyPlain: body,
+        receivedAt: new Date(date).toISOString(),
+        isRead: true,
+        urgency: priority === 'high' ? 'urgent' : priority === 'medium' ? 'important' : 'normal',
       };
       
-      return toolSuccess(result, {
-        type: 'task',
-        content: result.task
-      }, {
-        affectedItems: [task.id, emailId],
-        suggestions: scheduled
-          ? ['View schedule', 'Process another email', 'Edit task details']
-          : ['Schedule this task', 'Process another email', 'View task backlog']
-      });
+      const emailToTask: EmailToTask = {
+        emailId,
+        email: emailData as any, // Type assertion needed due to complex schema
+        suggestedTask: {
+          title: task.title,
+          description: task.description || '',
+          priority: task.priority,
+          estimatedMinutes: task.estimatedMinutes,
+          dueDate: schedule !== 'backlog' ? getTargetDate(schedule) : undefined,
+        },
+        createdTaskId: task.id,
+      };
+      
+      return buildToolResponse(
+        toolOptions,
+        emailToTask,
+        {
+          type: 'card',
+          title: 'Email Converted to Task',
+          description: `Created task: ${task.title}`,
+          priority: priority === 'high' ? 'high' : 'medium',
+          components: [
+            {
+              type: 'taskCard',
+              data: {
+                id: task.id,
+                title: task.title,
+                priority: task.priority,
+                estimatedMinutes: task.estimatedMinutes,
+                status: scheduled ? 'scheduled' : 'backlog',
+                description: task.description,
+              },
+            },
+          ],
+        },
+        {
+          notification: {
+            show: true,
+            type: 'success',
+            message: `Task created${scheduled ? ' and scheduled' : ''}${emailArchived ? ', email archived' : ''}`,
+            duration: 3000,
+          },
+          suggestions: scheduled
+            ? ['View schedule', 'Process another email', 'Edit task details']
+            : ['Schedule this task', 'Process another email', 'View task backlog'],
+          actions: [
+            {
+              id: 'view-task',
+              label: 'View Task',
+              icon: 'task',
+              variant: 'primary',
+              action: {
+                type: 'tool',
+                tool: 'findTasks',
+                params: { id: task.id },
+              },
+            },
+            ...(scheduled ? [{
+              id: 'view-schedule',
+              label: 'View Schedule',
+              icon: 'calendar',
+              variant: 'secondary' as const,
+              action: {
+                type: 'tool' as const,
+                tool: 'getSchedule',
+                params: { date: getTargetDate(schedule) },
+              },
+            }] : [{
+              id: 'schedule-task',
+              label: 'Schedule Task',
+              icon: 'clock',
+              variant: 'secondary' as const,
+              action: {
+                type: 'message' as const,
+                message: `Schedule the task "${task.title}"`,
+              },
+            }]),
+          ],
+        }
+      );
       
     } catch (error) {
-      return toolError(
-        'EMAIL_TO_TASK_FAILED',
-        `Failed to convert email to task: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Failed to convert email to task',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },
 });
+
+// Helper to parse email address
+function parseEmailAddress(addressStr: string): { name: string; email: string } {
+  const match = addressStr.match(/^"?([^"<]+)"?\s*<(.+)>$/);
+  if (match && match[1] && match[2]) {
+    return { name: match[1].trim(), email: match[2].trim() };
+  }
+  const parts = addressStr.split('@');
+  return { name: parts[0] || 'Unknown', email: addressStr.trim() };
+}
 
 // Helper to determine task priority based on email content
 function determineTaskPriority(email: { subject: string; body: string; from: string }): 'high' | 'medium' | 'low' {

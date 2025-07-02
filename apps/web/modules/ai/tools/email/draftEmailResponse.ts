@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { type EmailDraft } from '../../schemas/email.schema';
+import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
@@ -16,7 +18,15 @@ export const draftEmailResponse = tool({
     keyPoints: z.array(z.string()).describe("Main points to include"),
     sendImmediately: z.boolean().default(false),
   }),
-  execute: async (params) => {
+  execute: async (params): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'draftEmailResponse',
+      operation: 'create' as const,
+      resourceType: 'email' as const,
+      startTime,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -34,9 +44,13 @@ export const draftEmailResponse = tool({
         const email = await gmailService.getMessage(params.replyTo);
         
         if (!email) {
-          return toolError(
-            'ORIGINAL_EMAIL_NOT_FOUND',
-            'Could not find the email to reply to'
+          return buildErrorResponse(
+            toolOptions,
+            new Error('Could not find the email to reply to'),
+            {
+              title: 'Original email not found',
+              description: 'The email you want to reply to could not be found',
+            }
           );
         }
         
@@ -81,9 +95,13 @@ export const draftEmailResponse = tool({
         (params.replyTo && originalFrom ? [extractEmailAddress(originalFrom)] : []);
       
       if (!recipients.length || !recipients[0]) {
-        return toolError(
-          'NO_RECIPIENTS',
-          'No recipients specified and could not extract from original email'
+        return buildErrorResponse(
+          toolOptions,
+          new Error('No recipients specified'),
+          {
+            title: 'No recipients',
+            description: 'No recipients specified and could not extract from original email',
+          }
         );
       }
       
@@ -96,47 +114,116 @@ export const draftEmailResponse = tool({
           threadId
         });
         
-        return toolSuccess({
-          sent: true,
-          messageId: sentMessage.id,
-          threadId: sentMessage.threadId,
-          body: generatedBody
-        }, {
-          type: 'text',
-          content: `Email sent successfully to ${recipients.join(', ')}`
-        }, {
-          affectedItems: [sentMessage.id],
-          suggestions: ['View sent email', 'Send another email']
-        });
-      } else {
-        // For now, we'll return the draft content
-        // In a real implementation, this would create a Gmail draft
-        return toolSuccess({
-          sent: false,
-          draft: {
-            to: recipients,
-            subject: emailSubject,
+        return buildToolResponse(
+          toolOptions,
+          {
+            sent: true,
+            messageId: sentMessage.id,
+            threadId: sentMessage.threadId,
             body: generatedBody,
-            threadId
-          },
-          preview: generatedBody.substring(0, 200) + '...'
-        }, {
-          type: 'email',
-          content: {
-            to: recipients,
+            recipients,
             subject: emailSubject,
-            body: generatedBody
+          },
+          {
+            type: 'card',
+            title: 'Email Sent Successfully',
+            description: `Email sent to ${recipients.join(', ')}`,
+            priority: 'high',
+            components: [{
+              type: 'confirmationDialog',
+              data: {
+                title: 'Email Sent',
+                message: `Your ${params.tone} email has been sent to ${recipients.join(', ')}`,
+                confirmText: 'OK',
+                cancelText: 'Close',
+                variant: 'info',
+              },
+            }],
+          },
+          {
+            notification: {
+              show: true,
+              type: 'success',
+              message: 'Email sent successfully',
+              duration: 3000,
+            },
+            suggestions: ['View sent email', 'Send another email'],
+            actions: [],
           }
-        }, {
-          suggestions: ['Send this email', 'Edit the draft', 'Discard']
-        });
+        );
+      } else {
+        // Create draft
+        const draft: EmailDraft = {
+          id: `draft-${Date.now()}`,
+          to: recipients,
+          subject: emailSubject,
+          body: generatedBody,
+          replyToId: params.replyTo,
+        };
+        
+        return buildToolResponse(
+          toolOptions,
+          draft,
+          {
+            type: 'card',
+            title: 'Email Draft Created',
+            description: `Draft email to ${recipients.join(', ')}`,
+            priority: 'medium',
+            components: [{
+              type: 'emailPreview',
+              data: {
+                id: draft.id || '',
+                from: 'You',
+                fromEmail: 'me',
+                subject: emailSubject,
+                preview: generatedBody.substring(0, 200) + '...',
+                receivedAt: new Date().toISOString(),
+                isRead: false,
+                hasAttachments: false,
+                urgency: 'normal',
+              },
+            }],
+          },
+          {
+            suggestions: ['Send this email', 'Edit the draft', 'Discard'],
+            actions: [
+              {
+                id: 'send-draft',
+                label: 'Send Email',
+                icon: 'send',
+                variant: 'primary',
+                action: {
+                  type: 'tool',
+                  tool: 'draftEmailResponse',
+                  params: {
+                    ...params,
+                    sendImmediately: true,
+                  },
+                },
+              },
+              {
+                id: 'edit-draft',
+                label: 'Edit Draft',
+                icon: 'edit',
+                variant: 'secondary',
+                action: {
+                  type: 'message',
+                  message: `Edit the draft email with subject "${emailSubject}"`,
+                },
+              },
+            ],
+          }
+        );
       }
       
     } catch (error) {
-      return toolError(
-        'DRAFT_CREATION_FAILED',
-        `Failed to create email draft: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Failed to create email draft',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },

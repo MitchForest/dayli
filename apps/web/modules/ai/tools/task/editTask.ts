@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { type Task, type TaskUpdate } from '../../schemas/task.schema';
+import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { ensureServicesConfigured } from '../utils/auth';
 
@@ -16,7 +18,15 @@ export const editTask = tool({
       status: z.enum(['backlog', 'scheduled', 'completed']).optional(),
     }).describe("Fields to update"),
   }),
-  execute: async ({ taskId, updates }) => {
+  execute: async ({ taskId, updates }): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'editTask',
+      operation: 'update' as const,
+      resourceType: 'task' as const,
+      startTime,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -26,36 +36,71 @@ export const editTask = tool({
       // Get current task to show what changed
       const currentTask = await taskService.getTask(taskId);
       if (!currentTask) {
-        return toolError(
-          'TASK_NOT_FOUND',
-          `Task with ID ${taskId} not found`
+        return buildErrorResponse(
+          toolOptions,
+          { code: 'TASK_NOT_FOUND', message: `Task with ID ${taskId} not found` },
+          { title: 'Task Not Found' }
         );
       }
       
       // Track what's changing for better feedback
-      const changes: string[] = [];
+      const changedFields: string[] = [];
       if (updates.title && updates.title !== currentTask.title) {
-        changes.push(`title from "${currentTask.title}" to "${updates.title}"`);
+        changedFields.push('title');
       }
       if (updates.estimatedMinutes && updates.estimatedMinutes !== currentTask.estimatedMinutes) {
-        changes.push(`duration from ${currentTask.estimatedMinutes} to ${updates.estimatedMinutes} minutes`);
+        changedFields.push('estimatedMinutes');
       }
       if (updates.priority && updates.priority !== currentTask.priority) {
-        changes.push(`priority from ${currentTask.priority} to ${updates.priority}`);
+        changedFields.push('priority');
       }
       if (updates.status && updates.status !== currentTask.status) {
-        changes.push(`status from ${currentTask.status} to ${updates.status}`);
+        changedFields.push('status');
+      }
+      if (updates.description !== undefined && updates.description !== currentTask.description) {
+        changedFields.push('description');
       }
       
-      if (changes.length === 0) {
-        return toolSuccess({
-          task: currentTask,
-          message: 'No changes made'
-        }, {
-          type: 'text',
-          content: 'Task is already up to date'
-        });
+      if (changedFields.length === 0) {
+        const taskData: Task = {
+          id: currentTask.id,
+          title: currentTask.title,
+          description: currentTask.description,
+          priority: currentTask.priority || 'medium',
+          status: currentTask.status as Task['status'],
+          estimatedMinutes: currentTask.estimatedMinutes,
+          source: currentTask.source === 'chat' ? 'ai' : currentTask.source as Task['source'],
+        };
+        
+        return buildToolResponse(
+          toolOptions,
+          { task: taskData, message: 'No changes made' },
+          {
+            type: 'card',
+            title: 'No Changes Made',
+            description: 'Task is already up to date',
+            priority: 'low',
+            components: [{
+              type: 'taskCard',
+              data: taskData,
+            }],
+          },
+          {
+            suggestions: ['Edit different fields', 'View all tasks'],
+          }
+        );
       }
+      
+      // Store previous state
+      const previousState: Task = {
+        id: currentTask.id,
+        title: currentTask.title,
+        description: currentTask.description,
+        priority: currentTask.priority || 'medium',
+        status: currentTask.status as Task['status'],
+        estimatedMinutes: currentTask.estimatedMinutes,
+        source: currentTask.source === 'chat' ? 'ai' : currentTask.source as Task['source'],
+      };
       
       // Update the task
       const updatedTask = await taskService.updateTask(taskId, updates);
@@ -78,36 +123,95 @@ export const editTask = tool({
         }
       }
       
-      const result = {
-        task: {
-          id: updatedTask.id,
-          title: updatedTask.title,
-          estimatedMinutes: updatedTask.estimatedMinutes,
-          priority: updatedTask.priority,
-          status: updatedTask.status,
-          description: updatedTask.description
-        },
-        changes,
-        autoScheduled
+      const newState: Task = {
+        id: updatedTask.id,
+        title: updatedTask.title,
+        description: updatedTask.description,
+        priority: updatedTask.priority || 'medium',
+        status: updatedTask.status as Task['status'],
+        estimatedMinutes: updatedTask.estimatedMinutes,
+        source: updatedTask.source === 'chat' ? 'ai' : updatedTask.source as Task['source'],
       };
       
-      return toolSuccess(result, {
-        type: 'task',
-        content: result.task
-      }, {
-        affectedItems: [taskId],
-        suggestions: autoScheduled
-          ? ['View schedule', 'Edit again', 'Complete task']
-          : updatedTask.status === 'backlog' && updatedTask.priority === 'high'
-          ? ['Schedule this task', 'Edit again', 'View all tasks']
-          : ['View task details', 'Edit again', 'View all tasks']
-      });
+      const taskUpdate: TaskUpdate = {
+        taskId,
+        updates,
+        previousState,
+        newState,
+        changedFields,
+      };
+      
+      return buildToolResponse(
+        toolOptions,
+        taskUpdate,
+        {
+          type: 'card',
+          title: 'Task Updated',
+          description: autoScheduled 
+            ? `"${updatedTask.title}" updated and auto-scheduled`
+            : `"${updatedTask.title}" updated successfully`,
+          priority: updates.priority === 'high' ? 'high' : 'medium',
+          components: [{
+            type: 'taskCard',
+            data: newState,
+          }],
+        },
+        {
+          notification: {
+            show: true,
+            type: 'success',
+            message: `Updated ${changedFields.length} field${changedFields.length > 1 ? 's' : ''}`,
+            duration: 3000,
+          },
+          suggestions: autoScheduled
+            ? ['View schedule', 'Edit again', 'Complete task']
+            : updatedTask.status === 'backlog' && updatedTask.priority === 'high'
+            ? ['Schedule this task', 'Edit again', 'View all tasks']
+            : ['View task details', 'Edit again', 'View all tasks'],
+          actions: [
+            ...(autoScheduled ? [{
+              id: 'view-schedule',
+              label: 'View Schedule',
+              icon: 'calendar',
+              variant: 'primary' as const,
+              action: {
+                type: 'tool' as const,
+                tool: 'getSchedule',
+                params: {},
+              },
+            }] : updatedTask.status === 'backlog' ? [{
+              id: 'schedule-task',
+              label: 'Schedule Task',
+              icon: 'clock',
+              variant: 'primary' as const,
+              action: {
+                type: 'message' as const,
+                message: `Schedule the task "${updatedTask.title}"`,
+              },
+            }] : []),
+            {
+              id: 'complete-task',
+              label: 'Complete Task',
+              icon: 'check',
+              variant: 'secondary',
+              action: {
+                type: 'tool',
+                tool: 'completeTask',
+                params: { taskId },
+              },
+            },
+          ],
+        }
+      );
       
     } catch (error) {
-      return toolError(
-        'TASK_UPDATE_FAILED',
-        `Failed to update task: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Failed to update task',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },

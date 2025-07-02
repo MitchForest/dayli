@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { type TimeBlock, type ScheduleChange } from '../../schemas/schedule.schema';
+import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatTimeRange } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
 import { ensureServicesConfigured } from '../utils/auth';
@@ -41,7 +43,15 @@ export const createTimeBlock = tool({
     date: z.string().optional().describe('YYYY-MM-DD format, defaults to today'),
     description: z.string().optional(),
   }),
-  execute: async ({ type, title, startTime, endTime, date, description }) => {
+  execute: async ({ type, title, startTime, endTime, date, description }): Promise<UniversalToolResponse> => {
+    const startTimeMs = Date.now();
+    const toolOptions = {
+      toolName: 'createTimeBlock',
+      operation: 'create' as const,
+      resourceType: 'schedule' as const,
+      startTime: startTimeMs,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -76,12 +86,34 @@ export const createTimeBlock = tool({
           const blockStart = format(block.startTime, 'HH:mm');
           const blockEnd = format(block.endTime, 'HH:mm');
           return (parsedStartTime < blockEnd && parsedEndTime > blockStart);
-        }).map(b => `${format(b.startTime, 'h:mm a')}-${format(b.endTime, 'h:mm a')} ${b.title}`);
+        });
         
-        return toolError(
-          'TIME_CONFLICT',
-          `Time conflict detected. The following blocks overlap with ${parsedStartTime}-${parsedEndTime}:\n${blockingBlocks.join('\n')}`,
-          { conflicts: blockingBlocks }
+        return buildErrorResponse(
+          toolOptions,
+          {
+            code: 'TIME_CONFLICT',
+            message: 'Time conflict detected',
+            conflicts: blockingBlocks.map(b => ({
+              id: b.id,
+              time: formatTimeRange(formatTime12Hour(b.startTime), formatTime12Hour(b.endTime)),
+              title: b.title,
+            })),
+          },
+          {
+            title: 'Schedule Conflict Detected',
+            description: `Cannot create block from ${formatTimeRange(startTime, endTime)}. This time overlaps with existing blocks.`,
+            components: blockingBlocks.map(block => ({
+              type: 'scheduleBlock' as const,
+              data: {
+                id: block.id,
+                type: block.type as TimeBlock['type'],
+                title: block.title,
+                startTime: formatTime12Hour(block.startTime),
+                endTime: formatTime12Hour(block.endTime),
+                description: block.description,
+              },
+            })),
+          }
         );
       }
       
@@ -95,44 +127,94 @@ export const createTimeBlock = tool({
         description,
       });
       
-      // Note: Schedule invalidation should be handled by the service or UI layer
       console.log(`[AI Tools] Created block ${block.id} for date: ${targetDate}`);
       
-      const result = {
+      const timeBlock: TimeBlock = {
         id: block.id,
-        type: block.type,
+        type: block.type as TimeBlock['type'],
         title: block.title,
-        startTime: parsedStartTime,
-        endTime: parsedEndTime,
-        date: targetDate
+        startTime: formatTime12Hour(block.startTime),
+        endTime: formatTime12Hour(block.endTime),
+        description: block.description,
       };
       
-      return toolSuccess(result, {
-        type: 'schedule',
-        content: [result]
-      }, {
-        affectedItems: [block.id],
-        suggestions: type === 'work'
-          ? ['Assign tasks to this block', 'Create another block', 'View schedule']
-          : ['Create another block', 'View schedule', 'Move this block']
-      });
+      const scheduleChange: ScheduleChange = {
+        type: 'add',
+        blockId: block.id,
+        newState: timeBlock,
+      };
+      
+      return buildToolResponse(
+        toolOptions,
+        scheduleChange,
+        {
+          type: 'card',
+          title: `Created ${type} block`,
+          description: `"${title}" scheduled for ${formatTimeRange(timeBlock.startTime, timeBlock.endTime)}`,
+          priority: 'high',
+          components: [{
+            type: 'scheduleBlock',
+            data: timeBlock,
+          }],
+        },
+        {
+          notification: {
+            show: true,
+            type: 'success',
+            message: 'Time block created successfully',
+            duration: 3000,
+          },
+          suggestions: type === 'work'
+            ? ['Assign tasks to this block', 'Create another block', 'View full schedule']
+            : ['Create another block', 'View full schedule', 'Move this block'],
+          actions: [
+            {
+              id: 'view-schedule',
+              label: 'View Schedule',
+              icon: 'calendar',
+              variant: 'primary',
+              action: {
+                type: 'tool',
+                tool: 'getSchedule',
+                params: { date: targetDate },
+              },
+            },
+            ...(type === 'work' ? [{
+              id: 'assign-tasks',
+              label: 'Add Tasks',
+              icon: 'plus',
+              variant: 'secondary' as const,
+              action: {
+                type: 'message' as const,
+                message: `Show me tasks I can add to the ${title} block`,
+              },
+            }] : []),
+          ],
+        }
+      );
       
     } catch (error) {
       console.error('[AI Tools] Error in createTimeBlock:', error);
       
       // Handle authentication errors specifically
       if (error instanceof Error && error.message.includes('not configured')) {
-        return toolError(
-          'AUTH_REQUIRED',
-          'Please log in to use this feature',
-          error
+        return buildErrorResponse(
+          toolOptions,
+          error,
+          {
+            title: 'Authentication Required',
+            description: 'Please log in to use this feature',
+          }
         );
       }
       
-      return toolError(
-        'BLOCK_CREATE_FAILED',
-        `Failed to create time block: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Failed to create time block',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },

@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { type MeetingConflict } from '../../schemas/calendar.schema';
+import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatDate } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format, addMinutes } from 'date-fns';
 import { ensureServicesConfigured } from '../utils/auth';
@@ -30,7 +32,15 @@ export const handleMeetingConflict = tool({
     conflictingBlockId: z.string(),
     resolution: z.enum(['move_meeting', 'move_block', 'shorten_both', 'cancel_block']),
   }),
-  execute: async ({ meetingId, conflictingBlockId, resolution }) => {
+  execute: async ({ meetingId, conflictingBlockId, resolution }): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'handleMeetingConflict',
+      operation: 'update' as const,
+      resourceType: 'meeting' as const,
+      startTime,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -43,9 +53,13 @@ export const handleMeetingConflict = tool({
       const block = await scheduleService.getTimeBlock(conflictingBlockId);
       
       if (!meeting || !block) {
-        return toolError(
-          'ITEMS_NOT_FOUND',
-          'Could not find the meeting or block specified'
+        return buildErrorResponse(
+          toolOptions,
+          new Error('Could not find the meeting or block specified'),
+          {
+            title: 'Items not found',
+            description: 'Could not find the meeting or block specified',
+          }
         );
       }
       
@@ -70,9 +84,13 @@ export const handleMeetingConflict = tool({
           });
           
           if (conflicts.length > 0) {
-            return toolError(
-              'NO_AVAILABLE_SLOT',
-              'No available time found to move the meeting'
+            return buildErrorResponse(
+              toolOptions,
+              new Error('No available time found to move the meeting'),
+              {
+                title: 'No available slot',
+                description: 'No available time found to move the meeting',
+              }
             );
           }
           
@@ -145,23 +163,93 @@ export const handleMeetingConflict = tool({
         }
       }
       
-      return toolSuccess(result, {
-        type: 'text',
-        content: getResolutionMessage(result)
-      }, {
-        affectedItems: [meetingId, conflictingBlockId],
-        suggestions: [
-          'View updated schedule',
-          'Check for other conflicts',
-          'Notify attendees of changes'
-        ]
-      });
+      return buildToolResponse(
+        toolOptions,
+        {
+          resolution: result,
+          meeting: {
+            id: meetingId,
+            title: meeting.summary || '',
+            startTime: formatTime12Hour(meetingStart),
+            endTime: formatTime12Hour(meetingEnd),
+          },
+          block: result.action !== 'cancelled_block' ? {
+            id: conflictingBlockId,
+            title: block.title,
+            type: block.type,
+            startTime: formatTime12Hour(block.startTime),
+            endTime: formatTime12Hour(block.endTime),
+          } : null,
+        },
+        {
+          type: 'card',
+          title: 'Conflict Resolved',
+          description: getResolutionMessage(result),
+          priority: 'high',
+          components: [
+            {
+              type: 'confirmationDialog',
+              data: {
+                title: 'Conflict Resolution Applied',
+                message: getResolutionMessage(result),
+                confirmText: 'OK',
+                cancelText: 'Cancel',
+                variant: 'info',
+              },
+            },
+          ],
+        },
+        {
+          notification: {
+            show: true,
+            type: 'success',
+            message: 'Meeting conflict resolved',
+            duration: 3000,
+          },
+          suggestions: [
+            'View updated schedule',
+            'Check for other conflicts',
+            'Notify attendees of changes',
+          ],
+          actions: [
+            {
+              id: 'view-schedule',
+              label: 'View Schedule',
+              icon: 'calendar',
+              variant: 'primary',
+              action: {
+                type: 'tool',
+                tool: 'getSchedule',
+                params: { date: format(meetingStart, 'yyyy-MM-dd') },
+              },
+            },
+            ...(meeting.attendees && meeting.attendees.length > 0 ? [{
+              id: 'notify-attendees',
+              label: 'Notify Attendees',
+              icon: 'mail',
+              variant: 'secondary' as const,
+              action: {
+                type: 'tool' as const,
+                tool: 'draftEmailResponse',
+                params: {
+                  to: meeting.attendees.map((a: any) => a.email).filter(Boolean),
+                  subject: `Meeting Update: ${meeting.summary}`,
+                  keyPoints: [getResolutionMessage(result)],
+                },
+              },
+            }] : []),
+          ],
+        }
+      );
       
     } catch (error) {
-      return toolError(
-        'CONFLICT_RESOLUTION_FAILED',
-        `Failed to resolve conflict: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Failed to resolve conflict',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },

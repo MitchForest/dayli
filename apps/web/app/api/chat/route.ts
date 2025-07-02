@@ -3,6 +3,9 @@ import { openai } from '@ai-sdk/openai';
 import { createServerActionClient } from '@/lib/supabase-server';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { toolRegistry } from '@/modules/ai/tools/registry';
+import { 
+  universalToolResponseSchema 
+} from '@/modules/ai/schemas';
 
 // Helper functions
 function getCurrentTime(): string {
@@ -41,6 +44,29 @@ CAPABILITIES:
 - Calendar: Schedule meetings, reschedule, handle conflicts
 - Preferences: Update and view user preferences
 - Task Intelligence: Get smart task suggestions for time blocks, view task scoring and prioritization
+
+RESPONSE STRUCTURE RULES:
+
+1. CRITICAL: NEVER FORMAT TOOL RESULTS AS TEXT
+   - When a tool returns data, DO NOT convert it to numbered lists or paragraphs
+   - The UI will automatically render tool results using special components
+   - Your role is to provide context, not to format the data
+   - Example: If getSchedule returns blocks, just say "Here's your schedule:" and let the UI render it
+
+2. CONVERSATION vs DATA:
+   - Use conversational text ONLY for introductions, confirmations, or follow-up questions
+   - Let tool results speak for themselves through the UI components
+   - Keep your text minimal when tool data is present
+
+3. STRUCTURED DATA REQUIREMENTS:
+   - Tools already return structured data with display instructions
+   - DO NOT repeat or reformat this data in your response
+   - The UI will show schedule blocks, task cards, email previews automatically
+
+4. ERROR HANDLING:
+   - Always include error details in structured format
+   - Provide recoverable flag and suggested actions
+   - Never show raw error messages to users
 
 BEHAVIORAL RULES:
 
@@ -128,10 +154,14 @@ TASK INTELLIGENCE EXAMPLES:
 - "I notice 'Client demo prep' has been in your backlog for 3 days and is becoming urgent. Shall I schedule it?"
 
 EXAMPLES OF GOOD RESPONSES:
-- "Let me check your schedule first... I see you have a blocked time at 7pm. I'll remove that for you."
-- "I'll schedule a 2-hour work block from 9-11am for your strategy deck."
-- "Your afternoon is free. I found 3 high-priority tasks that would fit perfectly. The most urgent is..."
-- "You have 3 unscheduled tasks. Based on their scores and your energy patterns, I suggest..."
+- User: "Show my schedule" → You: "Here's your schedule for today:" [Tool returns visual blocks]
+- User: "What's on my calendar?" → You: "Let me check your schedule:" [Tool returns visual blocks]
+- User: "Delete the 7pm block" → You: "I'll remove that block for you." [Tool deletes and shows updated schedule]
+- User: "Show my tasks" → You: "Here are your tasks:" [Tool returns task cards]
+
+EXAMPLES OF BAD RESPONSES (NEVER DO THIS):
+- User: "Show my schedule" → You: "Here's your schedule: 1. 9:00 AM Meeting... 2. 10:00 AM Work block..." [WRONG - formatting as text]
+- User: "What tasks do I have?" → You: "You have these tasks: • Review PR • Update docs..." [WRONG - formatting as bullets]
 
 NEVER:
 - Show JSON or data structures
@@ -248,6 +278,8 @@ export async function POST(req: Request) {
         maxSteps: 5, // Allow multi-step operations
         system: systemPrompt,
         temperature: 0.7,
+        // Enable structured output for tool responses
+        experimental_toolCallStreaming: true,
         onStepFinish: async ({ toolCalls, toolResults }) => {
           // Log tool execution results for debugging
           if (toolCalls && toolCalls.length > 0) {
@@ -262,6 +294,18 @@ export async function POST(req: Request) {
           if (toolResults && toolResults.length > 0) {
             console.log('[Chat API] Tool results:', toolResults.map((tr: unknown) => {
               const result = tr as { toolName?: string; result?: unknown };
+              
+              // Validate structured responses
+              if (result.result && typeof result.result === 'object') {
+                try {
+                  // Check if it follows the universal schema
+                  universalToolResponseSchema.parse(result.result);
+                  console.log('[Chat API] Valid structured response from:', result.toolName);
+                } catch {
+                  console.warn('[Chat API] Tool returned non-structured response:', result.toolName);
+                }
+              }
+              
               return {
                 toolName: result.toolName,
                 result: result.result

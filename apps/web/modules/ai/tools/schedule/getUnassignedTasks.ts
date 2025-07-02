@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { type Task, type TaskGroup, type TaskSearchResult } from '../../schemas/task.schema';
+import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { ensureServicesConfigured } from '../utils/auth';
 import { createClient } from '@/lib/supabase-client';
@@ -57,7 +59,15 @@ export const getUnassignedTasks = tool({
     includeCompleted: z.boolean().default(false).describe('Include completed tasks'),
     limit: z.number().default(50).describe('Maximum number of tasks to return'),
   }),
-  execute: async ({ includeCompleted, limit }) => {
+  execute: async ({ includeCompleted, limit }): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'getUnassignedTasks',
+      operation: 'read' as const,
+      resourceType: 'task' as const,
+      startTime,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -160,15 +170,52 @@ export const getUnassignedTasks = tool({
       // Take only the requested limit
       const topTasks = allTasks.slice(0, limit);
       
-      // Group by priority label for summary
-      const grouped = {
-        high: topTasks.filter(t => t.priorityLabel === 'high'),
-        medium: topTasks.filter(t => t.priorityLabel === 'medium'),
-        low: topTasks.filter(t => t.priorityLabel === 'low')
+      // Convert to schema-compliant tasks
+      const tasks: Task[] = topTasks.map(t => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        priority: t.priorityLabel,
+        status: 'backlog' as const,
+        estimatedMinutes: t.estimatedMinutes,
+        source: (t.source === 'chat' ? 'ai' : t.source) as Task['source'],
+        metadata: {
+          score: Math.round(t.score),
+          daysInBacklog: t.daysInBacklog,
+          urgency: t.urgency,
+        },
+      }));
+      
+      // Group by priority for structured response
+      const taskGroup: TaskGroup = {
+        groupBy: 'priority',
+        groups: [
+          {
+            key: 'high',
+            label: 'High Priority',
+            tasks: tasks.filter(t => t.priority === 'high'),
+            count: tasks.filter(t => t.priority === 'high').length,
+            totalMinutes: tasks.filter(t => t.priority === 'high').reduce((sum, t) => sum + t.estimatedMinutes, 0),
+          },
+          {
+            key: 'medium',
+            label: 'Medium Priority',
+            tasks: tasks.filter(t => t.priority === 'medium'),
+            count: tasks.filter(t => t.priority === 'medium').length,
+            totalMinutes: tasks.filter(t => t.priority === 'medium').reduce((sum, t) => sum + t.estimatedMinutes, 0),
+          },
+          {
+            key: 'low',
+            label: 'Low Priority',
+            tasks: tasks.filter(t => t.priority === 'low'),
+            count: tasks.filter(t => t.priority === 'low').length,
+            totalMinutes: tasks.filter(t => t.priority === 'low').reduce((sum, t) => sum + t.estimatedMinutes, 0),
+          },
+        ],
       };
       
       // Calculate statistics
-      const totalMinutes = topTasks.reduce((sum, task) => sum + task.estimatedMinutes, 0);
+      const totalMinutes = tasks.reduce((sum, task) => sum + task.estimatedMinutes, 0);
       const totalHours = Math.round(totalMinutes / 60 * 10) / 10;
       
       // Find urgent tasks (score > 70)
@@ -177,64 +224,70 @@ export const getUnassignedTasks = tool({
       // Find quick wins (high score, low time)
       const quickWins = topTasks.filter(t => t.score > 60 && t.estimatedMinutes <= 30);
       
-      const result = {
-        tasks: topTasks,
-        stats: {
-          total: topTasks.length,
-          totalFound: allTasks.length,
-          byPriority: {
-            high: grouped.high.length,
-            medium: grouped.medium.length,
-            low: grouped.low.length
-          },
-          totalEstimatedHours: totalHours,
-          urgentCount: urgentTasks.length,
-          quickWinCount: quickWins.length,
-          averageScore: Math.round(topTasks.reduce((sum, t) => sum + t.score, 0) / topTasks.length || 0)
-        },
-        insights: {
-          mostUrgent: urgentTasks.slice(0, 3).map(t => ({
-            title: t.title,
-            score: Math.round(t.score),
-            minutes: t.estimatedMinutes
-          })),
-          quickWins: quickWins.slice(0, 3).map(t => ({
-            title: t.title,
-            score: Math.round(t.score),
-            minutes: t.estimatedMinutes
-          }))
-        },
-        summary: topTasks.length === 0
-          ? 'No unassigned tasks found'
-          : `${topTasks.length} tasks (${totalHours}h) • ${urgentTasks.length} urgent • ${quickWins.length} quick wins`
+      const searchResult: TaskSearchResult = {
+        query: 'unassigned tasks',
+        results: tasks,
+        totalCount: allTasks.length,
+        groupedResults: taskGroup,
       };
       
-      return toolSuccess(result, {
-        type: 'list',
-        content: topTasks.map(t => ({
-          id: t.id,
-          title: t.title,
-          score: Math.round(t.score),
-          priority: t.priorityLabel,
-          estimatedMinutes: t.estimatedMinutes,
-          daysOld: t.daysInBacklog
-        }))
-      }, {
-        suggestions: topTasks.length === 0
-          ? ['Create a new task', 'Check completed tasks', 'Review schedule']
-          : urgentTasks.length > 0
-          ? ['Schedule urgent tasks now', 'Create a work block for high-priority items', 'Review task priorities']
-          : quickWins.length > 0
-          ? ['Knock out some quick wins', 'Batch small tasks together', 'Schedule a focus block']
-          : ['Plan your day', 'Create work blocks', 'Review and prioritize tasks']
-      });
+      return buildToolResponse(
+        toolOptions,
+        searchResult,
+        {
+          type: 'list',
+          title: 'Unassigned Tasks',
+          description: tasks.length === 0
+            ? 'No unassigned tasks found'
+            : `${tasks.length} tasks (${totalHours}h) • ${urgentTasks.length} urgent • ${quickWins.length} quick wins`,
+          priority: urgentTasks.length > 0 ? 'high' : 'medium',
+          components: tasks.slice(0, 10).map(task => ({
+            type: 'taskCard' as const,
+            data: task,
+          })),
+        },
+        {
+          suggestions: tasks.length === 0
+            ? ['Create a new task', 'Check completed tasks', 'Review schedule']
+            : urgentTasks.length > 0
+            ? ['Schedule urgent tasks now', 'Create a work block for high-priority items', 'Review task priorities']
+            : quickWins.length > 0
+            ? ['Knock out some quick wins', 'Batch small tasks together', 'Schedule a focus block']
+            : ['Plan your day', 'Create work blocks', 'Review and prioritize tasks'],
+          actions: [
+            ...(urgentTasks.length > 0 ? [{
+              id: 'schedule-urgent',
+              label: 'Schedule Urgent Tasks',
+              icon: 'clock',
+              variant: 'primary' as const,
+              action: {
+                type: 'message' as const,
+                message: 'Schedule my most urgent tasks',
+              },
+            }] : []),
+            {
+              id: 'create-work-block',
+              label: 'Create Work Block',
+              icon: 'plus',
+              variant: 'secondary' as const,
+              action: {
+                type: 'message' as const,
+                message: 'Create a work block for these tasks',
+              },
+            },
+          ],
+        }
+      );
       
     } catch (error) {
       console.error('Error in getUnassignedTasks:', error);
-      return toolError(
-        'FETCH_TASKS_FAILED',
-        `Failed to get unassigned tasks: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Failed to get unassigned tasks',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },

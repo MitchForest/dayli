@@ -1,13 +1,11 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { parseMessageContent } from '../utils/messageParser';
-import { EntityChip } from './EntityChip';
-import { ChatScheduleDisplay } from './ChatScheduleDisplay';
 import { SuggestionButtons } from './SuggestionButtons';
 import { MessageStreamingProgress } from './StreamingProgress';
-import type { Entity, MessageMetadata, ListItem } from '../types/chat.types';
-import type { TimeBlock } from '@/modules/schedule/types/schedule.types';
+import { StructuredMessage } from '@/modules/ai/components';
+import type { MessageMetadata } from '../types/chat.types';
+import type { UniversalToolResponse } from '@/modules/ai/schemas/universal.schema';
 import { memo, useCallback } from 'react';
 
 interface MessageContentProps {
@@ -15,8 +13,9 @@ interface MessageContentProps {
   role: 'user' | 'assistant' | 'system';
   metadata?: MessageMetadata;
   message?: any; // Full message object for streaming progress
-  onEntityClick?: (entity: Entity) => void;
+  structuredData?: UniversalToolResponse | UniversalToolResponse[]; // New prop for structured responses
   onSuggestionSelect?: (suggestion: string) => void;
+  onAction?: (action: any) => void; // New prop for handling actions
   className?: string;
   isLoading?: boolean;
 }
@@ -26,75 +25,64 @@ export const MessageContent = memo(function MessageContent({
   role,
   metadata,
   message,
-  onEntityClick,
+  structuredData,
   onSuggestionSelect,
+  onAction,
   className,
   isLoading = false
 }: MessageContentProps) {
-  // Parse the content to identify entities and structure
-  const { segments } = parseMessageContent(content, metadata?.entities);
-
-  const handleEntityClick = useCallback((entity: Entity) => {
-    onEntityClick?.(entity);
-  }, [onEntityClick]);
-
   const handleSuggestionSelect = useCallback((suggestion: string) => {
     onSuggestionSelect?.(suggestion);
   }, [onSuggestionSelect]);
 
+  // Debug logging
+  console.log('[MessageContent] Rendering with:', {
+    hasStructuredData: !!structuredData,
+    structuredDataType: Array.isArray(structuredData) ? 'array' : typeof structuredData,
+    contentLength: content?.length,
+    role
+  });
+
+  // If we have structured data, render it using the new components
+  if (structuredData) {
+    const responses = Array.isArray(structuredData) ? structuredData : [structuredData];
+    console.log('[MessageContent] Rendering structured responses:', responses);
+    
+    return (
+      <div className={cn('message-content', className)}>
+        {/* Render any conversational text first */}
+        {content && content.trim() && (
+          <div className="text-sm whitespace-pre-wrap mb-3">
+            {content}
+          </div>
+        )}
+        
+        {/* Render structured responses */}
+        <div className="space-y-3">
+          {responses.map((response, idx) => (
+            <StructuredMessage
+              key={idx}
+              response={response}
+              onAction={onAction}
+            />
+          ))}
+        </div>
+        
+        {/* Streaming progress for long operations */}
+        {message && <MessageStreamingProgress message={message} />}
+      </div>
+    );
+  }
+
+  // No structured data, just render plain text
   return (
     <div className={cn('message-content', className)}>
-      {/* Render parsed segments */}
+      {/* Render plain text content */}
       <div className={cn(
-        'text-sm',
+        'text-sm whitespace-pre-wrap',
         role === 'assistant' && 'select-text' // AI messages selectable
       )}>
-        {segments.map((segment, idx) => {
-          switch (segment.type) {
-            case 'text':
-              return (
-                <span key={idx} className="whitespace-pre-wrap">
-                  {segment.value}
-                </span>
-              );
-
-            case 'entity':
-              return segment.entity ? (
-                <EntityChip
-                  key={idx}
-                  entity={segment.entity}
-                  onClick={handleEntityClick}
-                />
-              ) : null;
-
-            case 'list':
-              return segment.items ? (
-                <StructuredList key={idx} items={segment.items} />
-              ) : null;
-
-            case 'schedule':
-              return segment.blocks ? (
-                <ChatScheduleDisplay
-                  key={idx}
-                  blocks={segment.blocks}
-                  groupByPeriod={true}
-                  className="my-3"
-                />
-              ) : null;
-
-            case 'code':
-              return (
-                <CodeBlock
-                  key={idx}
-                  code={segment.value || ''}
-                  language={segment.language}
-                />
-              );
-
-            default:
-              return null;
-          }
-        })}
+        {content}
       </div>
 
       {/* Streaming progress for long operations */}
@@ -119,50 +107,5 @@ export const MessageContent = memo(function MessageContent({
     </div>
   );
 });
-
-// Structured list component for bullet points
-function StructuredList({ items }: { items: ListItem[] }) {
-  return (
-    <div className="my-2 space-y-1">
-      {items.map((item, idx) => {
-        const Icon = item.icon;
-        return (
-          <div
-            key={idx}
-            className="flex items-start gap-2 text-sm"
-          >
-            {Icon && (
-              <Icon className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-            )}
-            <div className="flex-1">
-              <div>{item.title}</div>
-              {item.subtitle && (
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  {item.subtitle}
-                </div>
-              )}
-            </div>
-            {item.time && (
-              <span className="text-xs text-muted-foreground">
-                {item.time}
-              </span>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// Simple code block component
-function CodeBlock({ code, language }: { code: string; language?: string }) {
-  return (
-    <pre className="my-2 p-3 bg-muted rounded-md overflow-x-auto">
-      <code className="text-xs font-mono">
-        {code}
-      </code>
-    </pre>
-  );
-}
 
 export default MessageContent; 

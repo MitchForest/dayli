@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { toolSuccess, toolError, toolConfirmation, TimeBlock, ProposedChange, Task } from '../types';
+import { type UniversalToolResponse } from '../../schemas/universal.schema';
+import { type TimeBlock, type ScheduleUpdate, type ScheduleChange } from '../../schemas/schedule.schema';
+import { buildToolResponse, buildErrorResponse, formatTime12Hour } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
 import { ensureServicesConfigured } from '../utils/auth';
@@ -12,7 +14,15 @@ export const regenerateSchedule = tool({
     keepMeetings: z.boolean().default(true).describe('Keep existing meetings/appointments'),
     optimizeFor: z.enum(['focus', 'variety', 'energy', 'meetings']).default('focus'),
   }),
-  execute: async ({ date, keepMeetings, optimizeFor }) => {
+  execute: async ({ date, keepMeetings, optimizeFor }): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'regenerateSchedule',
+      operation: 'update' as const,
+      resourceType: 'schedule' as const,
+      startTime,
+    };
+    
     try {
       // Ensure services are configured before proceeding
       await ensureServicesConfigured();
@@ -56,71 +66,126 @@ export const regenerateSchedule = tool({
       const changes = calculateScheduleChanges(blocksToReplace, proposedSchedule);
       
       if (changes.length === 0) {
-        return toolSuccess({
-          message: 'Schedule is already optimal',
-          stats: {
-            meetings: meetings.length,
-            focusBlocks: proposedSchedule.filter(b => b.type === 'work').length,
-            breaks: proposedSchedule.filter(b => b.type === 'break').length
+        const stats = {
+          meetings: meetings.length,
+          focusBlocks: proposedSchedule.filter(b => b.type === 'work').length,
+          breaks: proposedSchedule.filter(b => b.type === 'break').length,
+        };
+        
+        return buildToolResponse(
+          toolOptions,
+          { 
+            message: 'Schedule is already optimal',
+            stats,
+          },
+          {
+            type: 'card',
+            title: 'Schedule Already Optimal',
+            description: 'Your schedule is already well-optimized!',
+            priority: 'low',
+            components: [],
+          },
+          {
+            suggestions: [
+              'View current schedule',
+              'Add a new task',
+              'Adjust preferences',
+            ],
           }
-        }, {
-          type: 'text',
-          content: 'Your schedule is already well-optimized!'
-        }, {
-          suggestions: [
-            'View current schedule',
-            'Add a new task',
-            'Adjust preferences'
-          ]
-        });
+        );
       }
       
-      // Store proposed changes for confirmation
+      // Calculate focus time
+      const focusMinutes = proposedSchedule
+        .filter(b => b.type === 'work')
+        .reduce((sum, b) => {
+          const duration = b.startTime && b.endTime 
+            ? timeToMinutes(b.endTime as string) - timeToMinutes(b.startTime as string)
+            : 0;
+          return sum + duration;
+        }, 0);
+      
+      const focusHours = Math.floor(focusMinutes / 60);
+      
+      // Build schedule update
+      const scheduleUpdate: ScheduleUpdate = {
+        date: targetDate,
+        changes,
+        summary: `Regenerated schedule optimized for ${optimizeFor} with ${focusHours} hours of focus time`,
+        requiresConfirmation: true,
+      };
+      
       const confirmationId = crypto.randomUUID();
       
-      const changesSummary = changes.map(change => {
-        switch (change.type) {
-          case 'create':
-            return `• Add ${change.block?.type} "${change.block?.title}" at ${change.block?.startTime}`;
-          case 'delete':
-            return `• Remove "${change.block?.title}"`;
-          case 'update':
-            return `• Adjust "${change.block?.title}" time or duration`;
-          default:
-            return `• ${change.type} ${change.description}`;
+      return buildToolResponse(
+        toolOptions,
+        scheduleUpdate,
+        {
+          type: 'confirmation',
+          title: 'Regenerate Schedule',
+          description: `I've regenerated your schedule optimized for ${optimizeFor}. This will give you ${focusHours} hours of focus time.`,
+          priority: 'high',
+          components: [
+            // Show removed blocks
+            ...changes.filter(c => c.type === 'remove').map(change => ({
+              type: 'scheduleBlock' as const,
+              data: {
+                ...change.previousState!,
+                metadata: { action: 'remove' },
+              },
+            })),
+            // Show added blocks
+            ...changes.filter(c => c.type === 'add').map(change => ({
+              type: 'scheduleBlock' as const,
+              data: {
+                ...change.newState!,
+                metadata: { action: 'add' },
+              },
+            })),
+          ],
+        },
+        {
+          confirmationRequired: true,
+          confirmationId,
+          suggestions: [],
+          actions: [
+            {
+              id: 'apply-changes',
+              label: 'Apply Changes',
+              icon: 'check',
+              variant: 'primary',
+              action: {
+                type: 'message',
+                message: 'Apply the regenerated schedule',
+              },
+            },
+            {
+              id: 'cancel',
+              label: 'Cancel',
+              variant: 'secondary',
+              action: {
+                type: 'message',
+                message: 'Keep current schedule',
+              },
+            },
+          ],
+          notification: {
+            show: true,
+            type: 'info',
+            message: `${changes.length} changes proposed`,
+            duration: 5000,
+          },
         }
-      }).join('\n');
-      
-      return toolConfirmation({
-        proposedSchedule,
-        changes,
-        stats: {
-          totalChanges: changes.length,
-          blocksAdded: changes.filter(c => c.type === 'create').length,
-          blocksRemoved: changes.filter(c => c.type === 'delete').length,
-          focusTime: proposedSchedule
-            .filter(b => b.type === 'work')
-            .reduce((sum, b) => {
-              const duration = b.startTime && b.endTime 
-                ? timeToMinutes(b.endTime as string) - timeToMinutes(b.startTime as string)
-                : 0;
-              return sum + duration;
-            }, 0)
-        }
-      }, confirmationId, 
-      `I've regenerated your schedule optimized for ${optimizeFor}:\n\n${changesSummary}\n\nThis will give you ${Math.floor(proposedSchedule.filter(b => b.type === 'work').reduce((sum, b) => {
-        const duration = b.startTime && b.endTime 
-          ? timeToMinutes(b.endTime as string) - timeToMinutes(b.startTime as string)
-          : 0;
-        return sum + duration;
-      }, 0) / 60)} hours of focus time. Apply these changes?`
       );
       
     } catch (error) {
-      return toolError(
-        'REGENERATE_FAILED',
-        `Failed to regenerate schedule: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Failed to regenerate schedule',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        }
       );
     }
   },
@@ -129,86 +194,91 @@ export const regenerateSchedule = tool({
 // Helper to generate optimal schedule
 function generateOptimalSchedule(params: {
   date: string;
-  existingMeetings: TimeBlock[];
-  availableTasks: Task[];
-  preferences: {
-    workStartTime?: string;
-    workEndTime?: string;
-    breakSchedule?: {
-      lunchTime?: string;
-      lunchDuration?: number;
-      morningBreak?: { time: string; duration: number };
-      afternoonBreak?: { time: string; duration: number };
-    };
-    breakFrequency?: number;
-    emailPreferences?: {
-      quickReplyMinutes?: number;
-    };
-  };
+  existingMeetings: any[];
+  availableTasks: any[];
+  preferences: any;
   optimizeFor: string;
   workStart: string;
   workEnd: string;
   lunchTime: string;
   lunchDuration: number;
-}): Partial<TimeBlock>[] {
-  const schedule: Partial<TimeBlock>[] = [];
+}): TimeBlock[] {
+  const schedule: TimeBlock[] = [];
+  let blockId = 1;
   
   // Add lunch break if configured
   if (params.preferences.breakSchedule?.lunchTime && params.preferences.breakSchedule?.lunchDuration) {
-    const lunchStart = parseTime(params.preferences.breakSchedule.lunchTime);
+    const lunchStart = params.preferences.breakSchedule.lunchTime;
+    const lunchEnd = addMinutesToTime(lunchStart, params.preferences.breakSchedule.lunchDuration);
+    
     schedule.push({
+      id: `generated-${blockId++}`,
       type: 'break',
       title: 'Lunch',
-      startTime: lunchStart,
-      endTime: addMinutesToTime(lunchStart, params.preferences.breakSchedule.lunchDuration),
-      description: 'Lunch break'
+      startTime: formatTime12Hour(parseTime(lunchStart)),
+      endTime: formatTime12Hour(parseTime(lunchEnd)),
+      description: 'Lunch break',
     });
   }
   
   // Add existing meetings
-  schedule.push(...params.existingMeetings);
+  params.existingMeetings.forEach(meeting => {
+    schedule.push({
+      id: meeting.id,
+      type: 'meeting',
+      title: meeting.title,
+      startTime: formatTime12Hour(meeting.startTime),
+      endTime: formatTime12Hour(meeting.endTime),
+      description: meeting.description,
+    });
+  });
   
   // Generate work blocks based on optimization strategy
   if (params.optimizeFor === 'focus') {
     // Create large focus blocks
     schedule.push({
+      id: `generated-${blockId++}`,
       type: 'work',
       title: 'Deep Focus Work',
-      startTime: params.workStart,
-      endTime: '11:30',
-      description: 'Focus time for deep work'
+      startTime: formatTime12Hour(parseTime(params.workStart)),
+      endTime: formatTime12Hour(parseTime('11:30')),
+      description: 'Focus time for deep work',
     });
     
     schedule.push({
+      id: `generated-${blockId++}`,
       type: 'work',
       title: 'Afternoon Focus',
-      startTime: '13:30',
-      endTime: '16:00',
-      description: 'Afternoon focus session'
+      startTime: formatTime12Hour(parseTime('13:30')),
+      endTime: formatTime12Hour(parseTime('16:00')),
+      description: 'Afternoon focus session',
     });
   } else if (params.optimizeFor === 'variety') {
     // Mix different types of blocks
     schedule.push(
       {
+        id: `generated-${blockId++}`,
         type: 'work',
         title: 'Morning Tasks',
-        startTime: params.workStart,
-        endTime: '10:30',
-        description: 'Morning task work'
+        startTime: formatTime12Hour(parseTime(params.workStart)),
+        endTime: formatTime12Hour(parseTime('10:30')),
+        description: 'Morning task work',
       },
       {
+        id: `generated-${blockId++}`,
         type: 'email',
         title: 'Email Processing',
-        startTime: '10:30',
-        endTime: '11:00',
-        description: 'Process emails'
+        startTime: formatTime12Hour(parseTime('10:30')),
+        endTime: formatTime12Hour(parseTime('11:00')),
+        description: 'Process emails',
       },
       {
+        id: `generated-${blockId++}`,
         type: 'work',
         title: 'Project Work',
-        startTime: '14:00',
-        endTime: '15:30',
-        description: 'Project focused work'
+        startTime: formatTime12Hour(parseTime('14:00')),
+        endTime: formatTime12Hour(parseTime('15:30')),
+        description: 'Project focused work',
       }
     );
   }
@@ -216,50 +286,52 @@ function generateOptimalSchedule(params: {
   // Add breaks
   if (params.preferences.breakFrequency) {
     schedule.push({
+      id: `generated-${blockId++}`,
       type: 'break',
       title: 'Morning Break',
-      startTime: '10:30',
-      endTime: '10:45',
-      description: '15 minute break'
+      startTime: formatTime12Hour(parseTime('10:30')),
+      endTime: formatTime12Hour(parseTime('10:45')),
+      description: '15 minute break',
     });
   }
   
-  return schedule.sort((a, b) => 
-    timeToMinutes(a.startTime as string) - timeToMinutes(b.startTime as string)
-  );
+  // Sort by start time
+  return schedule.sort((a, b) => {
+    const aMinutes = timeToMinutes(convertTo24Hour(a.startTime));
+    const bMinutes = timeToMinutes(convertTo24Hour(b.startTime));
+    return aMinutes - bMinutes;
+  });
 }
 
 // Helper to calculate changes
-function calculateScheduleChanges(current: TimeBlock[], proposed: Partial<TimeBlock>[]): ProposedChange[] {
-  const changes: ProposedChange[] = [];
+function calculateScheduleChanges(current: any[], proposed: TimeBlock[]): ScheduleChange[] {
+  const changes: ScheduleChange[] = [];
   
   // Find blocks to remove
   current.forEach(block => {
     if (!proposed.find(p => p.id === block.id)) {
       changes.push({
-        type: 'delete',
-        block: {
+        type: 'remove',
+        blockId: block.id,
+        previousState: {
           id: block.id,
           type: block.type,
           title: block.title,
-          startTime: typeof block.startTime === 'string' ? block.startTime : format(block.startTime, 'HH:mm'),
-          endTime: typeof block.endTime === 'string' ? block.endTime : format(block.endTime, 'HH:mm')
-        }
+          startTime: formatTime12Hour(block.startTime),
+          endTime: formatTime12Hour(block.endTime),
+          description: block.description,
+        },
       });
     }
   });
   
   // Find blocks to add
   proposed.forEach(block => {
-    if (!block.id || !current.find(c => c.id === block.id)) {
+    if (block.id.startsWith('generated-')) {
       changes.push({
-        type: 'create',
-        block: {
-          type: block.type || 'work',
-          title: block.title || 'New Block',
-          startTime: typeof block.startTime === 'string' ? block.startTime : format(block.startTime as Date, 'HH:mm'),
-          endTime: typeof block.endTime === 'string' ? block.endTime : format(block.endTime as Date, 'HH:mm')
-        }
+        type: 'add',
+        blockId: block.id,
+        newState: block,
       });
     }
   });
@@ -274,6 +346,38 @@ function timeToMinutes(time: string): number {
   const hours = parseInt(parts[0] || '0', 10);
   const minutes = parseInt(parts[1] || '0', 10);
   return hours * 60 + minutes;
+}
+
+// Convert 12-hour to 24-hour format
+function convertTo24Hour(time12: string): string {
+  const parts = time12.split(' ');
+  if (parts.length !== 2) return '00:00';
+  
+  const time = parts[0];
+  const period = parts[1];
+  
+  if (!time || !period) return '00:00';
+  
+  const timeParts = time.split(':');
+  if (timeParts.length !== 2) return '00:00';
+  
+  const hoursStr = timeParts[0];
+  const minutesStr = timeParts[1];
+  
+  if (!hoursStr || !minutesStr) return '00:00';
+  
+  let hours = parseInt(hoursStr, 10);
+  let minutes = parseInt(minutesStr, 10);
+  
+  if (isNaN(hours) || isNaN(minutes)) return '00:00';
+  
+  if (period === 'PM' && hours !== 12) {
+    hours += 12;
+  } else if (period === 'AM' && hours === 12) {
+    hours = 0;
+  }
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 }
 
 // Helper function to parse time string
