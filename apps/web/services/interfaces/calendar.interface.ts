@@ -1,4 +1,4 @@
-import type { CalendarEvent } from '../mock/calendar.service';
+import type { CalendarEvent } from '../real/calendar.service';
 
 export interface ICalendarService {
   listEvents(params: {

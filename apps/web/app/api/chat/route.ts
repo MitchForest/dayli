@@ -173,7 +173,7 @@ export async function POST(req: Request) {
       factory.configure({ 
         userId: user.id, 
         supabaseClient: supabase 
-      }, true); // Use mock services for development
+      }); // Now always uses real services
     }
 
     const { messages } = await req.json();

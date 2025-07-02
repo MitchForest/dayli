@@ -1,35 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { MockGmailService } from '@/services/mock/gmail.service';
-import type { IGmailService } from '@/services/interfaces/gmail.interface';
-
-// For now, always use mock service until real Gmail integration is implemented
-const getGmailService = (): IGmailService => {
-  return new MockGmailService();
-};
+import { RealGmailService } from '@/services/real/gmail.service';
+import { createServerActionClient } from '@/lib/supabase-server';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const userId = searchParams.get('userId') || 'me';
-    const q = searchParams.get('q') || undefined;
-    const pageToken = searchParams.get('pageToken') || undefined;
     const maxResults = searchParams.get('maxResults') 
       ? parseInt(searchParams.get('maxResults')!) 
-      : undefined;
+      : 10;
+    const pageToken = searchParams.get('pageToken') || undefined;
+    const q = searchParams.get('q') || undefined;
     
-    const gmailService = getGmailService();
-    const messages = await gmailService.listMessages({
-      userId,
-      q,
-      pageToken,
-      maxResults,
+    // Get authenticated user
+    const supabase = await createServerActionClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Create Gmail service
+    const gmailService = new RealGmailService({
+      userId: user.id,
+      supabaseClient: supabase
     });
     
-    return NextResponse.json(messages);
+    const result = await gmailService.listMessages({
+      maxResults,
+      pageToken,
+      q
+    });
+    
+    return NextResponse.json(result);
   } catch (error) {
-    console.error('Error fetching Gmail messages:', error);
+    console.error('Error listing messages:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch messages' },
+      { error: 'Failed to list messages' },
       { status: 500 }
     );
   }

@@ -87,12 +87,25 @@ export class RealTaskService implements TaskService {
       .select()
       .eq('user_id', this.userId)
       .eq('status', 'backlog')
-      .eq('completed', false)
-      .order('created_at', { ascending: false });
+      .eq('completed', false);
 
     if (error) throw new Error(`Failed to get unassigned tasks: ${error.message}`);
 
-    return data.map((task: any) => this.mapToTask(task));
+    // Sort by priority first (high -> medium -> low), then by created_at
+    const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+    const sortedTasks = data.sort((a: any, b: any) => {
+      const aPriority = priorityOrder[a.priority || 'low'] ?? 2;
+      const bPriority = priorityOrder[b.priority || 'low'] ?? 2;
+      
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+      
+      // If same priority, sort by created_at (newest first)
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+
+    return sortedTasks.map((task: any) => this.mapToTask(task));
   }
 
   async getTasksByStatus(status: 'backlog' | 'scheduled' | 'completed'): Promise<Task[]> {

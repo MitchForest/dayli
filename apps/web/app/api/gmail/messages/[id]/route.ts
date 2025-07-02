@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { MockGmailService } from '@/services/mock/gmail.service';
-import type { IGmailService } from '@/services/interfaces/gmail.interface';
-
-// For now, always use mock service until real Gmail integration is implemented
-const getGmailService = (): IGmailService => {
-  return new MockGmailService();
-};
+import { RealGmailService } from '@/services/real/gmail.service';
+import { createServerActionClient } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
@@ -13,14 +8,25 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const searchParams = request.nextUrl.searchParams;
-    const userId = searchParams.get('userId') || 'me';
     
-    const gmailService = getGmailService();
-    const message = await gmailService.getMessage({
-      userId,
-      id,
+    // Get authenticated user
+    const supabase = await createServerActionClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Create Gmail service
+    const gmailService = new RealGmailService({
+      userId: user.id,
+      supabaseClient: supabase
     });
+    
+    const message = await gmailService.getMessage(id);
     
     if (!message) {
       return NextResponse.json(
@@ -31,7 +37,7 @@ export async function GET(
     
     return NextResponse.json(message);
   } catch (error) {
-    console.error('Error fetching Gmail message:', error);
+    console.error('Error fetching message:', error);
     return NextResponse.json(
       { error: 'Failed to fetch message' },
       { status: 500 }

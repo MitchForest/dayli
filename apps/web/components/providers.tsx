@@ -18,7 +18,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       ServiceFactory.getInstance().configure({
         userId: user.id,
         supabaseClient: supabaseClient
-      }, true); // Use mock services for development
+      }); // Removed the useMock parameter - will always use real services
     } else {
       console.log('[Providers] Clearing ServiceFactory configuration');
       ServiceFactory.getInstance().configure(null);

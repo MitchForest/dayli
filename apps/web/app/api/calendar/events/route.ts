@@ -1,11 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { MockCalendarService } from '@/services/mock/calendar.service';
+import { RealCalendarService } from '@/services/real/calendar.service';
 import type { ICalendarService } from '@/services/interfaces/calendar.interface';
-import type { CalendarEvent } from '@/services/mock/calendar.service';
+import type { CalendarEvent } from '@/services/real/calendar.service';
+import { createServerActionClient } from '@/lib/supabase-server';
 
-// For now, always use mock service until real Calendar integration is implemented
-const getCalendarService = (timezone?: string): ICalendarService => {
-  return new MockCalendarService(timezone);
+// Get calendar service with proper configuration
+const getCalendarService = async (): Promise<ICalendarService> => {
+  const supabase = await createServerActionClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) {
+    throw new Error('User not authenticated');
+  }
+  
+  return new RealCalendarService({
+    userId: user.id,
+    supabaseClient: supabase
+  });
 };
 
 export async function GET(request: NextRequest) {
@@ -18,8 +29,6 @@ export async function GET(request: NextRequest) {
     const maxResults = searchParams.get('maxResults') 
       ? parseInt(searchParams.get('maxResults')!) 
       : undefined;
-    const timezone = searchParams.get('timezone') || undefined;
-    
     if (!timeMin || !timeMax) {
       return NextResponse.json(
         { error: 'timeMin and timeMax are required' },
@@ -27,7 +36,7 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    const calendarService = getCalendarService(timezone);
+    const calendarService = await getCalendarService();
     const events = await calendarService.listEvents({
       calendarId,
       timeMin,
@@ -49,7 +58,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { calendarId = 'primary', resource, timezone } = body;
+    const { calendarId = 'primary', resource } = body;
     
     if (!resource) {
       return NextResponse.json(
@@ -58,7 +67,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const calendarService = getCalendarService(timezone);
+    const calendarService = await getCalendarService();
     const event = await calendarService.insertEvent({
       calendarId,
       resource: resource as Partial<CalendarEvent>,

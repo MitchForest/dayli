@@ -1,22 +1,27 @@
-import type { GmailMessage } from '../mock/gmail.service';
+import type { GmailMessage } from '../real/gmail.service';
 
 export interface IGmailService {
-  listMessages(params: {
-    userId: string;
-    q?: string;
-    pageToken?: string;
+  listMessages(params?: {
     maxResults?: number;
+    pageToken?: string;
+    q?: string;
+    labelIds?: string[];
   }): Promise<{
-    messages: Array<{
-      id: string;
-      threadId: string;
-    }>;
+    messages: Array<{ id: string; threadId: string }>;
     nextPageToken?: string;
     resultSizeEstimate: number;
   }>;
   
-  getMessage(params: {
-    userId: string;
-    id: string;
-  }): Promise<GmailMessage | null>;
+  getMessage(id: string): Promise<GmailMessage | null>;
+  
+  sendMessage(params: {
+    to: string;
+    subject: string;
+    body: string;
+    threadId?: string;
+  }): Promise<GmailMessage>;
+  
+  trashMessage(id: string): Promise<void>;
+  
+  archiveMessage(id: string): Promise<void>;
 } 
