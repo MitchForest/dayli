@@ -5,7 +5,6 @@ import { type CalendarEvent } from '../../schemas/calendar.schema';
 import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatDate } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format, addMinutes } from 'date-fns';
-import { ensureServicesConfigured } from '../utils/auth';
 import { parseFlexibleTime } from '../../utils/time-parser';
 
 export const scheduleMeeting = tool({
@@ -28,9 +27,6 @@ export const scheduleMeeting = tool({
     };
     
     try {
-      // Ensure services are configured before proceeding
-      await ensureServicesConfigured();
-      
       const calendarService = ServiceFactory.getInstance().getCalendarService();
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       

@@ -4,7 +4,6 @@ import { type UniversalToolResponse } from '../../schemas/universal.schema';
 import { type Task } from '../../schemas/task.schema';
 import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
-import { ensureServicesConfigured } from '../utils/auth';
 
 export const createTask = tool({
   description: "Create a new task from natural language",
@@ -26,9 +25,6 @@ export const createTask = tool({
     };
     
     try {
-      // Ensure services are configured before proceeding
-      await ensureServicesConfigured();
-      
       const taskService = ServiceFactory.getInstance().getTaskService();
       
       // Create the task

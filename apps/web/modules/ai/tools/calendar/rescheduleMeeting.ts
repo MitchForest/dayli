@@ -4,7 +4,6 @@ import { type UniversalToolResponse } from '../../schemas/universal.schema';
 import { type CalendarEvent } from '../../schemas/calendar.schema';
 import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatDate } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
-import { ensureServicesConfigured } from '../utils/auth';
 import { parseFlexibleTime } from '../../utils/time-parser';
 import { addMinutes, format } from 'date-fns';
 
@@ -58,7 +57,6 @@ export const rescheduleMeeting = tool({
     
     try {
       // Ensure services are configured before proceeding
-      await ensureServicesConfigured();
       
       const calendarService = ServiceFactory.getInstance().getCalendarService();
       

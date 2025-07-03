@@ -5,7 +5,6 @@ import { type TimeBlock, type ScheduleChange } from '../../schemas/schedule.sche
 import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatTimeRange } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
-import { ensureServicesConfigured } from '../utils/auth';
 import { toMilitaryTime } from '../../utils/time-parser';
 
 export const createTimeBlock = tool({
@@ -28,9 +27,6 @@ export const createTimeBlock = tool({
     };
     
     try {
-      // Ensure services are configured before proceeding
-      await ensureServicesConfigured();
-      
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       
       // Parse times using flexible parser

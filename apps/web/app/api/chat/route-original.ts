@@ -1,16 +1,11 @@
 import { streamText } from 'ai';
-import type { Message } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { createServerActionClient } from '@/lib/supabase-server';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { toolRegistry } from '@/modules/ai/tools/registry';
-import { universalToolResponseSchema } from '@/modules/ai/schemas';
-import { OrchestrationService } from '@/modules/orchestration/orchestration.service';
-import { buildOrchestrationContext } from '@/modules/orchestration/context-builder';
-import type { UserIntent } from '@/modules/orchestration/types';
-
-// Create singleton orchestrator instance
-const orchestrator = new OrchestrationService();
+import { 
+  universalToolResponseSchema 
+} from '@/modules/ai/schemas';
 
 // Helper functions
 function getCurrentTime(): string {
@@ -35,66 +30,7 @@ function getUserWorkHours(): string {
   return '9:00 AM - 5:00 PM';
 }
 
-// System prompts for different routing paths
-const workflowSystemPrompt = (workflowName: string, intent: UserIntent) => `You are dayli, an AI executive assistant executing the ${workflowName} workflow.
-
-CONTEXT:
-- Current time: ${getCurrentTime()}
-- Day of week: ${getDayOfWeek()}
-- User's typical work hours: ${getUserWorkHours()}
-
-WORKFLOW EXECUTION:
-- The user's request has been classified as needing the ${workflowName} workflow
-- Intent analysis: ${intent.reasoning}
-- Confidence: ${(intent.confidence * 100).toFixed(0)}%
-
-Execute the workflow and present the results clearly. The workflow tool will handle all the complex orchestration - just call it with the user's request.
-
-IMPORTANT:
-- Let the workflow tool results be displayed with rich UI components
-- Don't describe or reformat the workflow results
-- Keep your text minimal - just introduce what you're doing`;
-
-const toolSystemPrompt = (toolName: string | undefined, intent: UserIntent) => `You are dayli, an AI executive assistant executing specific tool operations.
-
-CONTEXT:
-- Current time: ${getCurrentTime()}
-- Day of week: ${getDayOfWeek()}
-- User's typical work hours: ${getUserWorkHours()}
-
-TOOL EXECUTION:
-- The user's request has been classified as needing ${toolName ? `the ${toolName} tool` : 'specific tools'}
-- Intent analysis: ${intent.reasoning}
-- Confidence: ${(intent.confidence * 100).toFixed(0)}%
-${intent.suggestedHandler.params ? `- Suggested parameters: ${JSON.stringify(intent.suggestedHandler.params)}` : ''}
-
-Execute the requested operation and present the results clearly.
-
-IMPORTANT:
-- Tool results are automatically formatted with rich UI components
-- Don't describe or reformat tool results
-- Keep your text minimal
-- You can use multiple tools if needed to complete the request`;
-
-const conversationSystemPrompt = (intent: UserIntent) => `You are dayli, an AI executive assistant having a conversation.
-
-CONTEXT:
-- Current time: ${getCurrentTime()}
-- Day of week: ${getDayOfWeek()}
-- User's typical work hours: ${getUserWorkHours()}
-
-CONVERSATION:
-- The user's message has been classified as conversational
-- Intent analysis: ${intent.reasoning}
-
-Respond helpfully without using any tools. Focus on:
-- Answering questions
-- Providing guidance
-- Having a natural conversation
-- Explaining concepts or features when asked`;
-
-// Original system prompt for fallback
-const originalSystemPrompt = `You are dayli, an AI executive assistant that helps users manage their schedule, tasks, and emails.
+const systemPrompt = `You are dayli, an AI executive assistant that helps users manage their schedule, tasks, and emails.
 
 CONTEXT:
 - Current time: ${getCurrentTime()}
@@ -309,12 +245,11 @@ export async function POST(req: Request) {
     }
 
     const { messages } = await req.json();
-    const lastMessage = messages[messages.length - 1];
     
     console.log('[Chat API] Processing request:', { 
       userId: user.id, 
       messageCount: messages.length,
-      lastMessage: lastMessage?.content?.substring(0, 100) 
+      lastMessage: messages[messages.length - 1]?.content?.substring(0, 100) 
     });
 
     // Auto-register all tools on first request
@@ -324,58 +259,68 @@ export async function POST(req: Request) {
       console.log('[Chat API] Registered tools:', toolRegistry.listTools());
     }
 
-    // Build orchestration context
-    console.log('[Orchestration] Building context...');
-    const context = await buildOrchestrationContext(user.id);
-    
-    // Classify intent
-    console.log('[Orchestration] Classifying intent...');
-    const intent = await orchestrator.classifyIntent(
-      lastMessage.content,
-      context
-    );
-    
-    console.log('[Orchestration] Intent classified:', {
-      category: intent.category,
-      confidence: intent.confidence,
-      handler: intent.suggestedHandler,
-      reasoning: intent.reasoning,
-    });
-    
-    // Route based on intent
+    // Get all tools from registry
+    const tools = toolRegistry.getAll();
+
     try {
-      switch (intent.suggestedHandler.type) {
-        case 'workflow':
-          return await handleWorkflowRequest(
-            messages,
-            intent,
-            user.id,
-            headers
-          );
-          
-        case 'tool':
-          return await handleToolRequest(
-            messages,
-            intent,
-            user.id,
-            headers
-          );
-          
-        case 'direct':
-        default:
-          return await handleDirectResponse(
-            messages,
-            intent,
-            user.id,
-            headers
-          );
-      }
-    } catch (routingError) {
-      console.error('[Orchestration] Routing error, falling back to original behavior:', routingError);
-      // Fall back to original behavior if routing fails
-      return await handleOriginalRequest(messages, user.id, headers);
+      const result = await streamText({
+        model: openai('gpt-4-turbo'),
+        messages,
+        tools,
+        maxSteps: 5, // Allow multi-step operations
+        system: systemPrompt,
+        temperature: 0.7,
+        // Enable structured output for tool responses
+        experimental_toolCallStreaming: true,
+        onStepFinish: async ({ toolCalls, toolResults }) => {
+          // Log tool execution results for debugging
+          if (toolCalls && toolCalls.length > 0) {
+            console.log('[Chat API] Tools executed:', toolCalls.map((tc: unknown) => {
+              const call = tc as { toolName?: string; args?: unknown };
+              return {
+                name: call.toolName,
+                args: call.args
+              };
+            }));
+          }
+          if (toolResults && toolResults.length > 0) {
+            console.log('[Chat API] Tool results:', toolResults.map((tr: unknown) => {
+              const result = tr as { toolName?: string; result?: unknown };
+              
+              // Validate structured responses
+              if (result.result && typeof result.result === 'object') {
+                try {
+                  // Check if it follows the universal schema
+                  universalToolResponseSchema.parse(result.result);
+                  console.log('[Chat API] Valid structured response from:', result.toolName);
+                } catch {
+                  console.warn('[Chat API] Tool returned non-structured response:', result.toolName);
+                }
+              }
+              
+              return {
+                toolName: result.toolName,
+                result: result.result
+              };
+            }));
+          }
+        },
+        onError: (error) => {
+          console.error('[Chat API] Stream error:', error);
+        },
+      });
+
+      // Add headers to the streaming response
+      const response = result.toDataStreamResponse();
+      Object.entries(headers).forEach(([key, value]) => {
+        response.headers.set(key, value);
+      });
+      
+      return response;
+    } catch (streamError) {
+      console.error('[Chat API] Stream creation error:', streamError);
+      throw streamError;
     }
-    
   } catch (error) {
     console.error('[Chat API] Error:', error);
     
@@ -397,195 +342,6 @@ export async function POST(req: Request) {
   }
 }
 
-/**
- * Handle workflow requests using LangGraph workflows
- */
-async function handleWorkflowRequest(
-  messages: Message[],
-  intent: UserIntent,
-  userId: string,
-  headers: Record<string, string>
-) {
-  const workflowName = intent.suggestedHandler.name || 'unknown';
-  
-  // Add system message explaining what's happening
-  const enhancedMessages: Message[] = [
-    ...messages,
-    {
-      role: 'system',
-      content: `[Orchestrator: Routing to ${workflowName} workflow with confidence ${(intent.confidence * 100).toFixed(0)}%. Reason: ${intent.reasoning}]`
-    } as Message
-  ];
-  
-  // Get the workflow tool from registry
-  const allTools = toolRegistry.getAll();
-  const workflowTool = allTools[workflowName];
-  if (!workflowTool) {
-    console.warn(`[Orchestration] Workflow ${workflowName} not found, falling back`);
-    return handleOriginalRequest(messages, userId, headers);
-  }
-  
-  // Execute workflow with streaming
-  const result = await streamText({
-    model: openai('gpt-4-turbo'),
-    messages: enhancedMessages,
-    tools: { [workflowName]: workflowTool },
-    system: workflowSystemPrompt(workflowName, intent),
-    temperature: 0.7,
-    maxSteps: 1, // Workflow is a single tool call
-    experimental_toolCallStreaming: true,
-    onStepFinish: async ({ toolCalls, toolResults }) => {
-      logToolExecution(toolCalls, toolResults);
-    },
-  });
-  
-  const response = result.toDataStreamResponse();
-  Object.entries(headers).forEach(([key, value]) => {
-    response.headers.set(key, value);
-  });
-  
-  return response;
-}
-
-/**
- * Handle tool requests with specific tools
- */
-async function handleToolRequest(
-  messages: Message[],
-  intent: UserIntent,
-  userId: string,
-  headers: Record<string, string>
-) {
-  // Get specific tools needed
-  let tools;
-  if (intent.suggestedHandler.name) {
-    const allTools = toolRegistry.getAll();
-    const tool = allTools[intent.suggestedHandler.name];
-    if (tool) {
-      tools = { [intent.suggestedHandler.name]: tool };
-    } else {
-      // If specific tool not found, get all tools in the category
-      tools = toolRegistry.getByCategory(intent.subcategory || 'all');
-    }
-  } else {
-    // No specific tool, get all
-    tools = toolRegistry.getAll();
-  }
-  
-  const result = await streamText({
-    model: openai('gpt-4-turbo'),
-    messages,
-    tools,
-    system: toolSystemPrompt(intent.suggestedHandler.name, intent),
-    temperature: 0.7,
-    maxSteps: 5, // Allow multiple tool calls if needed
-    experimental_toolCallStreaming: true,
-    onStepFinish: async ({ toolCalls, toolResults }) => {
-      logToolExecution(toolCalls, toolResults);
-    },
-  });
-  
-  const response = result.toDataStreamResponse();
-  Object.entries(headers).forEach(([key, value]) => {
-    response.headers.set(key, value);
-  });
-  
-  return response;
-}
-
-/**
- * Handle direct conversation without tools
- */
-async function handleDirectResponse(
-  messages: Message[],
-  intent: UserIntent,
-  userId: string,
-  headers: Record<string, string>
-) {
-  // No tools needed, just conversation
-  const result = await streamText({
-    model: openai('gpt-4-turbo'),
-    messages,
-    system: conversationSystemPrompt(intent),
-    temperature: 0.7,
-  });
-  
-  const response = result.toDataStreamResponse();
-  Object.entries(headers).forEach(([key, value]) => {
-    response.headers.set(key, value);
-  });
-  
-  return response;
-}
-
-/**
- * Fallback to original request handling
- */
-async function handleOriginalRequest(
-  messages: Message[],
-  userId: string,
-  headers: Record<string, string>
-) {
-  console.log('[Orchestration] Using original request handling');
-  
-  // Get all tools from registry
-  const tools = toolRegistry.getAll();
-  
-  const result = await streamText({
-    model: openai('gpt-4-turbo'),
-    messages,
-    tools,
-    maxSteps: 5,
-    system: originalSystemPrompt,
-    temperature: 0.7,
-    experimental_toolCallStreaming: true,
-    onStepFinish: async ({ toolCalls, toolResults }) => {
-      logToolExecution(toolCalls, toolResults);
-    },
-  });
-  
-  const response = result.toDataStreamResponse();
-  Object.entries(headers).forEach(([key, value]) => {
-    response.headers.set(key, value);
-  });
-  
-  return response;
-}
-
-/**
- * Log tool execution for debugging
- */
-function logToolExecution(
-  toolCalls: Array<{ toolName?: string; args?: unknown }> | undefined,
-  toolResults: Array<{ toolName?: string; result?: unknown }> | undefined
-) {
-  if (toolCalls && toolCalls.length > 0) {
-    console.log('[Chat API] Tools executed:', toolCalls.map((tc) => ({
-      name: tc.toolName,
-      args: tc.args
-    })));
-  }
-  
-  if (toolResults && toolResults.length > 0) {
-    console.log('[Chat API] Tool results:', toolResults.map((tr) => {
-      // Validate structured responses
-      if (tr.result && typeof tr.result === 'object') {
-        try {
-          universalToolResponseSchema.parse(tr.result);
-          console.log('[Chat API] Valid structured response from:', tr.toolName);
-        } catch {
-          console.warn('[Chat API] Tool returned non-structured response:', tr.toolName);
-        }
-      }
-      
-      return {
-        toolName: tr.toolName,
-        result: tr.result
-      };
-    }));
-  }
-}
-
 export async function OPTIONS() {
   return new Response(null, {
     status: 200,
@@ -596,4 +352,4 @@ export async function OPTIONS() {
       'Access-Control-Allow-Credentials': 'true',
     },
   });
-}
+} 

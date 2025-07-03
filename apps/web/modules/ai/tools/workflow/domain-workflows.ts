@@ -5,9 +5,9 @@ import { getCurrentUserId } from '../utils/helpers';
 import { storeProposedChanges } from '../utils/helpers';
 import { createPersistentWorkflow } from '@/modules/workflows/utils/workflow-persistence';
 import { createAdaptiveSchedulingWorkflow } from '@/modules/workflows/graphs/adaptiveScheduling';
-// import { createEmailManagementWorkflow } from '@/modules/workflows/graphs/emailManagement';
-// import { createTaskIntelligenceWorkflow } from '@/modules/workflows/graphs/taskIntelligence';
-// import { createCalendarOptimizationWorkflow } from '@/modules/workflows/graphs/calendarOptimization';
+import { createEmailManagementWorkflow } from '@/modules/workflows/graphs/emailManagement';
+import { createTaskIntelligenceWorkflow } from '@/modules/workflows/graphs/taskIntelligence';
+import { createCalendarOptimizationWorkflow } from '@/modules/workflows/graphs/calendarOptimization';
 import { format } from 'date-fns';
 import type { UniversalToolResponse } from '../../schemas/universal.schema';
 
@@ -183,40 +183,86 @@ export const optimizeSchedule = tool({
   },
 });
 
-/*
 export const triageEmails = tool({
   description: "Analyze and batch emails for efficient processing",
   parameters: z.object({
     includeBacklog: z.boolean().default(true),
-    maxMinutes: z.number().optional(),
+    maxMinutes: z.number().optional().describe("Maximum processing time in minutes"),
   }),
-  execute: async ({ includeBacklog, maxMinutes }) => {
+  execute: async ({ includeBacklog, maxMinutes }): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'triageEmails',
+      operation: 'execute' as const,
+      resourceType: 'workflow' as const,
+      startTime,
+    };
+    
     try {
+      const userId = await getCurrentUserId();
       const workflow = createPersistentWorkflow(
         createEmailManagementWorkflow(),
         'email_management'
       );
       
       const result = await workflow.invoke({
-        userId: await getCurrentUserId(),
+        userId,
         includeBacklog,
         maxProcessingTime: maxMinutes,
+        intent: null,
+        ragContext: null,
+        data: {},
+        proposedChanges: [],
+        insights: [],
       });
       
-      return buildToolResponse({
-        success: true,
-        data: {
+      const confirmationId = crypto.randomUUID();
+      await storeProposedChanges(confirmationId, result.proposedChanges);
+      
+      return buildToolResponse(
+        toolOptions,
+        {
           batches: result.data.emailBatches,
           insights: result.insights,
           proposedBlocks: result.proposedChanges.filter(c => c.type === "create"),
+          proposedChanges: result.proposedChanges,
         },
-        display: {
-          type: 'email',
-          content: result.data.emailBatches,
+        {
+          type: 'list',
+          title: 'Email Triage Results',
+          description: `Analyzed ${result.data.emailBatches?.length || 0} email batches`,
+          priority: 'medium',
+          components: result.data.emailBatches?.map((batch: any) => ({
+            type: 'emailBatch',
+            data: batch,
+          })) || [],
+        },
+        {
+          confirmationRequired: result.proposedChanges.length > 0,
+          confirmationId: result.proposedChanges.length > 0 ? confirmationId : undefined,
+          suggestions: result.nextSteps || ['Process urgent emails', 'Schedule email blocks'],
+          actions: result.proposedChanges.length > 0 ? [{
+            id: 'apply-changes',
+            label: 'Apply Email Organization',
+            icon: 'check',
+            variant: 'primary',
+            action: {
+              type: 'tool',
+              tool: 'confirmProposal',
+              params: { confirmationId },
+            },
+          }] : [],
         }
-      });
+      );
     } catch (error) {
-      return buildErrorResponse('EMAIL_TRIAGE_FAILED', error.message);
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Email Triage Failed',
+          description: error instanceof Error ? error.message : 'Unknown error',
+        }
+      );
     }
   },
 });

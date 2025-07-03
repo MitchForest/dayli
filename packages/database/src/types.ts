@@ -36,101 +36,71 @@ export type Database = {
         }
         Relationships: []
       }
-      email_backlog: {
-        Row: {
-          created_at: string | null
-          days_in_backlog: number | null
-          email_id: string
-          from_email: string
-          id: string
-          importance: string | null
-          last_reviewed_at: string | null
-          snippet: string | null
-          subject: string
-          urgency: string | null
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          days_in_backlog?: number | null
-          email_id: string
-          from_email: string
-          id?: string
-          importance?: string | null
-          last_reviewed_at?: string | null
-          snippet?: string | null
-          subject: string
-          urgency?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          days_in_backlog?: number | null
-          email_id?: string
-          from_email?: string
-          id?: string
-          importance?: string | null
-          last_reviewed_at?: string | null
-          snippet?: string | null
-          subject?: string
-          urgency?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
       emails: {
         Row: {
           action_type: string | null
           body_preview: string | null
           created_at: string | null
+          days_in_backlog: number | null
           decision: string | null
           from_email: string
           from_name: string | null
           full_body: string | null
           gmail_id: string | null
           id: string
+          importance: string | null
           is_read: boolean | null
           metadata: Json | null
           processed_at: string | null
           received_at: string
+          status: string | null
           subject: string
           updated_at: string | null
+          urgency: string | null
           user_id: string
         }
         Insert: {
           action_type?: string | null
           body_preview?: string | null
           created_at?: string | null
+          days_in_backlog?: number | null
           decision?: string | null
           from_email: string
           from_name?: string | null
           full_body?: string | null
           gmail_id?: string | null
           id?: string
+          importance?: string | null
           is_read?: boolean | null
           metadata?: Json | null
           processed_at?: string | null
           received_at: string
+          status?: string | null
           subject: string
           updated_at?: string | null
+          urgency?: string | null
           user_id: string
         }
         Update: {
           action_type?: string | null
           body_preview?: string | null
           created_at?: string | null
+          days_in_backlog?: number | null
           decision?: string | null
           from_email?: string
           from_name?: string | null
           full_body?: string | null
           gmail_id?: string | null
           id?: string
+          importance?: string | null
           is_read?: boolean | null
           metadata?: Json | null
           processed_at?: string | null
           received_at?: string
+          status?: string | null
           subject?: string
           updated_at?: string | null
+          urgency?: string | null
           user_id?: string
         }
         Relationships: []
@@ -192,98 +162,72 @@ export type Database = {
         }
         Relationships: []
       }
-      task_backlog: {
-        Row: {
-          created_at: string | null
-          deferred_until: string | null
-          description: string | null
-          estimated_minutes: number | null
-          id: string
-          priority: number | null
-          source: string | null
-          source_id: string | null
-          tags: string[] | null
-          title: string
-          updated_at: string | null
-          urgency: number | null
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          deferred_until?: string | null
-          description?: string | null
-          estimated_minutes?: number | null
-          id?: string
-          priority?: number | null
-          source?: string | null
-          source_id?: string | null
-          tags?: string[] | null
-          title: string
-          updated_at?: string | null
-          urgency?: number | null
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          deferred_until?: string | null
-          description?: string | null
-          estimated_minutes?: number | null
-          id?: string
-          priority?: number | null
-          source?: string | null
-          source_id?: string | null
-          tags?: string[] | null
-          title?: string
-          updated_at?: string | null
-          urgency?: number | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
       tasks: {
         Row: {
           completed: boolean | null
           created_at: string | null
+          days_in_backlog: number | null
           description: string | null
           email_id: string | null
           estimated_minutes: number | null
           id: string
           priority: string | null
+          score: number | null
           source: string | null
+          source_id: string | null
           status: string | null
+          tags: string[] | null
           title: string
           updated_at: string | null
+          urgency: number | null
           user_id: string
         }
         Insert: {
           completed?: boolean | null
           created_at?: string | null
+          days_in_backlog?: number | null
           description?: string | null
           email_id?: string | null
           estimated_minutes?: number | null
           id?: string
           priority?: string | null
+          score?: number | null
           source?: string | null
+          source_id?: string | null
           status?: string | null
+          tags?: string[] | null
           title: string
           updated_at?: string | null
+          urgency?: number | null
           user_id: string
         }
         Update: {
           completed?: boolean | null
           created_at?: string | null
+          days_in_backlog?: number | null
           description?: string | null
           email_id?: string | null
           estimated_minutes?: number | null
           id?: string
           priority?: string | null
+          score?: number | null
           source?: string | null
+          source_id?: string | null
           status?: string | null
+          tags?: string[] | null
           title?: string
           updated_at?: string | null
+          urgency?: number | null
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tasks_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "email_backlog"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tasks_email_id_fkey"
             columns: ["email_id"]
@@ -293,79 +237,17 @@ export type Database = {
           },
         ]
       }
-      time_block_emails: {
-        Row: {
-          email_id: string
-          position: number | null
-          time_block_id: string
-        }
-        Insert: {
-          email_id: string
-          position?: number | null
-          time_block_id: string
-        }
-        Update: {
-          email_id?: string
-          position?: number | null
-          time_block_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "time_block_emails_email_id_fkey"
-            columns: ["email_id"]
-            isOneToOne: false
-            referencedRelation: "emails"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "time_block_emails_time_block_id_fkey"
-            columns: ["time_block_id"]
-            isOneToOne: false
-            referencedRelation: "time_blocks"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      time_block_tasks: {
-        Row: {
-          position: number | null
-          task_id: string
-          time_block_id: string
-        }
-        Insert: {
-          position?: number | null
-          task_id: string
-          time_block_id: string
-        }
-        Update: {
-          position?: number | null
-          task_id?: string
-          time_block_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "time_block_tasks_task_id_fkey"
-            columns: ["task_id"]
-            isOneToOne: false
-            referencedRelation: "tasks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "time_block_tasks_time_block_id_fkey"
-            columns: ["time_block_id"]
-            isOneToOne: false
-            referencedRelation: "time_blocks"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       time_blocks: {
         Row: {
+          assigned_emails: Json | null
+          assigned_tasks: Json | null
           calendar_event_id: string | null
+          conflict_group: number | null
           created_at: string | null
           daily_schedule_id: string | null
           description: string | null
           end_time: string
+          energy_level: string | null
           id: string
           metadata: Json | null
           source: string | null
@@ -376,11 +258,15 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          assigned_emails?: Json | null
+          assigned_tasks?: Json | null
           calendar_event_id?: string | null
+          conflict_group?: number | null
           created_at?: string | null
           daily_schedule_id?: string | null
           description?: string | null
           end_time: string
+          energy_level?: string | null
           id?: string
           metadata?: Json | null
           source?: string | null
@@ -391,11 +277,15 @@ export type Database = {
           user_id: string
         }
         Update: {
+          assigned_emails?: Json | null
+          assigned_tasks?: Json | null
           calendar_event_id?: string | null
+          conflict_group?: number | null
           created_at?: string | null
           daily_schedule_id?: string | null
           description?: string | null
           end_time?: string
+          energy_level?: string | null
           id?: string
           metadata?: Json | null
           source?: string | null
@@ -535,14 +425,169 @@ export type Database = {
         }
         Relationships: []
       }
+      workflow_states: {
+        Row: {
+          created_at: string | null
+          current_node: string | null
+          error: string | null
+          expires_at: string | null
+          id: string
+          state: Json
+          status: string | null
+          type: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_node?: string | null
+          error?: string | null
+          expires_at?: string | null
+          id?: string
+          state?: Json
+          status?: string | null
+          type?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_node?: string | null
+          error?: string | null
+          expires_at?: string | null
+          id?: string
+          state?: Json
+          status?: string | null
+          type?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      email_backlog: {
+        Row: {
+          created_at: string | null
+          days_in_backlog: number | null
+          email_id: string | null
+          from_email: string | null
+          id: string | null
+          importance: string | null
+          snippet: string | null
+          subject: string | null
+          updated_at: string | null
+          urgency: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          days_in_backlog?: number | null
+          email_id?: string | null
+          from_email?: string | null
+          id?: string | null
+          importance?: string | null
+          snippet?: string | null
+          subject?: string | null
+          updated_at?: string | null
+          urgency?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          days_in_backlog?: number | null
+          email_id?: string | null
+          from_email?: string | null
+          id?: string | null
+          importance?: string | null
+          snippet?: string | null
+          subject?: string | null
+          updated_at?: string | null
+          urgency?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      task_backlog: {
+        Row: {
+          created_at: string | null
+          days_in_backlog: number | null
+          description: string | null
+          estimated_minutes: number | null
+          id: string | null
+          priority: number | null
+          source: string | null
+          source_id: string | null
+          status: string | null
+          tags: string[] | null
+          title: string | null
+          updated_at: string | null
+          urgency: number | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          days_in_backlog?: number | null
+          description?: string | null
+          estimated_minutes?: number | null
+          id?: string | null
+          priority?: never
+          source?: string | null
+          source_id?: string | null
+          status?: string | null
+          tags?: string[] | null
+          title?: string | null
+          updated_at?: string | null
+          urgency?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          days_in_backlog?: number | null
+          description?: string | null
+          estimated_minutes?: number | null
+          id?: string | null
+          priority?: never
+          source?: string | null
+          source_id?: string | null
+          status?: string | null
+          tags?: string[] | null
+          title?: string | null
+          updated_at?: string | null
+          urgency?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      time_block_emails: {
+        Row: {
+          created_at: string | null
+          email_id: string | null
+          position: number | null
+          time_block_id: string | null
+          updated_at: string | null
+        }
+        Relationships: []
+      }
+      time_block_tasks: {
+        Row: {
+          created_at: string | null
+          position: number | null
+          task_id: string | null
+          time_block_id: string | null
+          updated_at: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       binary_quantize: {
         Args: { "": string } | { "": unknown }
         Returns: unknown
+      }
+      cleanup_expired_workflows: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       get_mock_patterns: {
         Args: { p_user_id: string }
@@ -611,6 +656,18 @@ export type Database = {
       sparsevec_typmod_in: {
         Args: { "": unknown[] }
         Returns: number
+      }
+      task_backlog_summary: {
+        Args: { p_user_id: string }
+        Returns: {
+          total_tasks: number
+          high_priority_count: number
+          medium_priority_count: number
+          low_priority_count: number
+          avg_days_in_backlog: number
+          stale_tasks_count: number
+          categories: Json
+        }[]
       }
       vector_avg: {
         Args: { "": number[] }

@@ -5,7 +5,6 @@ import { type TimeBlock, type ScheduleChange } from '../../schemas/schedule.sche
 import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatTimeRange } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
-import { ensureServicesConfigured } from '../utils/auth';
 import { toMilitaryTime, findBlockByFlexibleDescription, getSimilarBlockSuggestions } from '../../utils/time-parser';
 
 // Helper to calculate end time based on duration
@@ -37,9 +36,6 @@ export const moveTimeBlock = tool({
     };
     
     try {
-      // Ensure services are configured before proceeding
-      await ensureServicesConfigured();
-      
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       
