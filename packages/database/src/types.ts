@@ -225,13 +225,6 @@ export type Database = {
             foreignKeyName: "tasks_email_id_fkey"
             columns: ["email_id"]
             isOneToOne: false
-            referencedRelation: "email_backlog"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "tasks_email_id_fkey"
-            columns: ["email_id"]
-            isOneToOne: false
             referencedRelation: "emails"
             referencedColumns: ["id"]
           },
@@ -466,119 +459,7 @@ export type Database = {
       }
     }
     Views: {
-      email_backlog: {
-        Row: {
-          created_at: string | null
-          days_in_backlog: number | null
-          email_id: string | null
-          from_email: string | null
-          id: string | null
-          importance: string | null
-          snippet: string | null
-          subject: string | null
-          updated_at: string | null
-          urgency: string | null
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          days_in_backlog?: number | null
-          email_id?: string | null
-          from_email?: string | null
-          id?: string | null
-          importance?: string | null
-          snippet?: string | null
-          subject?: string | null
-          updated_at?: string | null
-          urgency?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          days_in_backlog?: number | null
-          email_id?: string | null
-          from_email?: string | null
-          id?: string | null
-          importance?: string | null
-          snippet?: string | null
-          subject?: string | null
-          updated_at?: string | null
-          urgency?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-      task_backlog: {
-        Row: {
-          created_at: string | null
-          days_in_backlog: number | null
-          description: string | null
-          estimated_minutes: number | null
-          id: string | null
-          priority: number | null
-          source: string | null
-          source_id: string | null
-          status: string | null
-          tags: string[] | null
-          title: string | null
-          updated_at: string | null
-          urgency: number | null
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          days_in_backlog?: number | null
-          description?: string | null
-          estimated_minutes?: number | null
-          id?: string | null
-          priority?: never
-          source?: string | null
-          source_id?: string | null
-          status?: string | null
-          tags?: string[] | null
-          title?: string | null
-          updated_at?: string | null
-          urgency?: number | null
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          days_in_backlog?: number | null
-          description?: string | null
-          estimated_minutes?: number | null
-          id?: string | null
-          priority?: never
-          source?: string | null
-          source_id?: string | null
-          status?: string | null
-          tags?: string[] | null
-          title?: string | null
-          updated_at?: string | null
-          urgency?: number | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-      time_block_emails: {
-        Row: {
-          created_at: string | null
-          email_id: string | null
-          position: number | null
-          time_block_id: string | null
-          updated_at: string | null
-        }
-        Relationships: []
-      }
-      time_block_tasks: {
-        Row: {
-          created_at: string | null
-          position: number | null
-          task_id: string | null
-          time_block_id: string | null
-          updated_at: string | null
-        }
-        Relationships: []
-      }
+      [_ in never]: never
     }
     Functions: {
       binary_quantize: {

@@ -434,14 +434,14 @@ async function handleMockData() {
         
         // Update tasks to remove block assignments
         await supabase.from('tasks').update({ assigned_to_block_id: null }).in('assigned_to_block_id', timeBlockIds);
-        await supabase.from('time_block_emails').delete().in('time_block_id', timeBlockIds);
+        // Note: time_block_emails is now handled via JSONB columns in time_blocks table
       }
       
       await supabase.from('time_blocks').delete().eq('user_id', userId);
       await supabase.from('daily_schedules').delete().eq('user_id', userId);
       await supabase.from('tasks').delete().eq('user_id', userId);
       await supabase.from('emails').delete().eq('user_id', userId);
-      // Note: task_backlog and email_backlog are now views, data is in main tables
+      // All data is consolidated in main tables (tasks and emails)
       
       console.log('✅ All mock data cleared successfully');
       return;
@@ -507,9 +507,7 @@ async function handleMockData() {
         status,
         urgency,
         tags: index < 10 ? ['important'] : index < 20 ? ['routine'] : ['low-priority'],
-        metadata: {
-          days_in_backlog: status === 'backlog' ? Math.floor(Math.random() * 10) : 0,
-        },
+        days_in_backlog: status === 'backlog' ? Math.floor(Math.random() * 10) : 0,
       } as TaskInsert;
     });
     

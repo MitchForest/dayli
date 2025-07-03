@@ -320,76 +320,107 @@ interface SchedulingState {
   emails: EmailWithUrgency[];
   preferences: UserPreferences;
   analysis: ScheduleAnalysis;
-  strategy: SchedulingStrategy;
+  strategy: 'full' | 'optimize' | 'partial' | 'minimal';
   proposedChanges: ScheduleChange[];
-  validationResult: ValidationResult;
 }
 
-// Workflow nodes
-const workflow = new StateGraph<SchedulingState>({
-  channels: { /* state definition */ }
-});
-
-workflow.addNode("fetchScheduleData", fetchDataNode);
-workflow.addNode("analyzeScheduleState", analyzeStateNode);
-workflow.addNode("determineStrategy", strategyNode);
-workflow.addNode("executeStrategy", executeNode);
-workflow.addNode("validateChanges", validateNode);
-
-// Conditional routing based on analysis
+// Workflow intelligently routes based on schedule state
 workflow.addConditionalEdges(
   "determineStrategy",
   (state) => state.strategy,
   {
-    full: "fullPlanningNode",
-    optimize: "optimizationNode",
-    partial: "partialFillNode",
-    minimal: "minimalAdjustNode"
+    full: "fullPlanningNode",      // Empty schedule
+    optimize: "optimizationNode",   // Inefficient schedule
+    partial: "partialFillNode",     // Some gaps
+    minimal: "minimalAdjustNode"    // Nearly full
   }
 );
 ```
 
-**All 4 Workflows:**
-1. **Adaptive Scheduling**: Intelligently plans or reorganizes daily schedules
-2. **Email Management**: 2D triage with importance × urgency analysis
-3. **Task Intelligence**: Context-aware scoring and prioritization
-4. **Calendar Optimization**: Meeting consolidation and conflict resolution
+**Key Innovations:**
+- **Smart Strategy Selection**: Analyzes schedule density and inefficiencies
+- **RAG Enhancement**: Every decision informed by user patterns
+- **Atomic Changes**: All modifications as discrete, revertable operations
 
-### RAG Integration: Continuous Learning
-
-Our RAG system provides personalization through three layers:
+### 2. Email Management Workflow
+Two-dimensional analysis (importance × urgency) with intelligent batching:
 
 ```typescript
-// Three-layer context system
-interface RAGContext {
-  // Layer 1: Immediate Context (Real-time)
-  currentSchedule: TimeBlock[];
-  recentActions: Action[];
-  timeOfDay: string;
-  
-  // Layer 2: Historical Patterns (Embedded)
-  patterns: Pattern[]; // "User prefers meetings after 10am"
-  decisions: Decision[]; // Past scheduling choices
-  
-  // Layer 3: Extracted Insights (Learned)
-  insights: Insight[]; // "Takes breaks every 90 minutes"
-  constraints: Constraint[]; // "No meetings before 9am"
+// The 2D analysis matrix
+const actionMatrix = {
+  'important_urgent': 'morning_focus',
+  'important_can_wait': 'afternoon_block',
+  'important_no_response': 'archive',
+  'not_important_urgent': 'quick_batch',
+  'not_important_can_wait': 'tomorrow',
+  'archive_*': 'auto_archive'
+};
+
+// Smart batching creates time-boxed blocks
+emailBatches: [
+  { type: 'morning_focus', emails: [...], totalTime: 45, slot: '9:00 AM' },
+  { type: 'quick_batch', emails: [...], totalTime: 15, slot: '2:00 PM' }
+]
+```
+
+### 3. Task Intelligence Workflow
+Context-aware task scoring with multiple factors:
+
+```typescript
+// Sophisticated scoring algorithm
+score = basePriority + ageFactor + energyMatch + timeOptimization + ragBoost + deadlineUrgency;
+
+// Produces ranked tasks with reasoning
+{
+  task: "API Refactor",
+  score: 85,
+  reasoning: "High priority + morning energy match + similar past success",
+  confidence: 0.92
 }
+```
+
+### 4. Calendar Optimization Workflow
+Intelligent conflict resolution and meeting consolidation:
+
+```typescript
+// Detects various meeting inefficiencies
+- Overlapping meetings with severity scoring
+- Back-to-back without breaks
+- Meeting clustering opportunities
+- Low-value recurring meetings
+
+// Generates smart resolutions based on:
+- Meeting importance scores
+- Attendee flexibility
+- User's preferred meeting times (from RAG)
+```
+
+### The RAG Learning System in Detail
+
+Our RAG system continuously learns and adapts:
+
+```typescript
+// Three-layer context retrieval
+const context = await ragService.getContext(userId, query, {
+  includePatterns: true,    // "User prefers lunch at 11:30"
+  includeRecent: true,      // Last 7 days of decisions
+  includeSimilar: true      // Vector similarity search
+});
 
 // Learning from rejections
-async function learnFromRejection(rejection: Rejection) {
-  const pattern = await extractPattern(rejection);
-  await ragService.storeContext({
-    userId: rejection.userId,
-    type: 'constraint',
-    content: pattern.description,
-    embedding: await generateEmbedding(pattern),
-    metadata: {
-      confidence: pattern.confidence,
-      source: 'user_rejection'
-    }
-  });
-}
+When user rejects: "Schedule meeting at 8am"
+System learns: "No meetings before 9am"
+Future behavior: All meeting suggestions start at 9am+
+```
+
+### Workflow Persistence & Resumability
+
+Every workflow can be interrupted and resumed:
+
+```typescript
+// Workflows save state after each node
+// Can resume from any point within 24 hours
+// Failed workflows can be retried with modified parameters
 ```
 
 ### UniversalToolResponse: Consistent UI Rendering
@@ -464,6 +495,18 @@ interface UniversalToolResponse {
 - Circuit breakers prevent cascade failures
 - Graceful degradation to simpler operations
 
+### How It All Works Together
+
+1. **User Input** → "Plan my day with focus on deep work"
+2. **Orchestration Layer** → Classifies intent, injects RAG context
+3. **Routing Decision** → High complexity → Adaptive Scheduling Workflow
+4. **Workflow Execution** → 5 nodes process state with conditional routing
+5. **RAG Enhancement** → "User prefers morning deep work" influences decisions
+6. **Response Generation** → UniversalToolResponse with rich UI components
+7. **Learning** → Stores decisions for future personalization
+
+For complete technical details on all workflows, see the [AI System Reference](.pm/epics/epic-4/AI-SYSTEM-REFERENCE.md).
+
 ## Design Decisions That Matter
 
 ### No Manual Controls
@@ -517,530 +560,41 @@ const schedule = await scheduleService.getScheduleForDate(date);
 
 This enables rapid development, testing, and demos without external dependencies.
 
-### Tool-Based AI Architecture
-Instead of hard-coded actions, everything is a tool the AI can use:
+### Multi-Layer Intelligence
+The system's strength lies in how these pieces work together:
+- **Orchestration Layer**: Intelligent routing based on intent
+- **Tool Layer**: Focused, atomic operations
+- **Workflow Layer**: Complex multi-step processes
+- **RAG Layer**: Continuous personalization
 
-```typescript
-const tools = {
-  createTimeBlock,    // "Schedule a 2-hour focus block at 9am"
-  moveTimeBlock,      // "Move my meeting to 3pm"
-  deleteTimeBlock,    // "Cancel my afternoon email time"
-  assignTaskToBlock,  // "Add budget review to morning focus"
-  scheduleDay,        // "Plan my day" (triggers full workflow)
-};
-```
-
-### Multi-Layer RAG Context
-We don't just store data - we store understanding:
-
-1. **Pattern Layer**: Long-term behaviors ("usually takes lunch at 11:30")
-2. **Recent Layer**: Last 7 days of decisions  
-3. **Similar Layer**: Past situations with similar context
-
-This allows queries like "What should I work on?" to consider your current state, recent patterns, and similar past situations.
-
-## How the Workflows Actually Work
-
-### Understanding LangGraph Workflows
-
-Each workflow is a state machine with nodes (processing steps) and edges (transitions). Here's how they work in detail:
-
-### 1. Adaptive Scheduling Workflow
-The most complex workflow that intelligently plans your day:
-
-```typescript
-// State definition - what flows through the workflow
-interface SchedulingState {
-  userId: string;
-  date: string;
-  currentSchedule: TimeBlock[];
-  unassignedTasks: Task[];
-  taskBacklog: Task[];
-  userPreferences: UserPreferences;
-  ragContext?: RAGContext;
-  strategy?: 'full' | 'partial' | 'optimize' | 'task_only';
-  proposedChanges: ScheduleChange[];
-  inefficiencies?: Inefficiency[];
-  messages: BaseMessage[];
-}
-
-// Workflow definition
-const workflow = new StateGraph<SchedulingState>({
-  channels: {
-    // Define all state properties
-    userId: null,
-    currentSchedule: null,
-    // ... etc
-  }
-});
-
-// Node implementation example
-async function determineStrategyNode(state: SchedulingState) {
-  // Rule-based strategy selection
-  if (state.currentSchedule.length === 0) {
-    return { strategy: "full" };
-  }
-  
-  if (state.inefficiencies.length > 2) {
-    return { strategy: "optimize" };
-  }
-  
-  // Fall back to LLM for complex cases
-  const prompt = `Given schedule density ${state.currentSchedule.length} 
-    and ${state.unassignedTasks.length} tasks, choose strategy...`;
-  
-  const strategy = await llm.invoke(prompt);
-  return { strategy };
-}
-
-// Conditional routing
-workflow.addConditionalEdges(
-  "determineStrategy",
-  (state) => state.strategy,
-  {
-    full: "fullPlanningNode",
-    partial: "partialFillNode",
-    optimize: "optimizationNode",
-    task_only: "taskAssignmentNode"
-  }
-);
-```
-
-**Key Innovations:**
-- **Smart Strategy Selection**: Combines rules + LLM for routing
-- **Inefficiency Detection**: Finds gaps, fragmentation, poor timing
-- **RAG Enhancement**: Every decision informed by user patterns
-- **Atomic Changes**: All modifications as discrete, revertable operations
-
-### 2. Email Triage Workflow
-Two-dimensional analysis (importance × urgency) with intelligent batching:
-
-```typescript
-interface EmailManagementState {
-  emails: Email[];
-  backlogEmails: EmailBacklog[];
-  analyzedEmails: AnalyzedEmail[];
-  emailBatches: EmailBatch[];
-  proposedBlocks: ScheduleBlock[];
-}
-
-// The 2D analysis node
-async function analyzeEmailsNode(state: EmailManagementState) {
-  const model = new ChatOpenAI({ temperature: 0 });
-  
-  // Batch analysis for efficiency
-  const prompt = `Analyze these emails on two dimensions:
-    Importance: important | not_important | archive
-    Urgency: urgent | can_wait | no_response
-    
-    Consider:
-    - Sender relationship (boss, client, newsletter)
-    - Subject keywords (urgent, FYI, action required)
-    - Content preview
-    - Historical patterns from RAG
-    
-    ${state.emails.map(e => formatEmail(e)).join('\n')}`;
-  
-  const analysis = await model.invoke(prompt);
-  
-  // Create action matrix
-  return {
-    analyzedEmails: emails.map(email => ({
-      ...email,
-      importance: analysis[email.id].importance,
-      urgency: analysis[email.id].urgency,
-      suggestedAction: determineAction(importance, urgency),
-      estimatedResponseTime: estimateTime(email)
-    }))
-  };
-}
-
-// Smart batching based on type
-function batchByStrategyNode(state: EmailManagementState) {
-  const batches = {
-    important_urgent: [],      // Morning focus
-    quick_replies: [],         // 15-min batch
-    thoughtful_responses: [],  // Afternoon block
-    can_wait: [],             // Tomorrow
-    archive: []               // Auto-archive
-  };
-  
-  // Group by action type
-  state.analyzedEmails.forEach(email => {
-    const key = `${email.importance}_${email.urgency}`;
-    batches[actionMatrix[key]].push(email);
-  });
-  
-  // Create time-boxed blocks
-  return {
-    emailBatches: Object.entries(batches)
-      .filter(([_, emails]) => emails.length > 0)
-      .map(([type, emails]) => ({
-        type,
-        emails,
-        totalTime: emails.reduce((sum, e) => sum + e.estimatedResponseTime, 0),
-        suggestedTimeSlot: getOptimalSlot(type, state.ragContext)
-      }))
-  };
-}
-```
-
-### 3. Task Management Workflow
-Context-aware task scoring and recommendation:
-
-```typescript
-// Sophisticated scoring algorithm
-async function scoreTasksNode(state: TaskManagementState) {
-  const scoredTasks = state.tasks.map(task => {
-    let score = 0;
-    
-    // Base priority score
-    score += priorityScores[task.priority]; // high: 100, medium: 50, low: 25
-    
-    // Age factor (Parkinson's Law prevention)
-    const ageInDays = daysSince(task.created_at);
-    score += Math.min(ageInDays * 5, 25); // Max 25 points for age
-    
-    // Energy matching
-    const energyMatch = calculateEnergyMatch(
-      task.estimated_minutes,
-      task.complexity,
-      state.currentEnergy
-    );
-    score += energyMatch * 20;
-    
-    // Time of day optimization
-    if (isOptimalTimeForTask(task.type, new Date())) {
-      score += 15;
-    }
-    
-    // RAG boost - similar successful completions
-    const similarSuccess = findSimilarCompletedTasks(
-      task,
-      state.ragContext.similarSituations
-    );
-    score += similarSuccess.length * 10;
-    
-    // Deadline proximity
-    if (task.deadline) {
-      const urgency = calculateUrgency(task.deadline);
-      score += urgency * 30;
-    }
-    
-    return {
-      ...task,
-      score,
-      reasoning: explainScore(score, factors),
-      confidence: calculateConfidence(factors)
-    };
-  });
-  
-  return { 
-    scoredTasks: scoredTasks.sort((a, b) => b.score - a.score)
-  };
-}
-```
-
-### 4. Calendar Management Workflow
-Intelligent conflict resolution and meeting optimization:
-
-```typescript
-// Conflict detection with severity analysis
-async function detectConflictsNode(state: CalendarManagementState) {
-  const conflicts = [];
-  
-  // Sort meetings chronologically
-  const sorted = [...state.meetings].sort(byStartTime);
-  
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const current = sorted[i];
-    const next = sorted[i + 1];
-    
-    const overlap = calculateOverlap(current, next);
-    
-    if (overlap > 0) {
-      conflicts.push({
-        meeting1: current,
-        meeting2: next,
-        overlapMinutes: overlap,
-        severity: categorizeSeverity(overlap, current, next),
-        suggestedResolution: await generateResolution(
-          current,
-          next,
-          state.ragContext
-        )
-      });
-    }
-    
-    // Also check for back-to-back without breaks
-    if (isBackToBack(current, next) && needsBreak(current, next)) {
-      conflicts.push({
-        type: 'no_break',
-        severity: 'medium',
-        suggestedResolution: 'Add 15-minute buffer'
-      });
-    }
-  }
-  
-  return { conflicts };
-}
-
-// Smart resolution based on meeting metadata
-async function resolveConflictsNode(state: CalendarManagementState) {
-  const resolutions = [];
-  
-  for (const conflict of state.conflicts) {
-    // Use meeting importance scores
-    const importance1 = scoreMeetingImportance(conflict.meeting1);
-    const importance2 = scoreMeetingImportance(conflict.meeting2);
-    
-    // Check flexibility
-    const flexibility1 = await checkFlexibility(conflict.meeting1);
-    const flexibility2 = await checkFlexibility(conflict.meeting2);
-    
-    // Generate resolution
-    if (flexibility2 > flexibility1) {
-      const newSlot = await findNextAvailableSlot(
-        conflict.meeting2,
-        state.ragContext.patterns // User's preferred meeting times
-      );
-      
-      resolutions.push({
-        action: 'reschedule',
-        meeting: conflict.meeting2,
-        newTime: newSlot,
-        reason: 'Lower priority and more flexible'
-      });
-    }
-  }
-  
-  return { proposedChanges: resolutions };
-}
-```
-
-### 5. Daily Review Workflow
-Learning and pattern extraction:
-
-```typescript
-// Extract patterns from today's activities
-async function extractTodayPatternsNode(state: DailyReviewState) {
-  const patterns = [];
-  
-  // 1. Schedule adherence analysis
-  const planned = state.todaySchedule.filter(b => b.planned);
-  const actual = state.todaySchedule.filter(b => b.actual);
-  
-  const adherence = calculateAdherence(planned, actual);
-  
-  if (adherence < 0.7) {
-    patterns.push({
-      type: 'behavior',
-      description: 'Frequent schedule deviations',
-      confidence: 0.9,
-      actionable: true,
-      suggestion: 'Build in more buffer time'
-    });
-  }
-  
-  // 2. Productivity patterns
-  const productivityByHour = analyzeProductivityByHour(
-    state.completedTasks,
-    state.todaySchedule
-  );
-  
-  const peakHours = findPeakProductivity(productivityByHour);
-  
-  patterns.push({
-    type: 'productivity',
-    description: `Peak productivity: ${peakHours.join(', ')}`,
-    confidence: calculateConfidence(productivityByHour),
-    actionable: true,
-    suggestion: 'Schedule important work during peak hours'
-  });
-  
-  // 3. Task completion patterns
-  const completionPatterns = analyzeTaskCompletion(
-    state.completedTasks,
-    state.incompleteTasks
-  );
-  
-  // 4. Meeting patterns
-  const meetingPatterns = analyzeMeetingBehavior(
-    state.todaySchedule.filter(b => b.type === 'meeting')
-  );
-  
-  return { patterns };
-}
-
-// Update RAG with learnings
-async function updateLearningsNode(state: DailyReviewState) {
-  const learningService = new LearningPatternsService();
-  
-  // Store high-confidence patterns
-  for (const pattern of state.patterns) {
-    if (pattern.confidence > 0.7 && pattern.actionable) {
-      await ragService.storeContext({
-        userId: state.userId,
-        type: 'pattern',
-        content: pattern.description,
-        metadata: {
-          date: state.date,
-          patternType: pattern.type,
-          confidence: pattern.confidence,
-          occurrences: pattern.occurrences || 1
-        }
-      });
-    }
-  }
-  
-  // Store daily summary for similarity search
-  const dailySummary = generateDailySummary(state);
-  
-  await ragService.storeContext({
-    userId: state.userId,
-    type: 'decision',
-    content: dailySummary,
-    metadata: {
-      date: state.date,
-      metrics: extractDailyMetrics(state)
-    }
-  });
-  
-  return { learningsStored: true };
-}
-```
-
-### The RAG Learning System in Detail
-
-```typescript
-// How RAG enhances every decision
-class ContextEnhancer {
-  async enhanceWorkflowState(
-    userId: string,
-    workflowType: string,
-    currentState: any
-  ) {
-    // Build semantic query
-    const query = this.buildContextQuery(workflowType, currentState);
-    
-    // Multi-layer retrieval
-    const context = await ragService.getContext(userId, query, {
-      includePatterns: true,    // Long-term behaviors
-      includeRecent: true,      // Last 7 days
-      includeSimilar: true      // Vector similarity
-    });
-    
-    // Enhance state with relevant context
-    return {
-      ...currentState,
-      ragContext: {
-        patterns: this.summarizePatterns(context.patterns),
-        recentDecisions: this.summarizeDecisions(context.recentDecisions),
-        similarSituations: this.summarizeSituations(context.similarSituations)
-      }
-    };
-  }
-}
-
-// Vector similarity search using pgvector
-CREATE FUNCTION search_similar_contexts(
-  query_embedding vector(1536),
-  match_user_id UUID,
-  match_count INT DEFAULT 10,
-  threshold FLOAT DEFAULT 0.7
-)
-RETURNS TABLE (
-  id UUID,
-  content TEXT,
-  similarity FLOAT
-)
-AS $$
-BEGIN
-  RETURN QUERY
-  SELECT 
-    id,
-    content,
-    1 - (embedding <=> query_embedding) AS similarity
-  FROM rag_context
-  WHERE user_id = match_user_id
-    AND 1 - (embedding <=> query_embedding) > threshold
-  ORDER BY embedding <=> query_embedding
-  LIMIT match_count;
-END;
-$$ LANGUAGE plpgsql;
-```
-
-### Workflow Persistence & Resumability
-
-```typescript
-// Every workflow can be interrupted and resumed
-export function createPersistentWorkflow<T>(
-  workflow: StateGraph<T>,
-  type: string
-): StateGraph<T> {
-  const workflowId = crypto.randomUUID();
-  
-  // Save state after each node
-  workflow.afterNode = async (nodeName: string, state: T) => {
-    await persistenceService.saveWorkflowState(workflowId, {
-      currentNode: nodeName,
-      state: state as any,
-      status: nodeName === END ? 'completed' : 'in_progress',
-    });
-  };
-  
-  // Handle errors gracefully
-  workflow.onError = async (error: Error, nodeName: string, state: T) => {
-    await persistenceService.saveWorkflowState(workflowId, {
-      status: 'failed',
-      error: error.message,
-      currentNode: nodeName,
-      state: state as any
-    });
-  };
-  
-  return workflow;
-}
-
-// Resume interrupted workflow
-async function resumeWorkflow(workflowId: string) {
-  const saved = await persistenceService.getWorkflowState(workflowId);
-  if (!saved) throw new Error('Workflow not found');
-  
-  const workflow = getWorkflowByType(saved.type);
-  return workflow.resume(saved.state, saved.currentNode);
-}
-```
+### Standardized Response Format
+All operations return `UniversalToolResponse` for consistent UI rendering, enabling rich components and interactive features without tight coupling between AI and UI layers.
 
 ## Current Implementation Status
 
-### ✅ What's Built & Working
-- Complete time-block UI with all block types
-- AI chat with streaming responses (Vercel AI SDK)
-- All CRUD tools for schedule manipulation
-- Service factory pattern (mock/real data switching)
-- Database schema with pgvector for embeddings
-- Multi-step AI operations with progress tracking
-- Basic mock data for all scenarios
+### ✅ What's Built & Working (Epic 4 - Sprint 4.1 Complete)
+- **25 Essential Tools**: All CRUD operations consolidated and enhanced
+- **UniversalToolResponse**: Standardized response format for UI consistency
+- **Service Factory Pattern**: Mock/real data switching
+- **Database Schema**: Consolidated tables with pgvector
+- **AI Chat Interface**: Streaming responses with tool execution
+- **Tool Registry**: Auto-discovery and registration
+- **Time Block UI**: Complete with all block types
 
-### 🚧 In Active Development (Epic 3)
-- **Sprint 03.01**: ✅ Core AI tools implementation
-- **Sprint 03.02**: 🚧 Adaptive scheduling workflow (LangGraph)
-- **Sprint 03.03**: 📅 Email triage workflow (LangGraph)
-- **Sprint 03.04**: 📅 RAG system implementation
-- **Sprint 03.05**: 📅 Gmail & Calendar API integration
-- **Sprint 03.06**: 📅 Change preview & polish
+### 🚧 In Active Development (Epic 4 - Sprint 4.2)
+- **Orchestration Layer**: Intent classification and routing
+- **Multi-step Execution**: Complex operations with progress
+- **Context Builder**: RAG integration preparation
 
-### 📋 All LangGraph Workflows (5 Total)
-1. **Adaptive Scheduling** - Intelligent daily planning
-2. **Email Triage** - 2D importance/urgency analysis
-3. **Task Prioritization** - Smart task selection based on context
-4. **Schedule Optimization** - Non-destructive improvements
-5. **Daily Review** - Learning and tomorrow preparation
+### 📋 Upcoming Sprints
+- **Sprint 4.3**: Domain Workflows (4 LangGraph workflows)
+- **Sprint 4.4**: RAG & Learning System
+- **Sprint 4.5**: UI Enhancement (Rich components)
+- **Sprint 4.6**: Integration & Polish
 
 ### 🔮 Not Yet Implemented
-- Slack integration
-- Voice commands  
+- Gmail & Calendar API integration
+- Voice commands
 - Mobile app
 - Team features
 
@@ -1125,13 +679,28 @@ You: "How did I do today?"
 AI: "You completed 5 of 6 planned tasks. The API refactor was moved to tomorrow's morning block. All urgent emails were handled. Your focus time was 4.5 hours - above your average. See you tomorrow!"
 ```
 
+## The Stack
+
+- **Frontend**: Next.js 14 + TypeScript + Tailwind CSS
+- **Desktop**: Tauri (10MB native app)
+- **AI Architecture**: 
+  - **Orchestration Layer**: GPT-4 intent classification & routing
+  - **Vercel AI SDK**: Chat interface, streaming, tool execution
+  - **LangGraph**: Complex stateful workflows
+  - **RAG System**: pgvector for embeddings & learning
+- **LLM**: OpenAI GPT-4 Turbo
+- **Database**: PostgreSQL with RLS (Supabase)
+- **Auth**: Supabase Auth (Google OAuth)
+- **APIs**: Gmail API, Google Calendar API (coming soon)
+- **Monorepo**: Turborepo for coordinated development
+
 ## Why This Architecture Matters
 
-1. **Service Interfaces**: Switch between mock and real data seamlessly
-2. **AI SDK + LangGraph**: Best tool for each job
-3. **RAG with pgvector**: Learn without external dependencies
-4. **TypeScript Everywhere**: Type safety from DB to UI
-5. **Tauri Desktop**: Native performance, 10MB installer
+1. **Multi-Layer Intelligence**: Orchestration → Tools/Workflows → UniversalResponse
+2. **Continuous Learning**: RAG system improves with every interaction
+3. **Type Safety**: TypeScript from database to UI
+4. **Scalability**: 25 tools instead of 95, clear separation of concerns
+5. **User Experience**: Natural language only, no configuration needed
 
 This isn't over-engineering. Each choice directly supports the goal: help users execute, not manage.
 
@@ -1141,4 +710,4 @@ This isn't over-engineering. Each choice directly supports the goal: help users 
 
 Built with TypeScript, powered by AI, designed for focus.
 
-Stop managing. Start doing. 
+Stop managing. Start doing.

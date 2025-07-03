@@ -86,7 +86,7 @@ BEHAVIORAL RULES:
 
 3. TASK PRIORITIZATION INTELLIGENCE:
    - Tasks are scored using: (priority × 0.6) + (urgency × 0.4) + age bonus (max 20 points)
-   - Priority and urgency are on 0-100 scale in task_backlog table
+   - Priority is enum (high/medium/low) and urgency is 0-100 scale in tasks table
    - Older tasks get up to 20 bonus points based on days in backlog
    - When user asks "What should I work on?", show high-scoring tasks with reasons
    - Consider both quick wins (high score, low time) and important long tasks

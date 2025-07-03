@@ -29,8 +29,9 @@ export type UserPreferences = Tables<'user_preferences'>;
 export type UserPreferencesInsert = TablesInsert<'user_preferences'>;
 export type UserPreferencesUpdate = TablesUpdate<'user_preferences'>;
 
-// Note: task_backlog and email_backlog are now views, not tables
-// Use the main tables (tasks and emails) with status filters instead
+// All data is now consolidated in the main tables:
+// - Tasks: use status='backlog' for backlog items
+// - Emails: use status='backlog' for backlog items
 
 // Query result types
 export type QueryResult<T> = {
