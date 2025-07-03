@@ -116,7 +116,9 @@ export async function getTasksForTimeBlock(
     }
 
     // Extract task IDs from JSONB array
-    const taskIds = (timeBlock.assigned_tasks as any[]).map(t => t.id || t);
+    const taskIds = (timeBlock.assigned_tasks as Array<{ id: string } | string>).map(t => 
+      typeof t === 'string' ? t : t.id
+    );
 
     if (taskIds.length === 0) {
       return [];
@@ -161,7 +163,9 @@ export async function getEmailsForTimeBlock(
     }
 
     // Extract email IDs from JSONB array
-    const emailIds = (timeBlock.assigned_emails as any[]).map(e => e.id || e);
+    const emailIds = (timeBlock.assigned_emails as Array<{ id: string } | string>).map(e => 
+      typeof e === 'string' ? e : e.id
+    );
 
     if (emailIds.length === 0) {
       return [];
@@ -262,7 +266,7 @@ export async function assignTaskToTimeBlock(
     }
 
     // Update the JSONB array
-    const currentTasks = (timeBlock.assigned_tasks as any[]) || [];
+    const currentTasks = (timeBlock.assigned_tasks as Array<{ id: string; position: number }>) || [];
     const updatedTasks = [...currentTasks, { id: taskId, position }];
 
     const { error: updateError } = await client
@@ -304,8 +308,11 @@ export async function removeTaskFromTimeBlock(
     }
 
     // Remove the task from the JSONB array
-    const currentTasks = (timeBlock.assigned_tasks as any[]) || [];
-    const updatedTasks = currentTasks.filter(t => (t.id || t) !== taskId);
+    const currentTasks = (timeBlock.assigned_tasks as Array<{ id: string } | string>) || [];
+    const updatedTasks = currentTasks.filter(t => {
+      const id = typeof t === 'string' ? t : t.id;
+      return id !== taskId;
+    });
 
     const { error: updateError } = await client
       .from('time_blocks')

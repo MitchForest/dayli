@@ -1,17 +1,34 @@
 # Sprint 4.3: Domain Workflows
 
-**Sprint Goal**: Implement 4 powerful LangGraph workflows that orchestrate tools  
+**Sprint Goal**: Implement 4 powerful AI SDK workflows that orchestrate tools with multi-step operations  
 **Duration**: 5 days  
-**Status**: PLANNING  
+**Status**: PLANNING - REVISED FOR AI SDK  
 **Dependencies**: Sprint Fix-AI must be completed first
 
 ## Objectives
 
-1. Implement Adaptive Scheduling workflow with LangGraph
-2. Implement Email Management workflow with pure data returns
-3. Implement Task Intelligence workflow with multi-factor scoring
-4. Implement Calendar Optimization workflow
-5. Add streaming progress to all workflows using LangGraph's capabilities
+1. Implement Adaptive Scheduling workflow using AI SDK's multi-step capabilities
+2. Implement Email Management workflow with intelligent tool orchestration
+3. Implement Task Intelligence workflow with dynamic scoring and recommendations
+4. Implement Calendar Optimization workflow with conflict resolution
+5. Add streaming progress using AI SDK's native streaming support
+
+## Architecture Overview
+
+Instead of LangGraph's explicit state machines, we'll use AI SDK's powerful patterns:
+- **Multi-Step Operations**: Using `maxSteps` parameter for complex workflows
+- **Tool Orchestration**: Workflows are tools that intelligently call other tools
+- **Dynamic Flow**: AI determines the optimal sequence based on context
+- **Native Streaming**: Built-in progress updates with `onStepFinish`
+- **Implicit Graphs**: The AI creates the flow graph dynamically
+
+## Key Principles
+
+1. **Workflows as Tools**: Each workflow is exposed as a single tool to the orchestration layer
+2. **Composable Sub-Tools**: Break down workflow steps into focused tools
+3. **AI-Driven Flow**: Let the model decide which tools to use and when
+4. **Progress Visibility**: Use streaming to show workflow progress
+5. **Pure Data Returns**: All tools return domain data, no UI instructions
 
 ## Day 1-2: Adaptive Scheduling Workflow
 

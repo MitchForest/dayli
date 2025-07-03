@@ -3,9 +3,6 @@ import { openai } from '@ai-sdk/openai';
 import { createServerActionClient } from '@/lib/supabase-server';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { toolRegistry } from '@/modules/ai/tools/registry';
-import { 
-  universalToolResponseSchema 
-} from '@/modules/ai/schemas';
 
 // Helper functions
 function getCurrentTime(): string {
@@ -287,16 +284,7 @@ export async function POST(req: Request) {
             console.log('[Chat API] Tool results:', toolResults.map((tr: unknown) => {
               const result = tr as { toolName?: string; result?: unknown };
               
-              // Validate structured responses
-              if (result.result && typeof result.result === 'object') {
-                try {
-                  // Check if it follows the universal schema
-                  universalToolResponseSchema.parse(result.result);
-                  console.log('[Chat API] Valid structured response from:', result.toolName);
-                } catch {
-                  console.warn('[Chat API] Tool returned non-structured response:', result.toolName);
-                }
-              }
+
               
               return {
                 toolName: result.toolName,

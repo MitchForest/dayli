@@ -4,7 +4,6 @@ import { openai } from '@ai-sdk/openai';
 import { createServerActionClient } from '@/lib/supabase-server';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { toolRegistry } from '@/modules/ai/tools/registry';
-import { universalToolResponseSchema } from '@/modules/ai/schemas';
 import { OrchestrationService } from '@/modules/orchestration/orchestration.service';
 import { buildOrchestrationContext } from '@/modules/orchestration/context-builder';
 import type { UserIntent } from '@/modules/orchestration/types';
@@ -568,16 +567,6 @@ function logToolExecution(
   
   if (toolResults && toolResults.length > 0) {
     console.log('[Chat API] Tool results:', toolResults.map((tr) => {
-      // Validate structured responses
-      if (tr.result && typeof tr.result === 'object') {
-        try {
-          universalToolResponseSchema.parse(tr.result);
-          console.log('[Chat API] Valid structured response from:', tr.toolName);
-        } catch {
-          console.warn('[Chat API] Tool returned non-structured response:', tr.toolName);
-        }
-      }
-      
       return {
         toolName: tr.toolName,
         result: tr.result

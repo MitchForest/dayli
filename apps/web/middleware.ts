@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase-server';
+import { isTauri } from '@repo/shared/utils';
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -21,6 +22,9 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // Check if we're in desktop environment
+  const isDesktop = request.headers.get('user-agent')?.includes('Tauri') || false;
+
   // Protected routes that require authentication
   const protectedRoutes = ['/focus', '/settings'];
   const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route));
@@ -37,7 +41,8 @@ export async function middleware(request: NextRequest) {
       pathname,
       hasUser: !!user,
       userId: user?.id,
-      error: error?.message
+      error: error?.message,
+      isDesktop
     });
 
     // Handle protected routes
@@ -57,12 +62,23 @@ export async function middleware(request: NextRequest) {
 
     // Handle root page
     if (pathname === '/') {
-      if (user) {
-        console.log('[Middleware] Root redirect to focus');
-        return NextResponse.redirect(new URL('/focus', request.url));
+      if (isDesktop) {
+        // Desktop app: redirect to login or focus based on auth
+        if (user) {
+          console.log('[Middleware] Desktop root redirect to focus');
+          return NextResponse.redirect(new URL('/focus', request.url));
+        } else {
+          console.log('[Middleware] Desktop root redirect to login');
+          return NextResponse.redirect(new URL('/login', request.url));
+        }
       } else {
-        console.log('[Middleware] Root redirect to login');
-        return NextResponse.redirect(new URL('/login', request.url));
+        // Web: show marketing page if not authenticated
+        if (user) {
+          console.log('[Middleware] Web root redirect to focus (authenticated)');
+          return NextResponse.redirect(new URL('/focus', request.url));
+        }
+        // Let unauthenticated users see the marketing page
+        console.log('[Middleware] Web root - showing marketing page');
       }
     }
   }

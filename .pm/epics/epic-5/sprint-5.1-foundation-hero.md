@@ -2,6 +2,7 @@
 
 **Duration**: 2 days  
 **Goal**: Set up the marketing site structure and create a compelling hero section that captures attention and drives conversions.
+**Status**: IN PROGRESS
 
 ## Sprint Overview
 
@@ -9,7 +10,7 @@ This sprint establishes the foundation for our marketing website with a focus on
 
 ## Success Criteria
 
-- [ ] Marketing site routing properly separated from app
+- [x] Marketing site routing properly separated from app
 - [ ] Hero section with two-column layout (content + visual)
 - [ ] Smooth scroll header that appears after hero
 - [ ] Light/dark mode toggle in header
@@ -149,13 +150,20 @@ apps/web/app/(marketing)/
     └── MarketingFooter.tsx
 ```
 
-## Next Steps
+## Implementation Progress
 
-After completing the hero section:
-1. Review with team for feedback
-2. A/B test different headlines
-3. Optimize load performance
-4. Begin Sprint 5.2 (Features section)
+### Completed
+- [x] Updated middleware to handle marketing vs app routes
+- [x] Created route group structure for marketing site
+
+### In Progress
+- [ ] Creating marketing layout
+- [ ] Implementing hero section
+
+### Next Steps
+- [ ] Marketing header with scroll behavior
+- [ ] Hero visual component
+- [ ] Responsive testing
 
 ## Resources
 

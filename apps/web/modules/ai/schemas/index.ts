@@ -1,5 +1,4 @@
-// Universal schemas
-export * from './universal.schema';
+// Conversation schema
 export * from './conversation.schema';
 
 // Domain-specific schemas
