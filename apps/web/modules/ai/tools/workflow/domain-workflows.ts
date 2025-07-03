@@ -274,36 +274,137 @@ export const prioritizeTasks = tool({
     energyLevel: z.enum(["high", "medium", "low"]).optional(),
     focusArea: z.string().optional(),
   }),
-  execute: async ({ timeAvailable, energyLevel, focusArea }) => {
+  execute: async ({ timeAvailable, energyLevel, focusArea }): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'prioritizeTasks',
+      operation: 'execute' as const,
+      resourceType: 'workflow' as const,
+      startTime,
+    };
+    
     try {
+      const userId = await getCurrentUserId();
       const workflow = createPersistentWorkflow(
         createTaskIntelligenceWorkflow(),
         'task_intelligence'
       );
       
       const result = await workflow.invoke({
-        userId: await getCurrentUserId(),
+        userId,
         data: {
           currentEnergy: energyLevel || "medium",
           availableMinutes: timeAvailable,
           focusArea,
         },
+        intent: null,
+        ragContext: null,
+        proposedChanges: [],
+        insights: [],
+        messages: [],
+        startTime: Date.now(),
+        result: null
       });
       
-      return buildToolResponse({
-        success: true,
+      // Extract the DomainWorkflowResult
+      const workflowResult = result.result;
+      if (!workflowResult) {
+        throw new Error('Workflow did not produce a result');
+      }
+      
+      const topTasks = workflowResult.data.scoredTasks?.slice(0, 5) || [];
+      const recommendations = workflowResult.data.recommendations || [];
+      
+      // Create task components
+      const taskComponents = topTasks.map((task: any) => ({
+        type: 'task' as const,
         data: {
-          recommendations: result.data.recommendations,
-          topTasks: result.data.scoredTasks.slice(0, 5),
-          insights: result.insights,
+          id: task.id,
+          title: task.title,
+          priority: task.priority,
+          score: task.score,
+          estimatedMinutes: task.estimatedMinutes,
+          tags: task.tags,
+          reasonForRecommendation: task.reasonForRecommendation,
         },
-        display: {
-          type: 'task',
-          content: result.data.recommendations,
+      }));
+      
+      // Add metrics if available
+      const metricsComponent = workflowResult.data.metrics ? {
+        type: 'metrics' as const,
+        data: {
+          title: 'Task Prioritization Metrics',
+          metrics: [
+            { label: 'Tasks Analyzed', value: workflowResult.data.metrics.totalTasks?.toString() || '0', trend: 'neutral' },
+            { label: 'High Priority', value: workflowResult.data.metrics.highPriorityCount?.toString() || '0', trend: 'neutral' },
+            { label: 'Match Score', value: `${Math.round(workflowResult.data.metrics.avgMatchScore || 0)}%`, trend: 'up' },
+            { label: 'Energy Match', value: workflowResult.data.metrics.energyMatch || 'Good', trend: 'neutral' },
+          ]
         }
-      });
+      } : null;
+      
+      return buildToolResponse(
+        toolOptions,
+        {
+          recommendations,
+          topTasks,
+          insights: workflowResult.insights,
+          metrics: workflowResult.data.metrics,
+          executionTime: workflowResult.executionTime,
+        },
+        {
+          type: 'list',
+          title: 'Task Recommendations',
+          description: `${topTasks.length} tasks recommended based on your ${energyLevel || 'current'} energy${focusArea ? ` and ${focusArea} focus` : ''}`,
+          priority: 'high',
+          components: [
+            ...(metricsComponent ? [metricsComponent] : []),
+            ...taskComponents,
+          ],
+        },
+        {
+          suggestions: [
+            'Start with the top task',
+            'View full task details',
+            'Adjust energy level',
+            'Schedule work blocks',
+          ],
+          actions: topTasks.length > 0 ? [{
+            id: 'start-task',
+            label: 'Start Top Task',
+            icon: 'play',
+            variant: 'primary',
+            action: {
+              type: 'tool',
+              tool: 'createTimeBlock',
+              params: {
+                type: 'work',
+                title: topTasks[0].title,
+                duration: topTasks[0].estimatedMinutes || 30,
+              },
+            },
+          }, {
+            id: 'view-all',
+            label: 'View All Tasks',
+            icon: 'list',
+            variant: 'secondary',
+            action: {
+              type: 'tool',
+              tool: 'viewTasks',
+              params: { showScores: true },
+            },
+          }] : [],
+        }
+      );
     } catch (error) {
-      return buildErrorResponse('TASK_PRIORITIZATION_FAILED', error.message);
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Task Prioritization Failed',
+          description: error instanceof Error ? error.message : 'Unknown error',
+        }
+      );
     }
   },
 });
@@ -314,40 +415,178 @@ export const optimizeCalendar = tool({
     date: z.string().optional(),
     includeNextDays: z.number().default(1),
   }),
-  execute: async ({ date, includeNextDays }) => {
+  execute: async ({ date, includeNextDays }): Promise<UniversalToolResponse> => {
+    const startTime = Date.now();
+    const toolOptions = {
+      toolName: 'optimizeCalendar',
+      operation: 'execute' as const,
+      resourceType: 'workflow' as const,
+      startTime,
+    };
+    
     try {
+      const userId = await getCurrentUserId();
       const workflow = createPersistentWorkflow(
         createCalendarOptimizationWorkflow(),
         'calendar_optimization'
       );
       
       const result = await workflow.invoke({
-        userId: await getCurrentUserId(),
+        userId,
         startDate: date || format(new Date(), 'yyyy-MM-dd'),
         days: includeNextDays,
+        intent: null,
+        ragContext: null,
+        data: {},
+        proposedChanges: [],
+        insights: [],
+        messages: [],
+        startTime: Date.now(),
+        result: null
       });
       
-      if (result.data.conflicts.length === 0 && result.data.inefficiencies.length === 0) {
-        return buildToolResponse({
-          success: true,
-          data: {
+      // Extract the DomainWorkflowResult
+      const workflowResult = result.result;
+      if (!workflowResult) {
+        throw new Error('Workflow did not produce a result');
+      }
+      
+      const conflicts = workflowResult.data.conflicts || [];
+      const inefficiencies = workflowResult.data.inefficiencies || [];
+      
+      if (conflicts.length === 0 && inefficiencies.length === 0) {
+        return buildToolResponse(
+          toolOptions,
+          {
             message: "Your calendar is conflict-free and well-organized!",
-            insights: result.insights,
+            insights: workflowResult.insights,
+            metrics: workflowResult.data.metrics,
+          },
+          {
+            type: 'card',
+            title: 'Calendar Analysis Complete',
+            description: 'Your calendar is conflict-free and well-organized!',
+            priority: 'low',
+            components: [
+              {
+                type: 'insight',
+                data: {
+                  type: 'success',
+                  content: 'No conflicts or inefficiencies detected',
+                  confidence: 1.0,
+                }
+              },
+              ...workflowResult.insights.slice(0, 2).map((insight: any) => ({
+                type: 'insight' as const,
+                data: {
+                  type: insight.type,
+                  content: insight.content,
+                  confidence: insight.confidence,
+                }
+              }))
+            ],
           }
-        });
+        );
       }
       
       const confirmationId = crypto.randomUUID();
-      await storeProposedChanges(confirmationId, result.proposedChanges);
+      await storeProposedChanges(confirmationId, workflowResult.proposedChanges);
       
-      return buildToolConfirmation(
-        result,
-        confirmationId,
-        `Found ${result.data.conflicts.length} conflicts and ${result.data.inefficiencies.length} optimization opportunities.`
+      // Create conflict components
+      const conflictComponents = conflicts.map((conflict: any) => ({
+        type: 'conflict' as const,
+        data: {
+          type: 'time_overlap',
+          events: conflict.events,
+          severity: conflict.severity || 'medium',
+          resolution: conflict.suggestedResolution,
+        },
+      }));
+      
+      // Create inefficiency components
+      const inefficiencyComponents = inefficiencies.map((item: any) => ({
+        type: 'insight' as const,
+        data: {
+          type: 'warning',
+          content: item.description,
+          confidence: item.confidence || 0.8,
+        },
+      }));
+      
+      // Add metrics component
+      const metricsComponent = workflowResult.data.metrics ? {
+        type: 'metrics' as const,
+        data: {
+          title: 'Calendar Optimization Metrics',
+          metrics: [
+            { label: 'Conflicts Found', value: conflicts.length.toString(), trend: conflicts.length > 0 ? 'down' : 'neutral' },
+            { label: 'Inefficiencies', value: inefficiencies.length.toString(), trend: inefficiencies.length > 0 ? 'down' : 'neutral' },
+            { label: 'Time Saved', value: `${workflowResult.data.metrics.timeSaved || 0} min`, trend: 'up' },
+            { label: 'Optimization Score', value: `${Math.round(workflowResult.data.metrics.score || 85)}%`, trend: 'up' },
+          ]
+        }
+      } : null;
+      
+      return buildToolResponse(
+        toolOptions,
+        {
+          conflicts,
+          inefficiencies,
+          proposedChanges: workflowResult.proposedChanges,
+          insights: workflowResult.insights,
+          metrics: workflowResult.data.metrics,
+          executionTime: workflowResult.executionTime,
+        },
+        {
+          type: 'confirmation',
+          title: 'Calendar Optimization Report',
+          description: `Found ${conflicts.length} conflicts and ${inefficiencies.length} optimization opportunities`,
+          priority: 'high',
+          components: [
+            ...(metricsComponent ? [metricsComponent] : []),
+            ...conflictComponents,
+            ...inefficiencyComponents,
+          ],
+        },
+        {
+          confirmationRequired: true,
+          confirmationId,
+          suggestions: workflowResult.nextSteps || [
+            'Apply all optimizations',
+            'Review conflicts individually',
+            'Reschedule meetings',
+          ],
+          actions: [{
+            id: 'apply-all',
+            label: 'Apply All Optimizations',
+            icon: 'check',
+            variant: 'primary',
+            action: {
+              type: 'tool',
+              tool: 'confirmProposal',
+              params: { confirmationId },
+            },
+          }, {
+            id: 'view-calendar',
+            label: 'View Calendar',
+            icon: 'calendar',
+            variant: 'secondary',
+            action: {
+              type: 'message',
+              message: 'Show my calendar with conflicts highlighted',
+            },
+          }],
+        }
       );
     } catch (error) {
-      return buildErrorResponse('CALENDAR_OPTIMIZATION_FAILED', error.message);
+      return buildErrorResponse(
+        toolOptions,
+        error,
+        {
+          title: 'Calendar Optimization Failed',
+          description: error instanceof Error ? error.message : 'Unknown error',
+        }
+      );
     }
   },
 });
-*/ 

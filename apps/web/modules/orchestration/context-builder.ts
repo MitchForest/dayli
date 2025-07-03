@@ -38,16 +38,36 @@ export async function buildOrchestrationContext(
       backlogTasks,
       preferences,
     ] = await Promise.all([
-      scheduleService.getScheduleForDate(dateStr),
+      scheduleService.getScheduleForDate(dateStr || new Date().toISOString().split('T')[0]),
       taskService.getTaskBacklog(),
       preferenceService.getUserPreferences(),
     ]);
     
+    // Convert to the format expected by our functions
+    const scheduleBlocks = todaySchedule.map(block => ({
+      id: block.id,
+      user_id: block.userId,
+      start_time: block.startTime.toISOString(),
+      end_time: block.endTime.toISOString(),
+      type: block.type,
+      title: block.title,
+      created_at: block.createdAt.toISOString(),
+    }));
+    
+    const taskData = backlogTasks.map(task => ({
+      id: task.id,
+      title: task.title,
+      priority: task.priority,
+      urgency: 50, // Default urgency
+      days_in_backlog: 0, // Will be calculated later
+      score: 0, // Will be calculated later
+    }));
+    
     // Calculate schedule state
-    const scheduleState = calculateScheduleState(todaySchedule, currentTime);
+    const scheduleState = calculateScheduleState(scheduleBlocks, currentTime);
     
     // Calculate task state
-    const taskState = calculateTaskState(backlogTasks);
+    const taskState = calculateTaskState(taskData);
     
     // Calculate email state (stub for now - email service integration pending)
     const emailState = {
@@ -59,7 +79,7 @@ export async function buildOrchestrationContext(
     // Extract user patterns from preferences
     const userPatterns = preferences ? {
       typicalStartTime: preferences.workStartTime,
-      preferredBlockDuration: preferences.defaultBlockDuration,
+      preferredBlockDuration: 60, // Default to 60 minutes
       commonRequests: [], // TODO: Implement when RAG is available
       rejectedActions: [], // TODO: Implement when RAG is available
     } : undefined;
@@ -67,7 +87,7 @@ export async function buildOrchestrationContext(
     const context: OrchestrationContext = {
       userId,
       currentTime,
-      timezone: preferences?.timezone || timezone,
+      timezone: timezone, // Use provided timezone or default
       recentMessages: [], // Will be provided by chat route
       scheduleState,
       taskState,
@@ -179,7 +199,7 @@ function calculateScheduleState(
       title: nextBlock.title,
       start_time: nextBlock.start_time,
       end_time: nextBlock.end_time,
-      created_at: nextBlock.created_at || new Date().toISOString(),
+      created_at: (nextBlock.created_at as string) || new Date().toISOString(),
     } : undefined,
     utilization: Math.min(utilization, 100),
     gaps,

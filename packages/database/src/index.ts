@@ -29,13 +29,8 @@ export type UserPreferences = Tables<'user_preferences'>;
 export type UserPreferencesInsert = TablesInsert<'user_preferences'>;
 export type UserPreferencesUpdate = TablesUpdate<'user_preferences'>;
 
-export type TaskBacklog = Tables<'task_backlog'>;
-export type TaskBacklogInsert = TablesInsert<'task_backlog'>;
-export type TaskBacklogUpdate = TablesUpdate<'task_backlog'>;
-
-export type EmailBacklog = Tables<'email_backlog'>;
-export type EmailBacklogInsert = TablesInsert<'email_backlog'>;
-export type EmailBacklogUpdate = TablesUpdate<'email_backlog'>;
+// Note: task_backlog and email_backlog are now views, not tables
+// Use the main tables (tasks and emails) with status filters instead
 
 // Query result types
 export type QueryResult<T> = {

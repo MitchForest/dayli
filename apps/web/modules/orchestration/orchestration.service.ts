@@ -123,7 +123,11 @@ Be specific with workflow/tool names when confidence is high.`,
           ...entities,
           ...(classification.entities || {}),
         },
-        suggestedHandler: classification.suggestedHandler,
+        suggestedHandler: {
+          type: classification.suggestedHandler.type || 'direct',
+          name: classification.suggestedHandler.name,
+          params: classification.suggestedHandler.params,
+        },
         reasoning: classification.reasoning,
       };
       
@@ -210,12 +214,12 @@ Be specific with workflow/tool names when confidence is high.`,
     // Extract dates
     const datePattern = /\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2})\b/gi;
     const dates = message.match(datePattern);
-    if (dates) entities.dates = [...new Set(dates.map(d => d.toLowerCase()))].filter((d): d is string => d !== undefined);
+    if (dates) entities.dates = Array.from(new Set(dates.map(d => d.toLowerCase()))).filter((d): d is string => d !== undefined);
     
     // Extract times
     const timePattern = /\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)|morning|afternoon|evening|night)\b/gi;
     const times = message.match(timePattern);
-    if (times) entities.times = [...new Set(times.map(t => t.toLowerCase()))].filter((t): t is string => t !== undefined);
+    if (times) entities.times = Array.from(new Set(times.map(t => t.toLowerCase()))).filter((t): t is string => t !== undefined);
     
     // Extract duration
     const durationPattern = /\b(\d+)\s*(?:hour|hr|minute|min)s?\b/i;
@@ -229,9 +233,15 @@ Be specific with workflow/tool names when confidence is high.`,
     
     // Extract people (basic pattern for names)
     const peoplePattern = /\b(?:with|from|to|cc)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g;
-    const peopleMatches = [...message.matchAll(peoplePattern)];
-    if (peopleMatches.length > 0) {
-      entities.people = peopleMatches.map(m => m[1]).filter((p): p is string => p !== undefined);
+    let peopleMatch;
+    const people: string[] = [];
+    while ((peopleMatch = peoplePattern.exec(message)) !== null) {
+      if (peopleMatch[1]) {
+        people.push(peopleMatch[1]);
+      }
+    }
+    if (people.length > 0) {
+      entities.people = people;
     }
     
     return entities;

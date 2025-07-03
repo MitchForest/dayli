@@ -1,13 +1,4 @@
-export { listEmails } from './listEmails';
-export { readEmailContent } from './readEmailContent';
-export { processEmailToTask } from './processEmailToTask';
-export { draftEmailResponse } from './draftEmailResponse';
-export { analyzeSingleEmail } from './analyzeSingleEmail';
-export { batchEmailsByStrategy } from './batchEmailsByStrategy';
-export { calculateEmailProcessingTime } from './calculateEmailProcessingTime';
-export { extractActionItems } from './extractActionItems';
-export { updateEmailBacklog } from './updateEmailBacklog';
-export { getEmailBacklogSummary } from './getEmailBacklogSummary';
-export { analyzeSenderPatterns } from './analyzeSenderPatterns';
-export { getEmailStats } from './getEmailStats';
-export { findSimilarEmails } from './findSimilarEmails'; 
+// Email tools (3)
+export { viewEmails } from './viewEmails';
+export { readEmail } from './readEmail';
+export { processEmail } from './processEmail'; 

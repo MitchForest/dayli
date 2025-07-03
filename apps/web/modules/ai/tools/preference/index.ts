@@ -1,2 +1,2 @@
-export { updatePreference } from './updatePreference';
-export { getPreferences } from './getPreferences'; 
+// Preference tools (1)
+export { updatePreferences } from './updatePreferences'; 

@@ -2,7 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { type UniversalToolResponse } from '../../schemas/universal.schema';
 import { type EmailToTask, type Email } from '../../schemas/email.schema';
-import { buildToolResponse, buildErrorResponse, buildToolConfirmation } from '../../utils/tool-helpers';
+import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { proposalStore } from '../../utils/proposal-store';
 

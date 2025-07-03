@@ -1,4 +1,2 @@
-export { scheduleDay } from './scheduleDay';
-export { confirmProposal } from './confirmProposal';
-export { optimizeSchedule } from './domain-workflows';
-// export { triageEmails, prioritizeTasks, optimizeCalendar } from './domain-workflows'; 
+// Workflow tools (4)
+export { optimizeSchedule, triageEmails, prioritizeTasks, optimizeCalendar } from './domain-workflows'; 

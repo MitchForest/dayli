@@ -1,28 +1,38 @@
-// Export all schedule tools
-export * from './schedule';
+// Schedule tools (5)
+export { viewSchedule } from './schedule/viewSchedule';
+export { createTimeBlock } from './schedule/createTimeBlock';
+export { moveTimeBlock } from './schedule/moveTimeBlock';
+export { deleteTimeBlock } from './schedule/deleteTimeBlock';
+export { fillWorkBlock } from './schedule/fillWorkBlock';
 
-// Export all preference tools
-export * from './preference';
+// Task tools (4)
+export { viewTasks } from './task/viewTasks';
+export { createTask } from './task/createTask';
+export { updateTask } from './task/updateTask';
+export { completeTask } from './task/completeTask';
 
-// Export all email tools
-export * from './email';
+// Email tools (3)
+export { viewEmails } from './email/viewEmails';
+export { readEmail } from './email/readEmail';
+export { processEmail } from './email/processEmail';
 
-// Export all task tools
-export * from './task';
+// Calendar tools (2)
+export { scheduleMeeting } from './calendar/scheduleMeeting';
+export { rescheduleMeeting } from './calendar/rescheduleMeeting';
 
-// Export all calendar tools
-export * from './calendar';
+// Preference tools (1)
+export { updatePreferences } from './preference/updatePreferences';
 
-// Export all workflow tools
-export * from './workflow';
+// Workflow tools (4)
+export { optimizeSchedule, triageEmails, prioritizeTasks, optimizeCalendar } from './workflow/domain-workflows';
 
-// Workflow tools
-export { 
-  scheduleDay,
-  confirmProposal,
-  optimizeSchedule
-} from './workflow';
+// System tools (6)
+export { confirmProposal } from './system/confirmProposal';
+export { showWorkflowHistory } from './system/showWorkflowHistory';
+export { resumeWorkflow } from './system/resumeWorkflow';
+export { provideFeedback } from './system/provideFeedback';
+export { showPatterns } from './system/showPatterns';
+export { clearContext } from './system/clearContext';
 
-// Export registry and types
-export { toolRegistry } from './registry';
-export * from './types'; 
+// Export registry
+export { toolRegistry } from './registry'; 

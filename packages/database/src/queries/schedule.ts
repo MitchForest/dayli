@@ -103,25 +103,37 @@ export async function getTasksForTimeBlock(
   client: SupabaseClient<Database>
 ): Promise<Task[]> {
   try {
-    const { data, error } = await client
-      .from('time_block_tasks')
-      .select(`
-        position,
-        tasks (*)
-      `)
-      .eq('time_block_id', timeBlockId)
-      .order('position', { ascending: true });
+    // First get the time block with its assigned tasks
+    const { data: timeBlock, error: blockError } = await client
+      .from('time_blocks')
+      .select('assigned_tasks')
+      .eq('id', timeBlockId)
+      .single();
 
-    if (error) {
-      console.error('Error fetching tasks for time block:', error);
+    if (blockError || !timeBlock || !timeBlock.assigned_tasks) {
+      console.error('Error fetching time block:', blockError);
       return [];
     }
 
-    // Extract and return just the task objects
-    return data?.map(item => {
-      const taskItem = item as { position: number | null; tasks: Task };
-      return taskItem.tasks;
-    }).filter(Boolean) || [];
+    // Extract task IDs from JSONB array
+    const taskIds = (timeBlock.assigned_tasks as any[]).map(t => t.id || t);
+
+    if (taskIds.length === 0) {
+      return [];
+    }
+
+    // Fetch the actual tasks
+    const { data: tasks, error: tasksError } = await client
+      .from('tasks')
+      .select('*')
+      .in('id', taskIds);
+
+    if (tasksError) {
+      console.error('Error fetching tasks:', tasksError);
+      return [];
+    }
+
+    return tasks || [];
   } catch (err) {
     console.error('Unexpected error in getTasksForTimeBlock:', err);
     return [];
@@ -136,25 +148,37 @@ export async function getEmailsForTimeBlock(
   client: SupabaseClient<Database>
 ): Promise<Email[]> {
   try {
-    const { data, error } = await client
-      .from('time_block_emails')
-      .select(`
-        position,
-        emails (*)
-      `)
-      .eq('time_block_id', timeBlockId)
-      .order('position', { ascending: true });
+    // First get the time block with its assigned emails
+    const { data: timeBlock, error: blockError } = await client
+      .from('time_blocks')
+      .select('assigned_emails')
+      .eq('id', timeBlockId)
+      .single();
 
-    if (error) {
-      console.error('Error fetching emails for time block:', error);
+    if (blockError || !timeBlock || !timeBlock.assigned_emails) {
+      console.error('Error fetching time block:', blockError);
       return [];
     }
 
-    // Extract and return just the email objects
-    return data?.map(item => {
-      const emailItem = item as { position: number | null; emails: Email };
-      return emailItem.emails;
-    }).filter(Boolean) || [];
+    // Extract email IDs from JSONB array
+    const emailIds = (timeBlock.assigned_emails as any[]).map(e => e.id || e);
+
+    if (emailIds.length === 0) {
+      return [];
+    }
+
+    // Fetch the actual emails
+    const { data: emails, error: emailsError } = await client
+      .from('emails')
+      .select('*')
+      .in('id', emailIds);
+
+    if (emailsError) {
+      console.error('Error fetching emails:', emailsError);
+      return [];
+    }
+
+    return emails || [];
   } catch (err) {
     console.error('Unexpected error in getEmailsForTimeBlock:', err);
     return [];
@@ -225,16 +249,29 @@ export async function assignTaskToTimeBlock(
   client: SupabaseClient<Database>
 ): Promise<boolean> {
   try {
-    const { error } = await client
-      .from('time_block_tasks')
-      .insert({
-        time_block_id: timeBlockId,
-        task_id: taskId,
-        position
-      });
+    // Get current assigned tasks
+    const { data: timeBlock, error: fetchError } = await client
+      .from('time_blocks')
+      .select('assigned_tasks')
+      .eq('id', timeBlockId)
+      .single();
 
-    if (error) {
-      console.error('Error assigning task to time block:', error);
+    if (fetchError || !timeBlock) {
+      console.error('Error fetching time block:', fetchError);
+      return false;
+    }
+
+    // Update the JSONB array
+    const currentTasks = (timeBlock.assigned_tasks as any[]) || [];
+    const updatedTasks = [...currentTasks, { id: taskId, position }];
+
+    const { error: updateError } = await client
+      .from('time_blocks')
+      .update({ assigned_tasks: updatedTasks })
+      .eq('id', timeBlockId);
+
+    if (updateError) {
+      console.error('Error updating time block:', updateError);
       return false;
     }
 
@@ -254,14 +291,29 @@ export async function removeTaskFromTimeBlock(
   client: SupabaseClient<Database>
 ): Promise<boolean> {
   try {
-    const { error } = await client
-      .from('time_block_tasks')
-      .delete()
-      .eq('time_block_id', timeBlockId)
-      .eq('task_id', taskId);
+    // Get current assigned tasks
+    const { data: timeBlock, error: fetchError } = await client
+      .from('time_blocks')
+      .select('assigned_tasks')
+      .eq('id', timeBlockId)
+      .single();
 
-    if (error) {
-      console.error('Error removing task from time block:', error);
+    if (fetchError || !timeBlock) {
+      console.error('Error fetching time block:', fetchError);
+      return false;
+    }
+
+    // Remove the task from the JSONB array
+    const currentTasks = (timeBlock.assigned_tasks as any[]) || [];
+    const updatedTasks = currentTasks.filter(t => (t.id || t) !== taskId);
+
+    const { error: updateError } = await client
+      .from('time_blocks')
+      .update({ assigned_tasks: updatedTasks })
+      .eq('id', timeBlockId);
+
+    if (updateError) {
+      console.error('Error updating time block:', updateError);
       return false;
     }
 

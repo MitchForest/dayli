@@ -49,9 +49,9 @@ export async function POST(req: NextRequest) {
 */
 
 // Temporary placeholder until workflow is reimplemented
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-export async function POST(_req: NextRequest) {
+export async function POST() {
   return NextResponse.json(
     { error: 'Email triage workflow is currently being refactored' },
     { status: 503 }
