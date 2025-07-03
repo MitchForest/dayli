@@ -50,7 +50,7 @@ export const provideFeedback = registerTool(
       return {
         success: true,
         feedbackId: feedback.id,
-        acknowledged: true,
+        recorded: true,
       };
     },
   })

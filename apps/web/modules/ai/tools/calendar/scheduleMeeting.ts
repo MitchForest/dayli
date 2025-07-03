@@ -52,8 +52,16 @@ export const scheduleMeeting = registerTool(
         return {
           success: false,
           error: 'The selected time has conflicts. Please choose a different time.',
-          meeting: null,
-          conflicts: [], // In a real implementation, we'd return the conflicting events
+          meeting: {
+            id: '',
+            title: params.title,
+            startTime: meetingStart,
+            endTime: meetingEnd,
+            attendees: params.attendees,
+            location: undefined,
+            description: params.description,
+          },
+          prepBlockCreated: false,
         };
       }
       
@@ -95,17 +103,13 @@ export const scheduleMeeting = registerTool(
         meeting: {
           id: meeting.id,
           title: meeting.summary || params.title,
-          description: meeting.description,
-          startTime: meetingStart.toISOString(),
-          endTime: meetingEnd.toISOString(),
-          attendees: params.attendees.map(email => ({ 
-            email, 
-            responseStatus: 'needsAction' as const,
-          })),
+          startTime: meetingStart,
+          endTime: meetingEnd,
+          attendees: params.attendees,
           location: meeting.location,
-          prepTimeAdded: !!prepBlockId,
+          description: meeting.description,
         },
-        conflicts: [],
+        prepBlockCreated: !!prepBlockId,
       };
       
     },

@@ -27,8 +27,9 @@ export const confirmProposal = registerTool(
         return {
           success: false,
           error: 'Proposal not found or expired',
-          status: 'not_found' as const,
           proposalId,
+          executed: false,
+          changes: [],
         };
       }
       
@@ -41,12 +42,9 @@ export const confirmProposal = registerTool(
         
         return {
           success: true,
-          status: 'rejected' as const,
           proposalId,
-          proposal: {
-            type: proposal.type,
-            description: proposal.description,
-          },
+          executed: false,
+          changes: [],
         };
       }
       
@@ -56,8 +54,9 @@ export const confirmProposal = registerTool(
           return {
             success: false,
             error: 'Choice proposal requires a selected option',
-            status: 'rejected' as const,
             proposalId,
+            executed: false,
+            changes: [],
           };
         }
         
@@ -66,8 +65,9 @@ export const confirmProposal = registerTool(
           return {
             success: false,
             error: 'Invalid option selected',
-            status: 'rejected' as const,
             proposalId,
+            executed: false,
+            changes: [],
           };
         }
         
@@ -81,13 +81,13 @@ export const confirmProposal = registerTool(
         
         return {
           success: true,
-          status: 'executed' as const,
           proposalId,
-          proposal: {
-            type: proposal.type,
-            description: proposal.description,
-          },
-          selectedOption: option.id,
+          executed: true,
+          changes: [{
+            type: 'choice',
+            description: `Selected option: ${option.label || option.id}`,
+            result: 'success',
+          }],
         };
       }
       
@@ -101,12 +101,13 @@ export const confirmProposal = registerTool(
       
       return {
         success: true,
-        status: 'executed' as const,
         proposalId,
-        proposal: {
-          type: proposal.type,
+        executed: true,
+        changes: (proposal.data?.changes || proposal.metadata?.changes) || [{
+          type: 'action',
           description: proposal.description,
-        },
+          result: 'success',
+        }],
       };
       
     },

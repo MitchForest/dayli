@@ -60,14 +60,15 @@ export const optimizeSchedule = registerTool(
         console.log(`[Tool: optimizeSchedule] Schedule already optimized for ${date || 'today'}`);
         return {
           success: true,
-          proposedChanges: [],
-          insights: workflowResult.insights.map((insight: any) => ({
-            type: insight.type,
-            content: insight.content,
-            confidence: insight.confidence,
-          })),
-          metrics: workflowResult.data.metrics,
-          requiresConfirmation: false,
+          date: date || format(new Date(), 'yyyy-MM-dd'),
+          changes: [],
+          optimizedSchedule: [],
+          metrics: {
+            utilizationBefore: 0,
+            utilizationAfter: 0,
+            focusTimeBefore: 0,
+            focusTimeAfter: 0,
+          },
         };
       }
       
@@ -79,21 +80,20 @@ export const optimizeSchedule = registerTool(
       
       return {
         success: true,
-        proposedChanges: workflowResult.proposedChanges.map((change: any) => ({
-          type: change.type,
-          entity: change.entity,
-          description: change.reason,
-          impact: change.impact,
-          confidence: change.confidence || 0.8,
+        date: date || format(new Date(), 'yyyy-MM-dd'),
+        proposalId: confirmationId,
+        changes: workflowResult.proposedChanges.map((change: any) => ({
+          type: change.type as 'create' | 'move' | 'delete' | 'modify',
+          description: change.reason || change.description || '',
+          impact: change.impact || '',
         })),
-        insights: workflowResult.insights.map((insight: any) => ({
-          type: insight.type,
-          content: insight.content,
-          confidence: insight.confidence,
-        })),
-        metrics: workflowResult.data.metrics,
-        requiresConfirmation: true,
-        confirmationId,
+        optimizedSchedule: workflowResult.data.optimizedSchedule || [],
+        metrics: workflowResult.data.metrics || {
+          utilizationBefore: 0,
+          utilizationAfter: 0,
+          focusTimeBefore: 0,
+          focusTimeAfter: 0,
+        },
       };
     },
   })
@@ -126,9 +126,9 @@ export const triageEmails = registerTool(
       return {
         success: false,
         error: 'Email management workflow will be available in Sprint 4.3',
+        proposalId: undefined,
         emailBatches: [],
-        insights: [],
-        requiresConfirmation: false,
+        suggestedActions: [],
       };
     },
   })
@@ -162,9 +162,12 @@ export const prioritizeTasks = registerTool(
       return {
         success: false,
         error: 'Task intelligence workflow will be available in Sprint 4.3',
-        prioritizedTasks: [],
-        insights: [],
-        metrics: null,
+        rankedTasks: [],
+        insights: {
+          overdueCount: 0,
+          highPriorityCount: 0,
+          quickWinsCount: 0,
+        },
       };
       
       /* Commented out - workflow not implemented yet
@@ -307,10 +310,9 @@ export const optimizeCalendar = registerTool(
       return {
         success: false,
         error: 'Calendar optimization workflow will be available in Sprint 4.3',
-        conflicts: [],
-        proposedChanges: [],
-        insights: [],
-        requiresConfirmation: false,
+        proposalId: undefined,
+        suggestions: [],
+        potentialTimeSaved: 0,
       };
       
       /* Commented out - workflow not implemented yet

@@ -31,11 +31,6 @@ export const showPatterns = registerTool(
         return {
           success: true,
           patterns: [],
-          stats: {
-            total: 0,
-            strongPatterns: 0,
-            avgConfidence: 0,
-          },
         };
       }
       
@@ -92,19 +87,11 @@ export const showPatterns = registerTool(
       return {
         success: true,
         patterns: patterns.map((p: any) => ({
-          id: p.id,
-          type: p.type,
           category: p.category || 'general',
-          description: p.description,
-          confidence: p.confidence,
-          frequency: p.frequency,
-          lastSeen: p.lastSeen,
+          pattern: p.description || p.pattern || '',
+          confidence: p.confidence || 0,
+          examples: p.examples || [],
         })),
-        stats: {
-          total: patterns.length,
-          strongPatterns,
-          avgConfidence,
-        },
       };
     },
   })

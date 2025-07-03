@@ -55,7 +55,15 @@ export const readEmail = registerTool(
         return {
           success: false,
           error: `Email with ID ${emailId} not found`,
-          email: null,
+          email: {
+            id: emailId,
+            from: '',
+            fromEmail: '',
+            to: '',
+            subject: '',
+            body: '',
+            receivedAt: new Date(),
+          },
         };
       }
       
@@ -125,16 +133,17 @@ export const readEmail = registerTool(
           id: emailId,
           threadId: fullMessage.threadId || emailId,
           subject,
-          from,
-          to,
-          cc,
+          from: from.name || from.email,
+          fromEmail: from.email,
+          to: to.map(t => t.email).join(', '),
           body: bodyPlain,
-          bodyHtml: bodyHtml || undefined,
-          attachments: attachments.length > 0 ? attachments : undefined,
-          actionItems: actionItems.length > 0 ? actionItems : undefined,
-          receivedAt: new Date(date).toISOString(),
-          isRead: fullMessage.labelIds?.includes('UNREAD') === false,
-          urgency,
+          receivedAt: new Date(date),
+          attachments: attachments.length > 0 ? attachments.map(a => ({
+            filename: a.filename,
+            mimeType: a.mimeType,
+            size: a.size,
+          })) : undefined,
+          extractedActions: actionItems.length > 0 ? actionItems : undefined,
         },
       };
       

@@ -26,8 +26,9 @@ export const completeTask = registerTool(
         return {
           success: false,
           error: 'Task not found',
-          completedTaskId: taskId,
-          completedTaskTitle: '',
+          taskId: taskId,
+          title: '',
+          completedAt: new Date(),
         };
       }
       
@@ -35,8 +36,9 @@ export const completeTask = registerTool(
         return {
           success: false,
           error: 'Task is already completed',
-          completedTaskId: taskId,
-          completedTaskTitle: task.title,
+          taskId: taskId,
+          title: task.title,
+          completedAt: new Date(),
         };
       }
       
@@ -57,10 +59,9 @@ export const completeTask = registerTool(
       // Return pure data
       return {
         success: true,
-        completedTaskId: taskId,
-        completedTaskTitle: completedTask.title,
-        timeSpent: completedTask.estimatedMinutes || 30,
-        notes,
+        taskId: taskId,
+        title: completedTask.title,
+        completedAt: new Date(),
       };
       
     },

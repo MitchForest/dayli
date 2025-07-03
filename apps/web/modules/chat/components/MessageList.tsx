@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { Bot, User, Loader2, Check, X, Wrench } from 'lucide-react';
+import { Bot, User, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { MessageContent } from './MessageContent';
 import { CommandListMessage } from './CommandListMessage';
+import { ToolResultRenderer } from './ToolResultRenderer';
 import type { Message } from 'ai';
 import type { Entity, MessageMetadata } from '../types/chat.types';
 
@@ -40,29 +41,55 @@ export function MessageList({
     }
   }, [onSuggestionSelect]);
 
-  // Helper to format tool execution status
-  const getToolExecutionDisplay = (toolName: string, invocation: any) => {
-    // Map tool names to user-friendly descriptions
-    const toolDescriptions: Record<string, string> = {
-      createTimeBlock: 'Creating time block',
-      moveTimeBlock: 'Moving time block',
-      deleteTimeBlock: 'Deleting time block',
-      assignTaskToBlock: 'Assigning task',
-      completeTask: 'Completing task',
-      getSchedule: 'Checking schedule',
-      getUnassignedTasks: 'Getting unassigned tasks',
-      updatePreference: 'Updating preferences',
-      getPreferences: 'Getting preferences',
-    };
-
-    const description = toolDescriptions[toolName] || toolName;
+  // Handle tool actions from ToolResultRenderer
+  const handleToolAction = useCallback((action: { type: string; payload?: any }) => {
+    console.log('[MessageList] Tool action received:', action);
     
-    // Check if the invocation has completed (has a result)
-    const hasResult = invocation.state === 'result';
-    const result = hasResult ? invocation.result : null;
-    const status = result?.success === false ? 'failed' : hasResult ? 'completed' : 'pending';
-    
-    return { description, status };
+    // Handle different action types
+    switch (action.type) {
+      case 'create_block':
+      case 'edit_block':
+      case 'view_task':
+      case 'complete_task':
+      case 'read_email':
+      case 'draft_reply':
+      case 'confirm_proposal':
+        // These could trigger new messages or navigation
+        if (onSuggestionSelect) {
+          // Convert action to a natural language command
+          const command = convertActionToCommand(action);
+          if (command) {
+            onSuggestionSelect(command);
+          }
+        }
+        break;
+      default:
+        console.log('[MessageList] Unhandled action type:', action.type);
+    }
+  }, [onSuggestionSelect]);
+  
+  // Convert tool action to natural language command
+  const convertActionToCommand = (action: { type: string; payload?: any }): string | null => {
+    switch (action.type) {
+      case 'create_block':
+        return `Create a new time block${action.payload?.date ? ` for ${action.payload.date}` : ''}`;
+      case 'edit_block':
+        return `Edit time block ${action.payload?.blockId}`;
+      case 'view_task':
+        return `Show task details for ${action.payload?.taskId}`;
+      case 'complete_task':
+        return `Complete task ${action.payload?.taskId}`;
+      case 'read_email':
+        return `Read email ${action.payload?.emailId}`;
+      case 'draft_reply':
+        return `Draft a reply to email ${action.payload?.emailId}`;
+      case 'confirm_proposal':
+        return action.payload?.confirmed 
+          ? `Confirm proposal ${action.payload?.proposalId}`
+          : `Cancel proposal ${action.payload?.proposalId}`;
+      default:
+        return null;
+    }
   };
 
   // Extract metadata from message including tool results
@@ -88,65 +115,34 @@ export function MessageList({
     return metadata;
   };
 
-  // Extract structured data from tool results
-  const getStructuredData = (message: Message) => {
+  // Render tool results using the new ToolResultRenderer
+  const renderToolResults = (message: Message) => {
     if (!message.toolInvocations || message.toolInvocations.length === 0) {
-      return undefined;
+      return null;
     }
-
-    const structuredResponses = message.toolInvocations
-      .filter((invocation: any) => {
-        // Check if we have a result
-        if (invocation.state !== 'result' || !invocation.result) {
-          return false;
-        }
-        
-        const result = invocation.result;
-        
-        // Check if the result itself is a UniversalToolResponse
-        const hasDirectStructure = 
-          typeof result === 'object' &&
-          'metadata' in result &&
-          'display' in result &&
-          'ui' in result;
-        
-        // Also check if it's wrapped in a success/data structure (legacy format)
-        const hasWrappedStructure = 
-          typeof result === 'object' &&
-          'success' in result &&
-          'data' in result &&
-          result.data &&
-          typeof result.data === 'object' &&
-          'metadata' in result.data &&
-          'display' in result.data &&
-          'ui' in result.data;
-        
-        // Debug logging
-        console.log('[MessageList] Tool result structure check:', {
-          toolName: invocation.toolName,
-          hasResult: !!result,
-          hasDirectStructure,
-          hasWrappedStructure,
-          resultKeys: result ? Object.keys(result) : [],
-          result: result
-        });
-        
-        return hasDirectStructure || hasWrappedStructure;
-      })
-      .map((invocation: any) => {
-        const result = invocation.result;
-        
-        // If it's wrapped in success/data, unwrap it
-        if (result.success && result.data && 'metadata' in result.data) {
-          return result.data;
-        }
-        
-        // Otherwise, it's already in the right format
-        return result;
-      });
-
-    console.log('[MessageList] Structured responses found:', structuredResponses.length);
-    return structuredResponses.length > 0 ? structuredResponses : undefined;
+    
+    return (
+      <div className="mt-3 space-y-3">
+        {message.toolInvocations
+          .filter(inv => inv.state === 'result' || inv.state === 'partial-call')
+          .map((invocation, idx) => {
+            const isStreaming = invocation.state === 'partial-call';
+            const progress = isStreaming ? 50 : 100;
+            const result = invocation.state === 'result' ? invocation.result : null;
+            
+            return (
+              <ToolResultRenderer
+                key={`${message.id}-tool-${idx}`}
+                toolName={invocation.toolName}
+                result={result}
+                isStreaming={isStreaming}
+                streamProgress={progress}
+                onAction={handleToolAction}
+              />
+            );
+          })}
+      </div>
+    );
   };
 
   return (
@@ -189,51 +185,27 @@ export function MessageList({
                 : 'bg-muted'
             )}
           >
-            {/* Use MessageContent for rich display */}
-            <MessageContent
-              content={message.content}
-              role={message.role as 'user' | 'assistant' | 'system'}
-              metadata={getMessageMetadata(message)}
-              structuredData={getStructuredData(message)}
-              message={message}
-              onSuggestionSelect={onSuggestionSelect}
-              onAction={(action) => {
-                // Handle structured actions
-                if (action.type === 'message') {
-                  onSuggestionSelect?.(action.message);
-                }
-                // Add more action handlers as needed
-              }}
-              isLoading={isLoading && message === messages[messages.length - 1]}
-            />
-            
-            {/* Display tool executions */}
-            {message.toolInvocations && message.toolInvocations.length > 0 && (
-              <div className="mt-2 space-y-1">
-                {message.toolInvocations.map((invocation, index) => {
-                  const { description, status } = getToolExecutionDisplay(
-                    invocation.toolName,
-                    invocation
-                  );
-                  
-                  return (
-                    <div
-                      key={`${message.id}-tool-${index}`}
-                      className={cn(
-                        "flex items-center gap-2 text-xs",
-                        message.role === 'user' ? 'text-primary-foreground/80' : 'text-muted-foreground'
-                      )}
-                    >
-                      <Wrench className="h-3 w-3" />
-                      <span>{description}</span>
-                      {status === 'completed' && <Check className="h-3 w-3 text-green-500" />}
-                      {status === 'failed' && <X className="h-3 w-3 text-red-500" />}
-                      {status === 'pending' && <Loader2 className="h-3 w-3 animate-spin" />}
-                    </div>
-                  );
-                })}
-              </div>
+            {/* Display message content */}
+            {message.content && (
+              <MessageContent
+                content={message.content}
+                role={message.role as 'user' | 'assistant' | 'system'}
+                metadata={getMessageMetadata(message)}
+                message={message}
+                onSuggestionSelect={onSuggestionSelect}
+                onAction={(action) => {
+                  // Handle structured actions
+                  if (action.type === 'message') {
+                    onSuggestionSelect?.(action.message);
+                  }
+                  // Add more action handlers as needed
+                }}
+                isLoading={isLoading && message === messages[messages.length - 1]}
+              />
             )}
+            
+            {/* Display tool results using new renderer */}
+            {renderToolResults(message)}
             
             <p className={cn(
               "text-xs mt-1",

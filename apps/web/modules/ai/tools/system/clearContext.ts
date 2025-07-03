@@ -55,8 +55,8 @@ export const clearContext = registerTool(
       // Return pure data
       return {
         success: true,
-        clearedItems,
-        preservedPatterns: preservePatterns,
+        cleared: true,
+        scope: scope === 'all' ? 'all' : 'conversation',
       };
     },
   })

@@ -32,12 +32,6 @@ export const showWorkflowHistory = registerTool(
         return {
           success: true,
           workflows: [],
-          stats: {
-            total: 0,
-            successful: 0,
-            failed: 0,
-            avgDurationMs: 0,
-          },
         };
       }
       
@@ -54,18 +48,11 @@ export const showWorkflowHistory = registerTool(
         workflows: history.slice(0, limit).map((workflow: any) => ({
           id: workflow.id,
           type: workflow.type,
+          executedAt: workflow.startedAt || new Date(),
           status: workflow.status as 'completed' | 'failed' | 'interrupted',
-          startedAt: workflow.startedAt,
-          completedAt: workflow.completedAt,
-          durationMs: workflow.executionTime || 0,
-          result: includeDetails ? workflow.result : undefined,
+          changes: workflow.changes || 0,
+          outcome: workflow.outcome || workflow.result?.summary,
         })),
-        stats: {
-          total: history.length,
-          successful: successCount,
-          failed: errorCount,
-          avgDurationMs: avgDuration,
-        },
       };
     },
   })

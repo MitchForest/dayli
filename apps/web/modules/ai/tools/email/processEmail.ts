@@ -32,8 +32,9 @@ export const processEmail = registerTool(
         return {
           success: false,
           error: 'Email not found',
-          action,
-          result: null,
+          emailId,
+          action: action === 'draft_reply' ? 'draft' : action === 'send_reply' ? 'send' : 'convert_to_task',
+          result: {},
         };
       }
       
@@ -73,12 +74,11 @@ export const processEmail = registerTool(
           
           return {
             success: true,
-            action: 'convert_to_task',
+            emailId,
+            action: 'convert_to_task' as const,
             result: {
-              createdTaskId: task.id,
+              taskId: task.id,
               taskTitle: task.title,
-              taskPriority: task.priority || 'medium',
-              estimatedMinutes: task.estimatedMinutes || 30,
             },
           };
         }
@@ -88,8 +88,9 @@ export const processEmail = registerTool(
             return {
               success: false,
               error: 'Reply content is required for drafting',
-              action: 'draft_reply',
-              result: null,
+              emailId,
+              action: 'draft' as const,
+              result: {},
             };
           }
           
@@ -105,11 +106,11 @@ export const processEmail = registerTool(
           
           return {
             success: true,
-            action: 'draft_reply',
+            emailId,
+            action: 'draft' as const,
             result: {
               draftId: draft,
-              subject: subject.startsWith('Re:') ? subject : `Re: ${subject}`,
-              to: from,
+              draftContent: replyContent,
             },
           };
         }
@@ -119,14 +120,15 @@ export const processEmail = registerTool(
             return {
               success: false,
               error: 'Reply content is required for sending',
-              action: 'send_reply',
-              result: null,
+              emailId,
+              action: 'send' as const,
+              result: {},
             };
           }
           
           // Send the email
           const result = await gmailService.sendMessage({
-            to: [from],
+            to: from,
             subject: subject.startsWith('Re:') ? subject : `Re: ${subject}`,
             body: replyContent,
             threadId: email.threadId,
@@ -136,10 +138,10 @@ export const processEmail = registerTool(
           
           return {
             success: true,
-            action: 'send_reply',
+            emailId,
+            action: 'send' as const,
             result: {
-              messageId: result.id,
-              threadId: result.threadId,
+              draftId: result.id,
             },
           };
         }
@@ -148,8 +150,9 @@ export const processEmail = registerTool(
           return {
             success: false,
             error: `Unknown action: ${action}`,
-            action,
-            result: null,
+            emailId,
+            action: 'convert_to_task' as const,
+            result: {},
           };
       }
     },

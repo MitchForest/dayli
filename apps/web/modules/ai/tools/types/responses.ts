@@ -169,13 +169,12 @@ export interface ReadEmailResponse extends BaseToolResponse {
 
 export interface ProcessEmailResponse extends BaseToolResponse {
   emailId: string;
-  action: 'draft' | 'send' | 'convert_to_task' | 'archive';
+  action: 'draft' | 'send' | 'convert_to_task';
   result: {
     draftId?: string;
     draftContent?: string;
     taskId?: string;
     taskTitle?: string;
-    archived?: boolean;
   };
 }
 

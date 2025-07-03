@@ -62,9 +62,16 @@ export const rescheduleMeeting = registerTool(
         return {
           success: false,
           error: `Could not find meeting with ID ${params.eventId}`,
-          meeting: null,
-          oldTime: null,
-          newTime: null,
+          meetingId: params.eventId,
+          previousTime: {
+            startTime: new Date(),
+            endTime: new Date(),
+          },
+          newTime: {
+            startTime: new Date(),
+            endTime: new Date(),
+          },
+          notificationsSent: false,
         };
       }
       
@@ -88,15 +95,16 @@ export const rescheduleMeeting = registerTool(
         return {
           success: false,
           error: `Cannot reschedule - conflicts with: ${conflicts.map(c => c.summary).join(', ')}`,
-          meeting: null,
-          oldTime: {
-            start: currentStart.toISOString(),
-            end: currentEnd.toISOString(),
+          meetingId: params.eventId,
+          previousTime: {
+            startTime: currentStart,
+            endTime: currentEnd,
           },
           newTime: {
-            start: parsed.toISOString(),
-            end: newEnd.toISOString(),
+            startTime: parsed,
+            endTime: newEnd,
           },
+          notificationsSent: false,
         };
       }
       
@@ -122,27 +130,16 @@ export const rescheduleMeeting = registerTool(
       // Return pure data
       return {
         success: true,
-        meeting: {
-          id: updated.id,
-          title: updated.summary || '',
-          description: updated.description,
-          startTime: parsed.toISOString(),
-          endTime: newEnd.toISOString(),
-          attendees: event.attendees?.map(a => ({
-            email: a.email || '',
-            responseStatus: a.responseStatus as 'accepted' | 'declined' | 'tentative' | 'needsAction',
-          })) || [],
-          location: updated.location,
-        },
-        oldTime: {
-          start: currentStart.toISOString(),
-          end: currentEnd.toISOString(),
+        meetingId: params.eventId,
+        previousTime: {
+          startTime: currentStart,
+          endTime: currentEnd,
         },
         newTime: {
-          start: parsed.toISOString(),
-          end: newEnd.toISOString(),
+          startTime: parsed,
+          endTime: newEnd,
         },
-        attendeesNotified: params.notifyAttendees && (event.attendees?.length || 0) > 0,
+        notificationsSent: params.notifyAttendees && (event.attendees?.length || 0) > 0,
       };
       
     },

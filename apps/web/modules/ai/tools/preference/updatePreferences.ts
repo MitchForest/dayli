@@ -41,8 +41,8 @@ export const updatePreferences = registerTool(
         return {
           success: false,
           error: validation.error || 'Invalid value for preference',
-          preference,
-          oldValue,
+          key: preference,
+          previousValue: oldValue,
           newValue: value,
         };
       }
@@ -60,10 +60,9 @@ export const updatePreferences = registerTool(
       // Return pure data
       return {
         success: true,
-        preference,
-        oldValue,
+        key: preference,
+        previousValue: oldValue,
         newValue: value,
-        affectedFeatures: getAffectedFeatures(preference),
       };
       
     },

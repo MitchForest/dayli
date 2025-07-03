@@ -174,13 +174,15 @@ export const viewEmails = registerTool(
         success: true,
         emails: filteredEmails.map(email => ({
           id: email.id,
-          from: email.from,
+          from: email.from.name || email.from.email,
+          fromEmail: email.from.email,
           subject: email.subject,
-          preview: email.bodyPreview,
-          receivedAt: email.receivedAt,
+          snippet: email.bodyPreview,
+          receivedAt: new Date(email.receivedAt),
           isRead: email.isRead,
+          hasAttachments: false, // TODO: implement attachment detection
           urgency: email.urgency,
-          score: email.score,
+          status: email.isRead ? 'read' : 'unread',
         })),
         stats: {
           total: filteredEmails.length,

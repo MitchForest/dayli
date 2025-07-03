@@ -29,7 +29,7 @@ export const resumeWorkflow = registerTool(
         success: false,
         error: 'Workflow persistence will be available in a future update',
         workflowId,
-        status: 'not_found' as const,
+        resumed: false,
       };
     },
   })
