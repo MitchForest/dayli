@@ -89,6 +89,7 @@ export const detectConflicts = tool({
           const item1 = allItems[i];
           const item2 = allItems[j];
           
+          if (!item1 || !item2) continue;
           if (!item1.startTime || !item1.endTime || !item2.startTime || !item2.endTime) continue;
           
           const start1 = parseISO(item1.startTime);
@@ -127,6 +128,7 @@ export const detectConflicts = tool({
             const item1 = allItems[i];
             const item2 = allItems[j];
             
+            if (!item1 || !item2) continue;
             if (!item1.startTime || !item1.endTime || !item2.startTime || !item2.endTime) continue;
             
             const end1 = parseISO(item1.endTime);
@@ -173,6 +175,7 @@ export const detectConflicts = tool({
           const item1 = itemsWithLocation[i];
           const item2 = itemsWithLocation[i + 1];
           
+          if (!item1 || !item2) continue;
           if (item1.location !== item2.location) {
             const end1 = parseISO(item1.endTime);
             const start2 = parseISO(item2.startTime);
@@ -264,8 +267,9 @@ export const detectConflicts = tool({
             data: {
               title: conflict.description,
               message: conflict.suggestions[0] || 'Consider rescheduling',
+              confirmText: 'Resolve',
+              cancelText: 'Later',
               variant: conflict.severity === 'high' ? 'danger' : 'warning',
-              details: `${conflict.type.replace('_', ' ')} conflict`,
             },
           })),
         },

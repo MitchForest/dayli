@@ -171,12 +171,16 @@ export const ensureBreaksProtected = tool({
       // Find stretches longer than 3 hours without breaks
       for (let i = 0; i < sortedBusyTimes.length; i++) {
         const currentBlock = sortedBusyTimes[i];
+        if (!currentBlock) continue;
+        
         let stretchEnd = currentBlock.end;
         let j = i + 1;
         
         // Find continuous work stretch
         while (j < sortedBusyTimes.length) {
           const nextBlock = sortedBusyTimes[j];
+          if (!nextBlock) break;
+          
           const gap = differenceInMinutes(nextBlock.start, stretchEnd);
           
           if (gap <= 15) { // Less than 15 min gap, consider continuous
@@ -272,8 +276,6 @@ export const ensureBreaksProtected = tool({
                 percentage: protectionScore,
                 current: actualBreaks,
                 total: totalExpectedBreaks,
-                description: protectionScore < 50 ? 'Critical - Add breaks' : 
-                            protectionScore < 80 ? 'Needs improvement' : 'Good protection',
               },
             },
             ...violations.slice(0, 3).map(violation => ({
@@ -283,8 +285,9 @@ export const ensureBreaksProtected = tool({
                 message: violation.conflictingBlock ? 
                   `Conflicts with: ${violation.conflictingBlock.title}` : 
                   'No break scheduled',
-                details: 'Regular breaks improve focus and prevent burnout',
-                variant: violation.severity === 'high' ? 'danger' : 'warning',
+                confirmText: 'Add Break',
+                cancelText: 'Skip',
+                variant: (violation.severity === 'high' ? 'danger' : 'warning') as 'danger' | 'warning',
               },
             })),
           ],

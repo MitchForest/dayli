@@ -65,19 +65,15 @@ export class WorkflowPersistenceService {
       const { error } = await supabase
         .from('workflow_states')
         .upsert({
-          workflow_id: workflowId,
+          id: workflowId,
           user_id: user.id,
-          workflow_type: workflowType,
-          current_step: currentStep,
+          type: workflowType,
+          current_node: currentStep,
           state: state,
-          metadata: {
-            ttl_hours: ttlHours,
-            saved_at: new Date().toISOString(),
-          },
           expires_at: expiresAt.toISOString(),
           updated_at: new Date().toISOString(),
         }, {
-          onConflict: 'workflow_id,user_id',
+          onConflict: 'id,user_id',
         });
       
       if (error) {
@@ -107,7 +103,7 @@ export class WorkflowPersistenceService {
       const { data, error } = await supabase
         .from('workflow_states')
         .select('*')
-        .eq('workflow_id', workflowId)
+        .eq('id', workflowId)
         .eq('user_id', user.id)
         .single();
       
@@ -128,15 +124,15 @@ export class WorkflowPersistenceService {
       }
       
       return {
-        workflowId: data.workflow_id,
-        userId: data.user_id,
-        workflowType: data.workflow_type,
-        currentStep: data.current_step,
-        state: data.state,
-        metadata: data.metadata,
-        expiresAt: data.expires_at,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
+        workflowId: data.id,
+        userId: data.user_id || '',
+        workflowType: data.type || '',
+        currentStep: data.current_node || '',
+        state: data.state as Record<string, any>,
+        metadata: {},
+        expiresAt: data.expires_at || '',
+        createdAt: data.created_at || '',
+        updatedAt: data.updated_at || '',
       };
     } catch (error) {
       console.error('[WorkflowPersistence] Restore failed:', error);
@@ -158,7 +154,7 @@ export class WorkflowPersistenceService {
       const { error } = await supabase
         .from('workflow_states')
         .delete()
-        .eq('workflow_id', workflowId)
+        .eq('id', workflowId)
         .eq('user_id', user.id);
       
       if (error) {
@@ -190,7 +186,7 @@ export class WorkflowPersistenceService {
         .order('updated_at', { ascending: false });
       
       if (workflowType) {
-        query = query.eq('workflow_type', workflowType);
+        query = query.eq('type', workflowType);
       }
       
       const { data, error } = await query;
@@ -200,15 +196,15 @@ export class WorkflowPersistenceService {
       }
       
       return (data || []).map(item => ({
-        workflowId: item.workflow_id,
-        userId: item.user_id,
-        workflowType: item.workflow_type,
-        currentStep: item.current_step,
-        state: item.state,
-        metadata: item.metadata,
-        expiresAt: item.expires_at,
-        createdAt: item.created_at,
-        updatedAt: item.updated_at,
+        workflowId: item.id,
+        userId: item.user_id || '',
+        workflowType: item.type || '',
+        currentStep: item.current_node || '',
+        state: item.state as Record<string, any>,
+        metadata: {},
+        expiresAt: item.expires_at || '',
+        createdAt: item.created_at || '',
+        updatedAt: item.updated_at || '',
       }));
     } catch (error) {
       console.error('[WorkflowPersistence] List failed:', error);
@@ -227,7 +223,7 @@ export class WorkflowPersistenceService {
         .from('workflow_states')
         .delete()
         .lt('expires_at', new Date().toISOString())
-        .select('workflow_id');
+        .select('id');
       
       if (error) {
         console.error('[WorkflowPersistence] Cleanup error:', error);
@@ -291,10 +287,10 @@ export class WorkflowPersistenceService {
       const { error } = await supabase
         .from('workflow_states')
         .update({
-          current_step: currentStep,
+          current_node: currentStep,
           updated_at: new Date().toISOString(),
         })
-        .eq('workflow_id', workflowId)
+        .eq('id', workflowId)
         .eq('user_id', user.id);
       
       if (error) {

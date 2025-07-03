@@ -110,8 +110,9 @@ export const consolidateFragmentedTime = tool({
       workEnd.setHours(workEndTime.hour, workEndTime.minute, 0, 0);
       
       // Check gap at start of day
-      if (busyTimes.length === 0 || busyTimes[0].start > workStart) {
-        const gapEnd = busyTimes.length > 0 ? busyTimes[0].start : workEnd;
+      if (busyTimes.length === 0 || (busyTimes[0] && busyTimes[0].start > workStart)) {
+        const firstBusy = busyTimes[0];
+        const gapEnd = busyTimes.length > 0 && firstBusy ? firstBusy.start : workEnd;
         const duration = differenceInMinutes(gapEnd, workStart);
         if (duration >= minGapSize && duration <= maxGapSize) {
           gaps.push({
@@ -125,8 +126,12 @@ export const consolidateFragmentedTime = tool({
       
       // Check gaps between busy times
       for (let i = 0; i < busyTimes.length - 1; i++) {
-        const gapStart = busyTimes[i].end;
-        const gapEnd = busyTimes[i + 1].start;
+        const current = busyTimes[i];
+        const next = busyTimes[i + 1];
+        if (!current || !next) continue;
+        
+        const gapStart = current.end;
+        const gapEnd = next.start;
         const duration = differenceInMinutes(gapEnd, gapStart);
         
         if (duration >= minGapSize && duration <= maxGapSize) {
@@ -142,8 +147,9 @@ export const consolidateFragmentedTime = tool({
       
       // Check gap at end of day
       if (busyTimes.length > 0) {
-        const lastEnd = busyTimes[busyTimes.length - 1].end;
-        if (lastEnd < workEnd) {
+        const lastBusy = busyTimes[busyTimes.length - 1];
+        if (lastBusy && lastBusy.end < workEnd) {
+          const lastEnd = lastBusy.end;
           const duration = differenceInMinutes(workEnd, lastEnd);
           if (duration >= minGapSize && duration <= maxGapSize) {
             gaps.push({
@@ -163,6 +169,7 @@ export const consolidateFragmentedTime = tool({
       for (let i = 0; i < gaps.length - 1; i++) {
         const gap1 = gaps[i];
         const gap2 = gaps[i + 1];
+        if (!gap1 || !gap2) continue;
         
         // Check if gaps are separated by a short, moveable block
         if (gap1.afterBlock && gap2.beforeBlock && 
@@ -248,8 +255,9 @@ export const consolidateFragmentedTime = tool({
             data: {
               title: suggestion.description,
               message: suggestion.impact,
-              details: `This will consolidate ${suggestion.gaps.length} time gaps into ${Math.round(suggestion.resultingDuration / 60)} minutes of usable time`,
-              variant: 'info',
+              confirmText: 'Apply',
+              cancelText: 'Skip',
+              variant: 'info' as const,
             },
           })),
         },
@@ -272,7 +280,7 @@ export const consolidateFragmentedTime = tool({
               : 'Schedule has good time consolidation',
             duration: 4000,
           },
-          actions: suggestions.length > 0 ? [{
+          actions: suggestions.length > 0 && suggestions[0] ? [{
             id: 'apply-consolidation',
             label: 'Apply Top Suggestion',
             variant: 'primary',

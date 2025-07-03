@@ -7,7 +7,7 @@ import {
   CreateTaskParams,
   UpdateTaskParams
 } from '../interfaces/task.interface';
-import { Database } from '../../database.types';
+import { Database } from '@repo/database/types';
 
 export class RealTaskService implements TaskService {
   readonly serviceName = 'RealTaskService';

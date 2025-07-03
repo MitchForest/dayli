@@ -53,14 +53,18 @@ export const detectScheduleInefficiencies = tool({
       const blocks = await scheduleService.getScheduleForDate(date);
       
       // Get tasks for context
-      const tasks = await taskService.getTasks();
+      const tasks = await taskService.getUnassignedTasks();
       
       const inefficiencies: Inefficiency[] = [];
       
       // 1. Detect fragmentation
       const gaps: number[] = [];
       for (let i = 0; i < blocks.length - 1; i++) {
-        const gap = differenceInMinutes(blocks[i + 1].startTime, blocks[i].endTime);
+        const current = blocks[i];
+        const next = blocks[i + 1];
+        if (!current || !next) continue;
+        
+        const gap = differenceInMinutes(next.startTime, current.endTime);
         if (gap > 0 && gap < 30) {
           gaps.push(gap);
         }
@@ -85,6 +89,7 @@ export const detectScheduleInefficiencies = tool({
       for (let i = 0; i < blocks.length - 1; i++) {
         const current = blocks[i];
         const next = blocks[i + 1];
+        if (!current || !next) continue;
         
         // Count different types
         contextMap.set(current.type, (contextMap.get(current.type) || 0) + 1);
@@ -226,7 +231,7 @@ export const detectScheduleInefficiencies = tool({
               : 'Schedule is reasonably efficient',
             duration: 4000,
           },
-          actions: inefficiencies.length > 0 ? [{
+          actions: inefficiencies.length > 0 && inefficiencies[0] ? [{
             id: 'optimize-schedule',
             label: 'Optimize Schedule',
             variant: 'primary',

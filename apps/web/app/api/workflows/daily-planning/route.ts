@@ -1,3 +1,4 @@
+/*
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerActionClient } from '@/lib/supabase-server';
 import { createDailyPlanningWorkflow } from '@/modules/workflows/graphs/dailyPlanning';
@@ -69,4 +70,15 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+*/
+
+// Temporary placeholder until workflow is reimplemented
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(_req: NextRequest) {
+  return NextResponse.json(
+    { error: 'Daily planning workflow is currently being refactored' },
+    { status: 503 }
+  );
 } 

@@ -186,8 +186,11 @@ export class ProposalStore {
     const toRemove = Math.ceil(sorted.length * 0.1);
     
     for (let i = 0; i < toRemove; i++) {
-      const [id] = sorted[i];
-      this.proposals.delete(id);
+      const entry = sorted[i];
+      if (entry) {
+        const [id] = entry;
+        this.proposals.delete(id);
+      }
     }
     
     console.log(`[ProposalStore] Removed ${toRemove} oldest proposals`);

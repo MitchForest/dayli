@@ -114,8 +114,9 @@ export const findBestTimeSlot = tool({
         const dayEnd = parseISO(`${dateStr}T${workEnd}`);
         
         // Check start of day
-        if (busyTimes.length === 0 || busyTimes[0].start > dayStart) {
-          const slotEnd = busyTimes.length > 0 ? busyTimes[0].start : dayEnd;
+        const firstBusyTime = busyTimes[0];
+        if (busyTimes.length === 0 || (firstBusyTime && firstBusyTime.start > dayStart)) {
+          const slotEnd = busyTimes.length > 0 && firstBusyTime ? firstBusyTime.start : dayEnd;
           const slotDuration = differenceInMinutes(slotEnd, dayStart);
           
           if (slotDuration >= durationMinutes) {
@@ -133,8 +134,12 @@ export const findBestTimeSlot = tool({
         
         // Check between busy times
         for (let i = 0; i < busyTimes.length - 1; i++) {
-          const gapStart = busyTimes[i].end;
-          const gapEnd = busyTimes[i + 1].start;
+          const current = busyTimes[i];
+          const next = busyTimes[i + 1];
+          if (!current || !next) continue;
+          
+          const gapStart = current.end;
+          const gapEnd = next.start;
           const gapDuration = differenceInMinutes(gapEnd, gapStart);
           
           if (gapDuration >= durationMinutes) {
@@ -152,7 +157,10 @@ export const findBestTimeSlot = tool({
         
         // Check end of day
         if (busyTimes.length > 0) {
-          const lastEnd = busyTimes[busyTimes.length - 1].end;
+          const lastBusyTime = busyTimes[busyTimes.length - 1];
+          if (!lastBusyTime) continue;
+          
+          const lastEnd = lastBusyTime.end;
           if (lastEnd < dayEnd) {
             const slotDuration = differenceInMinutes(dayEnd, lastEnd);
             if (slotDuration >= durationMinutes) {
@@ -201,7 +209,7 @@ export const findBestTimeSlot = tool({
           })),
         },
         {
-          suggestions: topCandidates.length > 0 ? [
+          suggestions: topCandidates.length > 0 && topCandidates[0] ? [
             `Schedule ${activityType.replace('_', ' ')} at ${topCandidates[0].startTime} on ${topCandidates[0].date}`,
             'Block this time on your calendar',
             'Create a recurring block for this activity',
@@ -219,7 +227,7 @@ export const findBestTimeSlot = tool({
               : 'No suitable time slots found',
             duration: 4000,
           },
-          actions: topCandidates.length > 0 ? [{
+          actions: topCandidates.length > 0 && topCandidates[0] ? [{
             id: 'schedule-best',
             label: `Schedule at ${topCandidates[0].startTime}`,
             variant: 'primary',
@@ -253,7 +261,8 @@ function evaluateSlot(
   preferences: any,
   constraints: any
 ): TimeSlotCandidate {
-  const hour = parseInt(startTime.split(':')[0]);
+  const timeParts = startTime.split(':');
+  const hour = parseInt(timeParts[0] || '0');
   let score = 50; // Base score
   const factors = {
     energyAlignment: 0,

@@ -1,7 +1,8 @@
 import { format, parse, setHours, setMinutes } from 'date-fns';
-import type { Tables } from '@/database.types';
+import type { Database } from '@repo/database/types';
+type Tables = Database['public']['Tables'];
 
-type TimeBlock = Tables<'time_blocks'>;
+type TimeBlock = Tables['time_blocks']['Row'];
 
 export interface ParsedTime {
   hour: number;

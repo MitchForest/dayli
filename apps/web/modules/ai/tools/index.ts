@@ -16,6 +16,13 @@ export * from './calendar';
 // Export all workflow tools
 export * from './workflow';
 
+// Workflow tools
+export { 
+  scheduleDay,
+  confirmProposal,
+  optimizeSchedule
+} from './workflow';
+
 // Export registry and types
 export { toolRegistry } from './registry';
 export * from './types'; 

@@ -43,7 +43,7 @@ export const findOptimalMeetingTime = tool({
     const toolOptions = {
       toolName: 'findOptimalMeetingTime',
       operation: 'read' as const,
-      resourceType: 'calendar' as const,
+      resourceType: 'meeting' as const,
       startTime,
     };
     
@@ -187,7 +187,8 @@ export const findOptimalMeetingTime = tool({
         }
         
         // Time preference scoring
-        const hour = parseInt(slot.startTime.split(':')[0]);
+        const timeParts = slot.startTime.split(':');
+        const hour = parseInt(timeParts[0] || '0');
         if (preferences.preferMorning && hour < 12) {
           score += 20;
           slot.factors.preferredTime = true;
@@ -242,7 +243,7 @@ export const findOptimalMeetingTime = tool({
               date: slot.date,
               startTime: slot.startTime,
               endTime: slot.endTime,
-              attendees: attendees,
+              attendees: attendees.map(email => ({ email, name: email.split('@')[0] || email })),
               description: `Score: ${slot.score}/200 - ${Object.entries(slot.factors)
                 .filter(([_, value]) => value)
                 .map(([key]) => key.replace(/([A-Z])/g, ' $1').toLowerCase())
@@ -251,7 +252,7 @@ export const findOptimalMeetingTime = tool({
           })),
         },
         {
-          suggestions: topSlots.length > 0 ? [
+          suggestions: topSlots.length > 0 && topSlots[0] ? [
             `Schedule meeting at ${topSlots[0].startTime} on ${topSlots[0].date}`,
             'Send meeting invites to attendees',
             'Check attendee preferences',
@@ -270,7 +271,7 @@ export const findOptimalMeetingTime = tool({
               : 'No suitable meeting times found',
             duration: 4000,
           },
-          actions: topSlots.length > 0 ? [{
+          actions: topSlots.length > 0 && topSlots[0] ? [{
             id: 'schedule-best',
             label: `Schedule at ${topSlots[0].startTime}`,
             variant: 'primary',

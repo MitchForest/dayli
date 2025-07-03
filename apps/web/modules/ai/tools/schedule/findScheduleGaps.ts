@@ -90,7 +90,7 @@ export const findScheduleGaps = tool({
           mergedBusy.push(time);
         } else {
           const last = mergedBusy[mergedBusy.length - 1];
-          if (time.start <= last.end) {
+          if (last && time.start <= last.end) {
             // Overlapping, extend the end time if needed
             last.end = new Date(Math.max(last.end.getTime(), time.end.getTime()));
           } else {
@@ -105,8 +105,9 @@ export const findScheduleGaps = tool({
       const workEndTime = parseISO(`${date}T${workEnd}`);
       
       // Check gap at start of day
-      if (mergedBusy.length === 0 || mergedBusy[0].start > workStartTime) {
-        const gapEnd = mergedBusy.length > 0 ? mergedBusy[0].start : workEndTime;
+      const firstBusy = mergedBusy[0];
+      if (mergedBusy.length === 0 || (firstBusy && firstBusy.start > workStartTime)) {
+        const gapEnd = mergedBusy.length > 0 && firstBusy ? firstBusy.start : workEndTime;
         const duration = differenceInMinutes(gapEnd, workStartTime);
         
         if (duration >= minGapMinutes) {
@@ -116,8 +117,12 @@ export const findScheduleGaps = tool({
       
       // Check gaps between busy times
       for (let i = 0; i < mergedBusy.length - 1; i++) {
-        const gapStart = mergedBusy[i].end;
-        const gapEnd = mergedBusy[i + 1].start;
+        const current = mergedBusy[i];
+        const next = mergedBusy[i + 1];
+        if (!current || !next) continue;
+        
+        const gapStart = current.end;
+        const gapEnd = next.start;
         const duration = differenceInMinutes(gapEnd, gapStart);
         
         if (duration >= minGapMinutes && gapEnd <= workEndTime) {
@@ -127,8 +132,9 @@ export const findScheduleGaps = tool({
       
       // Check gap at end of day
       if (mergedBusy.length > 0) {
-        const lastEnd = mergedBusy[mergedBusy.length - 1].end;
-        if (lastEnd < workEndTime) {
+        const lastBusy = mergedBusy[mergedBusy.length - 1];
+        if (lastBusy && lastBusy.end < workEndTime) {
+          const lastEnd = lastBusy.end;
           const duration = differenceInMinutes(workEndTime, lastEnd);
           if (duration >= minGapMinutes) {
             gaps.push(createGap(lastEnd, workEndTime, duration));
@@ -173,8 +179,8 @@ export const findScheduleGaps = tool({
           })),
         },
         {
-          suggestions: gaps.length > 0 ? [
-            `Schedule ${gaps[0].suitableFor[0]} in the ${gaps[0].type} gap`,
+          suggestions: gaps.length > 0 && gaps[0] ? [
+            `Schedule ${gaps[0].suitableFor[0] || 'tasks'} in the ${gaps[0].type} gap`,
             'Batch similar tasks in larger gaps',
             'Use small gaps for quick tasks',
             'Protect large gaps for deep work',

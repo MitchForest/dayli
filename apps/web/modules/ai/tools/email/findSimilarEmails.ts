@@ -160,8 +160,11 @@ export const findSimilarEmails = tool({
         }
         
         if (score > 20) {
+          const emailId = email.id;
+          if (!emailId) continue;
+          
           similarEmails.push({
-            id: email.id,
+            id: emailId as string,
             subject,
             from: extractName(from),
             fromEmail,

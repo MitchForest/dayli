@@ -6,10 +6,11 @@ import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers'
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { ensureServicesConfigured } from '../utils/auth';
 import { createClient } from '@/lib/supabase-client';
-import type { Tables } from '@/database.types';
+import type { Database } from '@repo/database/types';
+type Tables = Database['public']['Tables'];
 
-type TaskBacklogRow = Tables<'task_backlog'>;
-type TaskRow = Tables<'tasks'>;
+type TaskBacklogRow = Tables['task_backlog']['Row'];
+type TaskRow = Tables['tasks']['Row'];
 
 interface TaskWithScore {
   id: string;

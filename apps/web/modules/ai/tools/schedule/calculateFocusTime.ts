@@ -93,7 +93,7 @@ export const calculateFocusTime = tool({
           mergedBusy.push(time);
         } else {
           const last = mergedBusy[mergedBusy.length - 1];
-          if (time.start <= last.end) {
+          if (last && time.start <= last.end) {
             last.end = new Date(Math.max(last.end.getTime(), time.end.getTime()));
           } else {
             mergedBusy.push(time);
@@ -107,8 +107,9 @@ export const calculateFocusTime = tool({
       const focusBlocks: FocusTimeMetrics['blocks'] = [];
       
       // Check start of day
-      if (mergedBusy.length === 0 || mergedBusy[0].start > workStartTime) {
-        const blockEnd = mergedBusy.length > 0 ? mergedBusy[0].start : workEndTime;
+      const firstBusy = mergedBusy[0];
+      if (mergedBusy.length === 0 || (firstBusy && firstBusy.start > workStartTime)) {
+        const blockEnd = mergedBusy.length > 0 && firstBusy ? firstBusy.start : workEndTime;
         const duration = differenceInMinutes(blockEnd, workStartTime);
         
         if (duration >= minBlockMinutes) {
@@ -123,8 +124,12 @@ export const calculateFocusTime = tool({
       
       // Check between busy times
       for (let i = 0; i < mergedBusy.length - 1; i++) {
-        const blockStart = mergedBusy[i].end;
-        const blockEnd = mergedBusy[i + 1].start;
+        const current = mergedBusy[i];
+        const next = mergedBusy[i + 1];
+        if (!current || !next) continue;
+        
+        const blockStart = current.end;
+        const blockEnd = next.start;
         const duration = differenceInMinutes(blockEnd, blockStart);
         
         if (duration >= minBlockMinutes && blockEnd <= workEndTime) {
@@ -139,8 +144,9 @@ export const calculateFocusTime = tool({
       
       // Check end of day
       if (mergedBusy.length > 0) {
-        const lastEnd = mergedBusy[mergedBusy.length - 1].end;
-        if (lastEnd < workEndTime) {
+        const lastBusy = mergedBusy[mergedBusy.length - 1];
+        if (lastBusy && lastBusy.end < workEndTime) {
+          const lastEnd = lastBusy.end;
           const duration = differenceInMinutes(workEndTime, lastEnd);
           if (duration >= minBlockMinutes) {
             focusBlocks.push({

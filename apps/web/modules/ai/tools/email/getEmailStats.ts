@@ -248,7 +248,7 @@ export const getEmailStats = tool({
         {
           suggestions: [
             peakHours[0] ? `Schedule email time during peak hour (${peakHours[0].hour}:00)` : null,
-            topSenders[0]?.percentOfTotal > 20 ? `Filter emails from ${topSenders[0].name}` : null,
+            topSenders[0] && topSenders[0].percentOfTotal > 20 ? `Filter emails from ${topSenders[0].name}` : null,
             stats.volume.daily > 50 ? 'Set up email batching' : null,
             'View detailed breakdown',
           ].filter(Boolean) as string[],

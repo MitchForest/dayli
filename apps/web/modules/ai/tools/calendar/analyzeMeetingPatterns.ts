@@ -246,7 +246,8 @@ export const analyzeMeetingPatterns = tool({
             data: {
               label: pattern.description,
               percentage: Math.min(100, (pattern.frequency / meetings.length) * 100),
-              description: pattern.recommendation,
+              current: pattern.frequency,
+              total: meetings.length,
             },
           })),
         },

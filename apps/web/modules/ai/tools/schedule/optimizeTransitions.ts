@@ -142,8 +142,9 @@ export const optimizeTransitions = tool({
         
         // Check for location changes (for meetings)
         if (current.type === 'meeting' && next.type === 'meeting' &&
-            current.location && next.location && 
-            current.location !== next.location &&
+            current.source === 'calendar' && next.source === 'calendar' &&
+            (current as any).location && (next as any).location && 
+            (current as any).location !== (next as any).location &&
             transitionTime < 15) {
           issues.push({
             type: 'location_change',
