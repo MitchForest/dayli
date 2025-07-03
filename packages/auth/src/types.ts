@@ -14,7 +14,11 @@ export interface AuthState {
 export interface AuthContextType {
   user: User | null;
   profile: Record<string, unknown> | null;
-  loading: boolean;
+  loading: boolean; // Keep for backward compatibility
+  loadingStates: {
+    session: boolean;
+    profile: boolean;
+  };
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 }

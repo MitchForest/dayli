@@ -10,8 +10,8 @@
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
-    "mock:setup": "bun run scripts/seed-mock-data.ts --user-email",
-    "mock:clear": "bun run scripts/seed-mock-data.ts --clear --user-email"
+    "mock:setup": "bun run scripts/seed-mock-data.ts",
+    "mock:clear": "bun run scripts/seed-mock-data.ts --clear"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.6.2",
