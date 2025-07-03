@@ -79,52 +79,52 @@ export class RealCalendarService implements ICalendarService {
     items: CalendarEvent[];
   }> {
     try {
-      // For now, fetch calendar events from our database
-      // Later, this will integrate with Google Calendar API
+      // Fetch meeting time blocks from our database
       const { data, error } = await this.supabase
-        .from('calendar_events')
+        .from('time_blocks')
         .select()
         .eq('user_id', this.userId)
+        .eq('type', 'meeting')  // Only get meeting blocks
         .gte('start_time', params.timeMin)
         .lte('start_time', params.timeMax)
         .order('start_time', { ascending: true });
 
       if (error) {
-        console.error('Error fetching calendar events:', error);
+        console.error('Error fetching meeting blocks:', error);
         // Return empty result instead of throwing
         return this.createEmptyResponse();
       }
 
-      // Transform database events to Google Calendar format
-      const items: CalendarEvent[] = (data || []).map((event: any) => ({
+      // Transform time blocks to Google Calendar format
+      const items: CalendarEvent[] = (data || []).map((block: any) => ({
         kind: 'calendar#event',
-        etag: `"${event.updated_at}"`,
-        id: event.id,
-        status: event.status || 'confirmed',
-        htmlLink: `https://calendar.google.com/event?eid=${event.id}`,
-        created: event.created_at,
-        updated: event.updated_at,
-        summary: event.title,
-        description: event.description,
-        location: event.location,
+        etag: `"${block.updated_at}"`,
+        id: block.id,
+        status: block.metadata?.status || 'confirmed',
+        htmlLink: `https://calendar.google.com/event?eid=${block.id}`,
+        created: block.created_at,
+        updated: block.updated_at,
+        summary: block.title,
+        description: block.description,
+        location: block.metadata?.location,
         creator: {
-          email: event.creator_email || 'user@example.com',
-          displayName: event.creator_name
+          email: block.metadata?.creator_email || 'user@example.com',
+          displayName: block.metadata?.creator_name
         },
         organizer: {
-          email: event.organizer_email || 'user@example.com',
-          displayName: event.organizer_name
+          email: block.metadata?.organizer_email || 'user@example.com',
+          displayName: block.metadata?.organizer_name
         },
         start: {
-          dateTime: event.start_time,
+          dateTime: block.start_time,
           timeZone: this.userTimezone
         },
         end: {
-          dateTime: event.end_time,
+          dateTime: block.end_time,
           timeZone: this.userTimezone
         },
-        attendees: event.attendees || [],
-        reminders: event.reminders || { useDefault: true }
+        attendees: block.metadata?.attendees || [],
+        reminders: block.metadata?.reminders || { useDefault: true }
       }));
 
       return {
@@ -154,48 +154,53 @@ export class RealCalendarService implements ICalendarService {
   }): Promise<CalendarEvent> {
     const { resource } = params;
     
-    // Transform Google Calendar format to database format
+    // Transform Google Calendar format to time block format
     const { data, error } = await this.supabase
-      .from('calendar_events')
+      .from('time_blocks')
       .insert({
         user_id: this.userId,
-        title: resource.summary,
+        type: 'meeting',  // All calendar events are meetings
+        title: resource.summary || 'Untitled Meeting',
         description: resource.description,
-        location: resource.location,
         start_time: resource.start?.dateTime,
         end_time: resource.end?.dateTime,
-        status: resource.status || 'confirmed',
-        creator_email: resource.creator?.email,
-        creator_name: resource.creator?.displayName,
-        organizer_email: resource.organizer?.email,
-        organizer_name: resource.organizer?.displayName,
-        attendees: resource.attendees,
-        reminders: resource.reminders
+        source: 'calendar',
+        calendar_event_id: resource.id,  // Store external calendar ID if provided
+        metadata: {
+          status: resource.status || 'confirmed',
+          location: resource.location,
+          creator_email: resource.creator?.email,
+          creator_name: resource.creator?.displayName,
+          organizer_email: resource.organizer?.email,
+          organizer_name: resource.organizer?.displayName,
+          attendees: resource.attendees,
+          reminders: resource.reminders
+        }
       })
       .select()
       .single();
 
-    if (error) throw new Error(`Failed to create calendar event: ${error.message}`);
+    if (error) throw new Error(`Failed to create meeting block: ${error.message}`);
 
     // Transform back to Google Calendar format
     return {
       kind: 'calendar#event',
       etag: `"${data.updated_at}"`,
       id: data.id,
-      status: data.status,
+      status: data.metadata?.status || 'confirmed',
       htmlLink: `https://calendar.google.com/event?eid=${data.id}`,
       created: data.created_at,
       updated: data.updated_at,
       summary: data.title,
       description: data.description,
-      location: data.location,
+      location: data.metadata?.location,
       creator: {
-        email: data.creator_email || 'user@example.com',
-        displayName: data.creator_name
+        email: data.metadata?.creator_email || 'user@example.com',
+        displayName: data.metadata?.creator_name
       },
       organizer: {
-        email: data.organizer_email || 'user@example.com',
-        displayName: data.organizer_name
+        email: data.metadata?.organizer_email || 'user@example.com',
+        displayName: data.metadata?.organizer_name
       },
       start: {
         dateTime: data.start_time,
@@ -205,8 +210,8 @@ export class RealCalendarService implements ICalendarService {
         dateTime: data.end_time,
         timeZone: this.userTimezone
       },
-      attendees: data.attendees || [],
-      reminders: data.reminders || { useDefault: true }
+      attendees: data.metadata?.attendees || [],
+      reminders: data.metadata?.reminders || { useDefault: true }
     };
   }
 
@@ -260,15 +265,16 @@ export class RealCalendarService implements ICalendarService {
   async getEvent(eventId: string): Promise<CalendarEvent | null> {
     try {
       const { data, error } = await this.supabase
-        .from('calendar_events')
+        .from('time_blocks')
         .select()
         .eq('id', eventId)
         .eq('user_id', this.userId)
+        .eq('type', 'meeting')  // Only get meeting blocks
         .single();
 
       if (error) {
         if (error.code === 'PGRST116') return null; // Not found
-        throw new Error(`Failed to get event: ${error.message}`);
+        throw new Error(`Failed to get meeting: ${error.message}`);
       }
 
       // Transform to Google Calendar format
@@ -276,20 +282,20 @@ export class RealCalendarService implements ICalendarService {
         kind: 'calendar#event',
         etag: `"${data.updated_at}"`,
         id: data.id,
-        status: data.status || 'confirmed',
+        status: data.metadata?.status || 'confirmed',
         htmlLink: `https://calendar.google.com/event?eid=${data.id}`,
         created: data.created_at,
         updated: data.updated_at,
         summary: data.title,
         description: data.description,
-        location: data.location,
+        location: data.metadata?.location,
         creator: {
-          email: data.creator_email || 'user@example.com',
-          displayName: data.creator_name
+          email: data.metadata?.creator_email || 'user@example.com',
+          displayName: data.metadata?.creator_name
         },
         organizer: {
-          email: data.organizer_email || 'user@example.com',
-          displayName: data.organizer_name
+          email: data.metadata?.organizer_email || 'user@example.com',
+          displayName: data.metadata?.organizer_name
         },
         start: {
           dateTime: data.start_time,
@@ -299,8 +305,8 @@ export class RealCalendarService implements ICalendarService {
           dateTime: data.end_time,
           timeZone: this.userTimezone
         },
-        attendees: data.attendees || [],
-        reminders: data.reminders || { useDefault: true }
+        attendees: data.metadata?.attendees || [],
+        reminders: data.metadata?.reminders || { useDefault: true }
       };
     } catch (error) {
       console.error('Error getting event:', error);
@@ -322,34 +328,35 @@ export class RealCalendarService implements ICalendarService {
     updateData.updated_at = new Date().toISOString();
 
     const { data, error } = await this.supabase
-      .from('calendar_events')
+      .from('time_blocks')
       .update(updateData)
       .eq('id', eventId)
       .eq('user_id', this.userId)
+      .eq('type', 'meeting')  // Only update meeting blocks
       .select()
       .single();
 
-    if (error) throw new Error(`Failed to update event: ${error.message}`);
+    if (error) throw new Error(`Failed to update meeting: ${error.message}`);
 
     // Transform back to Google Calendar format
     return {
       kind: 'calendar#event',
       etag: `"${data.updated_at}"`,
       id: data.id,
-      status: data.status,
+      status: data.metadata?.status || 'confirmed',
       htmlLink: `https://calendar.google.com/event?eid=${data.id}`,
       created: data.created_at,
       updated: data.updated_at,
       summary: data.title,
       description: data.description,
-      location: data.location,
+      location: data.metadata?.location,
       creator: {
-        email: data.creator_email || 'user@example.com',
-        displayName: data.creator_name
+        email: data.metadata?.creator_email || 'user@example.com',
+        displayName: data.metadata?.creator_name
       },
       organizer: {
-        email: data.organizer_email || 'user@example.com',
-        displayName: data.organizer_name
+        email: data.metadata?.organizer_email || 'user@example.com',
+        displayName: data.metadata?.organizer_name
       },
       start: {
         dateTime: data.start_time,
@@ -359,19 +366,20 @@ export class RealCalendarService implements ICalendarService {
         dateTime: data.end_time,
         timeZone: this.userTimezone
       },
-      attendees: data.attendees || [],
-      reminders: data.reminders || { useDefault: true }
+      attendees: data.metadata?.attendees || [],
+      reminders: data.metadata?.reminders || { useDefault: true }
     };
   }
   
   async deleteEvent(eventId: string): Promise<void> {
     const { error } = await this.supabase
-      .from('calendar_events')
+      .from('time_blocks')
       .delete()
       .eq('id', eventId)
-      .eq('user_id', this.userId);
+      .eq('user_id', this.userId)
+      .eq('type', 'meeting');  // Only delete meeting blocks
 
-    if (error) throw new Error(`Failed to delete event: ${error.message}`);
+    if (error) throw new Error(`Failed to delete meeting: ${error.message}`);
   }
   
   async checkConflicts(params: {
@@ -380,10 +388,10 @@ export class RealCalendarService implements ICalendarService {
     excludeEventId?: string;
   }): Promise<CalendarEvent[]> {
     let query = this.supabase
-      .from('calendar_events')
+      .from('time_blocks')
       .select()
       .eq('user_id', this.userId)
-      .eq('status', 'confirmed')
+      .in('type', ['meeting', 'work', 'blocked'])  // Check conflicts with meetings, work blocks, and blocked time
       .or(`and(start_time.lt.${params.end.toISOString()},end_time.gt.${params.start.toISOString()})`);
 
     if (params.excludeEventId) {
@@ -394,37 +402,39 @@ export class RealCalendarService implements ICalendarService {
 
     if (error) throw new Error(`Failed to check conflicts: ${error.message}`);
 
-    // Transform to CalendarEvent format
-    return (data || []).map((event: any) => ({
-      kind: 'calendar#event',
-      etag: `"${event.updated_at}"`,
-      id: event.id,
-      status: event.status,
-      htmlLink: `https://calendar.google.com/event?eid=${event.id}`,
-      created: event.created_at,
-      updated: event.updated_at,
-      summary: event.title,
-      description: event.description,
-      location: event.location,
-      creator: {
-        email: event.creator_email || 'user@example.com',
-        displayName: event.creator_name
-      },
-      organizer: {
-        email: event.organizer_email || 'user@example.com',
-        displayName: event.organizer_name
-      },
-      start: {
-        dateTime: event.start_time,
-        timeZone: this.userTimezone
-      },
-      end: {
-        dateTime: event.end_time,
-        timeZone: this.userTimezone
-      },
-      attendees: event.attendees || [],
-      reminders: event.reminders || { useDefault: true }
-    }));
+    // Transform to CalendarEvent format (only return meetings)
+    return (data || [])
+      .filter((block: any) => block.type === 'meeting')  // Only return meeting conflicts
+      .map((block: any) => ({
+        kind: 'calendar#event',
+        etag: `"${block.updated_at}"`,
+        id: block.id,
+        status: block.metadata?.status || 'confirmed',
+        htmlLink: `https://calendar.google.com/event?eid=${block.id}`,
+        created: block.created_at,
+        updated: block.updated_at,
+        summary: block.title,
+        description: block.description,
+        location: block.metadata?.location,
+        creator: {
+          email: block.metadata?.creator_email || 'user@example.com',
+          displayName: block.metadata?.creator_name
+        },
+        organizer: {
+          email: block.metadata?.organizer_email || 'user@example.com',
+          displayName: block.metadata?.organizer_name
+        },
+        start: {
+          dateTime: block.start_time,
+          timeZone: this.userTimezone
+        },
+        end: {
+          dateTime: block.end_time,
+          timeZone: this.userTimezone
+        },
+        attendees: block.metadata?.attendees || [],
+        reminders: block.metadata?.reminders || { useDefault: true }
+      }));
   }
   
   async sendUpdateNotification(eventId: string, params: {
@@ -457,17 +467,17 @@ export class RealCalendarService implements ICalendarService {
     preferredTimes?: string[];
     workingHours: { start: string; end: string };
   }): Promise<Array<{ start: Date; end: Date }>> {
-    // Get all events for today
+    // Get all blocks for today (meetings, work blocks, and blocked time)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const { data: events } = await this.supabase
-      .from('calendar_events')
+    const { data: blocks } = await this.supabase
+      .from('time_blocks')
       .select()
       .eq('user_id', this.userId)
-      .eq('status', 'confirmed')
+      .in('type', ['meeting', 'work', 'blocked', 'email', 'break'])  // All block types that occupy time
       .gte('start_time', today.toISOString())
       .lt('start_time', tomorrow.toISOString())
       .order('start_time', { ascending: true });
@@ -491,12 +501,12 @@ export class RealCalendarService implements ICalendarService {
     const availableSlots: Array<{ start: Date; end: Date }> = [];
     let currentTime = new Date(workStart);
 
-    for (const event of events || []) {
-      const eventStart = new Date(event.start_time);
-      const eventEnd = new Date(event.end_time);
+    for (const block of blocks || []) {
+      const blockStart = new Date(block.start_time);
+      const blockEnd = new Date(block.end_time);
 
-      // Check if there's a gap before this event
-      const gapMinutes = (eventStart.getTime() - currentTime.getTime()) / (1000 * 60);
+      // Check if there's a gap before this block
+      const gapMinutes = (blockStart.getTime() - currentTime.getTime()) / (1000 * 60);
       if (gapMinutes >= params.duration) {
         availableSlots.push({
           start: new Date(currentTime),
@@ -504,11 +514,11 @@ export class RealCalendarService implements ICalendarService {
         });
       }
 
-      // Move current time to end of this event
-      currentTime = new Date(Math.max(currentTime.getTime(), eventEnd.getTime()));
+      // Move current time to end of this block
+      currentTime = new Date(Math.max(currentTime.getTime(), blockEnd.getTime()));
     }
 
-    // Check if there's time after the last event
+    // Check if there's time after the last block
     const remainingMinutes = (workEnd.getTime() - currentTime.getTime()) / (1000 * 60);
     if (remainingMinutes >= params.duration) {
       availableSlots.push({

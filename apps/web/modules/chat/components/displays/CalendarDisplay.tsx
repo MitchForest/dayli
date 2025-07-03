@@ -4,10 +4,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Calendar, Clock, MapPin, Users, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
+import type { 
+  ScheduleMeetingResponse,
+  RescheduleMeetingResponse
+} from '@/modules/ai/tools/types/responses';
 
 interface CalendarDisplayProps {
   toolName: string;
-  data: any;
+  data: any; // Will be one of the calendar response types
   onAction?: (action: { type: string; payload?: any }) => void;
 }
 
@@ -18,10 +22,10 @@ export const CalendarDisplay = memo(function CalendarDisplay({
 }: CalendarDisplayProps) {
   // Handle different calendar tool responses
   if (toolName === 'calendar_scheduleMeeting') {
-    return <MeetingScheduled data={data} onAction={onAction} />;
+    return <MeetingScheduled data={data as ScheduleMeetingResponse} onAction={onAction} />;
   }
   if (toolName === 'calendar_rescheduleMeeting') {
-    return <MeetingRescheduled data={data} onAction={onAction} />;
+    return <MeetingRescheduled data={data as RescheduleMeetingResponse} onAction={onAction} />;
   }
   
   // Fallback
@@ -29,7 +33,24 @@ export const CalendarDisplay = memo(function CalendarDisplay({
 });
 
 // Meeting scheduled component
-const MeetingScheduled = memo(function MeetingScheduled({ data, onAction }: any) {
+interface MeetingScheduledProps {
+  data: ScheduleMeetingResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const MeetingScheduled = memo(function MeetingScheduled({ data, onAction }: MeetingScheduledProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to schedule meeting'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   const meeting = data.meeting;
   
   return (
@@ -64,7 +85,7 @@ const MeetingScheduled = memo(function MeetingScheduled({ data, onAction }: any)
                 <div className="flex-1">
                   <span className="text-muted-foreground">Attendees:</span>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {meeting.attendees.map((email: string, idx: number) => (
+                    {meeting.attendees.map((email, idx) => (
                       <Badge key={idx} variant="secondary" className="text-xs">
                         {email}
                       </Badge>
@@ -97,6 +118,8 @@ const MeetingScheduled = memo(function MeetingScheduled({ data, onAction }: any)
                 <span>Preparation time blocked before meeting</span>
               </div>
             )}
+            
+
           </div>
           
           {/* Actions */}
@@ -129,7 +152,24 @@ const MeetingScheduled = memo(function MeetingScheduled({ data, onAction }: any)
 });
 
 // Meeting rescheduled component
-const MeetingRescheduled = memo(function MeetingRescheduled({ data }: any) {
+interface MeetingRescheduledProps {
+  data: RescheduleMeetingResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const MeetingRescheduled = memo(function MeetingRescheduled({ data, onAction }: MeetingRescheduledProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to reschedule meeting'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-4">
       <div className="flex items-start gap-3">

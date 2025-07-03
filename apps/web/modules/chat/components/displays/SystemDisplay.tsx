@@ -8,10 +8,18 @@ import {
   TrendingUp, Activity
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import type {
+  ConfirmProposalResponse,
+  WorkflowHistoryResponse,
+  ResumeWorkflowResponse,
+  ProvideFeedbackResponse,
+  ShowPatternsResponse,
+  ClearContextResponse
+} from '@/modules/ai/tools/types/responses';
 
 interface SystemDisplayProps {
   toolName: string;
-  data: any;
+  data: any; // Will be one of the system response types
   onAction?: (action: { type: string; payload?: any }) => void;
 }
 
@@ -22,22 +30,22 @@ export const SystemDisplay = memo(function SystemDisplay({
 }: SystemDisplayProps) {
   // Handle different system tool responses
   if (toolName === 'system_confirmProposal') {
-    return <ProposalConfirmed data={data} onAction={onAction} />;
+    return <ProposalConfirmed data={data as ConfirmProposalResponse} onAction={onAction} />;
   }
   if (toolName === 'system_showWorkflowHistory') {
-    return <WorkflowHistory data={data} onAction={onAction} />;
+    return <WorkflowHistory data={data as WorkflowHistoryResponse} onAction={onAction} />;
   }
   if (toolName === 'system_resumeWorkflow') {
-    return <WorkflowResumed data={data} onAction={onAction} />;
+    return <WorkflowResumed data={data as ResumeWorkflowResponse} onAction={onAction} />;
   }
   if (toolName === 'system_provideFeedback') {
-    return <FeedbackProvided data={data} onAction={onAction} />;
+    return <FeedbackProvided data={data as ProvideFeedbackResponse} onAction={onAction} />;
   }
   if (toolName === 'system_showPatterns') {
-    return <PatternsDisplay data={data} onAction={onAction} />;
+    return <PatternsDisplay data={data as ShowPatternsResponse} onAction={onAction} />;
   }
   if (toolName === 'system_clearContext') {
-    return <ContextCleared data={data} onAction={onAction} />;
+    return <ContextCleared data={data as ClearContextResponse} onAction={onAction} />;
   }
   
   // Fallback
@@ -45,7 +53,24 @@ export const SystemDisplay = memo(function SystemDisplay({
 });
 
 // Proposal confirmed component
-const ProposalConfirmed = memo(function ProposalConfirmed({ data }: any) {
+interface ProposalConfirmedProps {
+  data: ConfirmProposalResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const ProposalConfirmed = memo(function ProposalConfirmed({ data, onAction }: ProposalConfirmedProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to confirm proposal'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   if (!data.executed) {
     return (
       <Card className="p-4">
@@ -75,7 +100,7 @@ const ProposalConfirmed = memo(function ProposalConfirmed({ data }: any) {
           
           {data.changes && data.changes.length > 0 && (
             <div className="mt-3 space-y-1">
-              {data.changes.map((change: any, idx: number) => (
+              {data.changes.map((change, idx) => (
                 <div key={idx} className="flex items-center gap-2 text-sm">
                   <CheckCircle2 className={`h-3 w-3 ${
                     change.result === 'success' ? 'text-green-600' : 'text-red-600'
@@ -97,7 +122,24 @@ const ProposalConfirmed = memo(function ProposalConfirmed({ data }: any) {
 });
 
 // Workflow history component
-const WorkflowHistory = memo(function WorkflowHistory({ data, onAction }: any) {
+interface WorkflowHistoryProps {
+  data: WorkflowHistoryResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const WorkflowHistory = memo(function WorkflowHistory({ data, onAction }: WorkflowHistoryProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to load workflow history'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   if (!data.workflows || data.workflows.length === 0) {
     return (
       <Card className="p-4">
@@ -137,7 +179,7 @@ const WorkflowHistory = memo(function WorkflowHistory({ data, onAction }: any) {
         </div>
         
         <div className="space-y-2">
-          {data.workflows.map((workflow: any) => (
+          {data.workflows.map((workflow) => (
             <div 
               key={workflow.id}
               className="p-3 bg-muted rounded-md cursor-pointer hover:bg-muted/80 transition-colors"
@@ -190,17 +232,34 @@ const WorkflowHistory = memo(function WorkflowHistory({ data, onAction }: any) {
 });
 
 // Workflow resumed component
-const WorkflowResumed = memo(function WorkflowResumed({ data }: any) {
+interface WorkflowResumedProps {
+  data: ResumeWorkflowResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const WorkflowResumed = memo(function WorkflowResumed({ data, onAction }: WorkflowResumedProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to resume workflow'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-4">
       <div className="flex items-start gap-3">
-        <div className="p-2 rounded-full bg-yellow-500/10">
-          <AlertCircle className="h-4 w-4 text-yellow-600" />
+        <div className="p-2 rounded-full bg-green-500/10">
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
         </div>
         <div>
-          <h4 className="font-medium">Workflow Resume Not Available</h4>
+          <h4 className="font-medium">Workflow Resumed</h4>
           <p className="text-sm text-muted-foreground mt-1">
-            {data.error || 'Workflow persistence will be available in a future update'}
+            Workflow {data.workflowId} has been resumed successfully.
           </p>
         </div>
       </div>
@@ -209,7 +268,24 @@ const WorkflowResumed = memo(function WorkflowResumed({ data }: any) {
 });
 
 // Feedback provided component
-const FeedbackProvided = memo(function FeedbackProvided({ data }: any) {
+interface FeedbackProvidedProps {
+  data: ProvideFeedbackResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const FeedbackProvided = memo(function FeedbackProvided({ data, onAction }: FeedbackProvidedProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to record feedback'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-4 bg-green-500/5 border-green-500/20">
       <div className="flex items-start gap-3">
@@ -231,7 +307,24 @@ const FeedbackProvided = memo(function FeedbackProvided({ data }: any) {
 });
 
 // Patterns display component
-const PatternsDisplay = memo(function PatternsDisplay({ data }: any) {
+interface PatternsDisplayProps {
+  data: ShowPatternsResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const PatternsDisplay = memo(function PatternsDisplay({ data, onAction }: PatternsDisplayProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to load patterns'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   if (!data.patterns || data.patterns.length === 0) {
     return (
       <Card className="p-4">
@@ -251,9 +344,9 @@ const PatternsDisplay = memo(function PatternsDisplay({ data }: any) {
   }
   
   // Group patterns by category
-  const groupedPatterns = data.patterns.reduce((acc: any, pattern: any) => {
+  const groupedPatterns = data.patterns.reduce((acc: Record<string, typeof data.patterns>, pattern) => {
     if (!acc[pattern.category]) acc[pattern.category] = [];
-    acc[pattern.category].push(pattern);
+    acc[pattern.category]!.push(pattern);
     return acc;
   }, {});
   
@@ -269,11 +362,11 @@ const PatternsDisplay = memo(function PatternsDisplay({ data }: any) {
         </div>
         
         <div className="space-y-3">
-          {Object.entries(groupedPatterns).map(([category, patterns]: any) => (
+          {Object.entries(groupedPatterns).map(([category, patterns]) => (
             <div key={category}>
               <h5 className="text-sm font-medium mb-2 capitalize">{category}</h5>
               <div className="space-y-2">
-                {patterns.map((pattern: any, idx: number) => (
+                {patterns.map((pattern, idx) => (
                   <div key={idx} className="p-2 bg-muted rounded-md">
                     <div className="flex items-start justify-between">
                       <p className="text-sm">{pattern.pattern}</p>
@@ -302,7 +395,24 @@ const PatternsDisplay = memo(function PatternsDisplay({ data }: any) {
 });
 
 // Context cleared component
-const ContextCleared = memo(function ContextCleared({ data }: any) {
+interface ContextClearedProps {
+  data: ClearContextResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const ContextCleared = memo(function ContextCleared({ data, onAction }: ContextClearedProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to clear context'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-4 bg-blue-500/5 border-blue-500/20">
       <div className="flex items-start gap-3">

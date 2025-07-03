@@ -6,7 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { createClient } from "@/lib/supabase-client";
 import { ServiceFactory } from "@/services/factory/service.factory";
 import type { User } from "@supabase/supabase-js";
-import { SidebarProvider } from '@/components/ui/sidebar';
+
 
 interface ProvidersProps {
   children: React.ReactNode;

@@ -47,6 +47,49 @@ export function MessageList({
     
     // Handle different action types
     switch (action.type) {
+      // Schedule workflow actions
+      case 'confirm_schedule':
+        if (onSuggestionSelect) {
+          // The schedule is already created, so this is just acknowledging it
+          onSuggestionSelect(`Great! The schedule for ${action.payload?.date || 'today'} is confirmed.`);
+        }
+        break;
+      case 'adjust_schedule':
+        if (onSuggestionSelect) {
+          // Ask for specific adjustments
+          onSuggestionSelect(`What adjustments would you like to make to the schedule for ${action.payload?.date || 'today'}? For example: "Move lunch to 1pm" or "Add a 2-hour work block at 3pm"`);
+        }
+        break;
+      
+      // Task workflow actions
+      case 'confirm_tasks':
+        if (onSuggestionSelect) {
+          // Tasks are already assigned, this confirms them
+          onSuggestionSelect(`Perfect! The tasks have been assigned to block ${action.payload?.blockId}. You can start working on them now.`);
+        }
+        break;
+      case 'select_different_tasks':
+        if (onSuggestionSelect) {
+          // Ask for different task selection criteria
+          onSuggestionSelect(`What kind of tasks would you prefer for block ${action.payload?.blockId}? For example: "Only high priority tasks" or "Tasks that take less than 30 minutes"`);
+        }
+        break;
+      
+      // Email workflow actions
+      case 'process_emails':
+        if (onSuggestionSelect) {
+          // Start processing the organized emails
+          onSuggestionSelect(`Let's process these emails. Which batch would you like to start with? Say "Process urgent emails" or "Process emails from [sender]"`);
+        }
+        break;
+      case 'review_batches':
+        if (onSuggestionSelect) {
+          // Show more details about the email batches
+          onSuggestionSelect(`Show me more details about the email batches`);
+        }
+        break;
+      
+      // Original tool actions
       case 'create_block':
       case 'edit_block':
       case 'view_task':
@@ -121,6 +164,16 @@ export function MessageList({
       return null;
     }
     
+    console.log('[MessageList] Rendering tool results for message:', {
+      messageId: message.id,
+      toolInvocations: message.toolInvocations.map(inv => ({
+        toolName: inv.toolName,
+        state: inv.state,
+        result: inv.state === 'result' ? (inv as any).result : undefined,
+        args: inv.args
+      }))
+    });
+    
     return (
       <div className="mt-3 space-y-3">
         {message.toolInvocations
@@ -128,7 +181,13 @@ export function MessageList({
           .map((invocation, idx) => {
             const isStreaming = invocation.state === 'partial-call';
             const progress = isStreaming ? 50 : 100;
-            const result = invocation.state === 'result' ? invocation.result : null;
+            const result = invocation.state === 'result' ? (invocation as any).result : null;
+            
+            console.log(`[MessageList] Tool ${idx}:`, {
+              toolName: invocation.toolName,
+              state: invocation.state,
+              result: result
+            });
             
             return (
               <ToolResultRenderer

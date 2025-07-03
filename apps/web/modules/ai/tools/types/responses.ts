@@ -213,60 +213,59 @@ export interface UpdatePreferencesResponse extends BaseToolResponse {
 }
 
 // Workflow responses
-export interface OptimizeScheduleResponse extends BaseToolResponse {
+export interface ScheduleResponse extends BaseToolResponse {
   date: string;
-  proposalId?: string;
-  changes: Array<{
-    type: 'create' | 'move' | 'delete' | 'modify';
-    description: string;
-    impact: string;
-  }>;
-  optimizedSchedule?: Array<{
+  blocks: Array<{
     id: string;
-    type: string;
+    type: 'work' | 'meeting' | 'email' | 'break' | 'blocked';
     title: string;
-    startTime: Date;
-    endTime: Date;
+    startTime: string;
+    endTime: string;
+    duration: number;
+    isProtected?: boolean;
   }>;
-  metrics: {
-    utilizationBefore: number;
-    utilizationAfter: number;
-    focusTimeBefore: number;
-    focusTimeAfter: number;
-  };
+  changes: Array<{
+    action: 'created' | 'moved' | 'removed';
+    block: string;
+    reason: string;
+  }>;
+  summary: string;
 }
 
-export interface TriageEmailsResponse extends BaseToolResponse {
-  proposalId?: string;
-  emailBatches: Array<{
-    category: string;
+export interface FillEmailBlockResponse extends BaseToolResponse {
+  blockId: string;
+  urgent: Array<{
+    id: string;
+    from: string;
+    subject: string;
+    reason: string;
+    actionType?: 'quick_reply' | 'thoughtful_response';
+    daysInBacklog?: number;
+  }>;
+  batched: Array<{
+    sender: string;
+    count: number;
     emails: Array<{
       id: string;
       subject: string;
-      from: string;
-      suggestedAction: string;
     }>;
   }>;
-  suggestedActions: Array<{
-    type: 'draft' | 'archive' | 'convert_to_task';
-    count: number;
-    emails: string[];
-  }>;
+  archived: number;
+  totalToProcess: number;
 }
 
-export interface PrioritizeTasksResponse extends BaseToolResponse {
-  rankedTasks: Array<{
+export interface WorkflowFillWorkBlockResponse extends BaseToolResponse {
+  blockId: string;
+  tasks: Array<{
     id: string;
     title: string;
+    estimatedMinutes: number;
+    priority: 'high' | 'medium' | 'low';
     score: number;
     reason: string;
-    suggestedTimeBlock?: string;
   }>;
-  insights: {
-    overdueCount: number;
-    highPriorityCount: number;
-    quickWinsCount: number;
-  };
+  totalMinutes: number;
+  fitQuality: 'perfect' | 'good' | 'acceptable';
 }
 
 export interface OptimizeCalendarResponse extends BaseToolResponse {

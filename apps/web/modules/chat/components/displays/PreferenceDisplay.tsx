@@ -1,11 +1,12 @@
 import { memo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Settings, CheckCircle2, Clock, Coffee, Mail, Calendar } from 'lucide-react';
+import { Settings, CheckCircle2, Clock, Coffee, Mail, Calendar, AlertCircle } from 'lucide-react';
+import type { UpdatePreferencesResponse } from '@/modules/ai/tools/types/responses';
 
 interface PreferenceDisplayProps {
   toolName: string;
-  data: any;
+  data: any; // Will be UpdatePreferencesResponse
   onAction?: (action: { type: string; payload?: any }) => void;
 }
 
@@ -15,7 +16,7 @@ export const PreferenceDisplay = memo(function PreferenceDisplay({
   onAction 
 }: PreferenceDisplayProps) {
   if (toolName === 'preference_updatePreferences') {
-    return <PreferenceUpdated data={data} onAction={onAction} />;
+    return <PreferenceUpdated data={data as UpdatePreferencesResponse} onAction={onAction} />;
   }
   
   // Fallback
@@ -23,7 +24,24 @@ export const PreferenceDisplay = memo(function PreferenceDisplay({
 });
 
 // Preference updated component
-const PreferenceUpdated = memo(function PreferenceUpdated({ data }: any) {
+interface PreferenceUpdatedProps {
+  data: UpdatePreferencesResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const PreferenceUpdated = memo(function PreferenceUpdated({ data, onAction }: PreferenceUpdatedProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to update preference'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   const getPreferenceIcon = (key: string) => {
     if (key.includes('Time') || key.includes('Duration')) return Clock;
     if (key.includes('lunch')) return Coffee;

@@ -77,15 +77,13 @@ export class ToolRegistry {
       });
       
       // Register workflow tools
-      const { optimizeSchedule } = await import('./workflow/optimizeSchedule');
-      const { triageEmails } = await import('./workflow/triageEmails');
-      const { prioritizeTasks } = await import('./workflow/prioritizeTasks');
-      const { optimizeCalendar } = await import('./workflow/optimizeCalendar');
+      const { schedule } = await import('./workflow/schedule');
+      const { fillWorkBlock } = await import('./workflow/fillWorkBlock');
+      const { fillEmailBlock } = await import('./workflow/fillEmailBlock');
       
-      this.register('workflow_optimizeSchedule', optimizeSchedule as CoreTool<any, any>);
-      this.register('workflow_triageEmails', triageEmails as CoreTool<any, any>);
-      this.register('workflow_prioritizeTasks', prioritizeTasks as CoreTool<any, any>);
-      this.register('workflow_optimizeCalendar', optimizeCalendar as CoreTool<any, any>);
+      this.register('workflow_schedule', schedule as CoreTool<any, any>);
+      this.register('workflow_fillWorkBlock', fillWorkBlock as CoreTool<any, any>);
+      this.register('workflow_fillEmailBlock', fillEmailBlock as CoreTool<any, any>);
       
       // Register system tools
       const systemTools = await import('./system');

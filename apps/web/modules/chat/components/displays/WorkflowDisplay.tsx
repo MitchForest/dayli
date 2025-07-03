@@ -7,10 +7,36 @@ import {
   Zap, TrendingUp, Mail, Calendar, CheckCircle2, 
   AlertCircle, Clock, ArrowRight, Sparkles, BarChart3 
 } from 'lucide-react';
+import type { 
+  ScheduleResponse,
+  WorkflowFillWorkBlockResponse,
+  BaseToolResponse
+} from '@/modules/ai/tools/types/responses';
+
+// Define the FillEmailBlockResponse type since it's not in responses.ts yet
+interface FillEmailBlockResponse extends BaseToolResponse {
+  blockId: string;
+  urgent: Array<{
+    id: string;
+    from: string;
+    subject: string;
+    reason: string;
+  }>;
+  batched: Array<{
+    sender: string;
+    count: number;
+    emails: Array<{
+      id: string;
+      subject: string;
+    }>;
+  }>;
+  archived: number;
+  totalToProcess: number;
+}
 
 interface WorkflowDisplayProps {
   toolName: string;
-  data: any;
+  data: any; // Will be one of the workflow response types
   onAction?: (action: { type: string; payload?: any }) => void;
 }
 
@@ -20,199 +46,153 @@ export const WorkflowDisplay = memo(function WorkflowDisplay({
   onAction 
 }: WorkflowDisplayProps) {
   // Handle different workflow tool responses
-  if (toolName === 'workflow_optimizeSchedule') {
-    return <ScheduleOptimization data={data} onAction={onAction} />;
+  if (toolName === 'workflow_schedule') {
+    return <ScheduleWorkflow data={data as ScheduleResponse} onAction={onAction} />;
   }
-  if (toolName === 'workflow_triageEmails') {
-    return <EmailTriage data={data} onAction={onAction} />;
+  if (toolName === 'workflow_fillWorkBlock') {
+    return <FillWorkBlockWorkflow data={data as WorkflowFillWorkBlockResponse} onAction={onAction} />;
   }
-  if (toolName === 'workflow_prioritizeTasks') {
-    return <TaskPrioritization data={data} onAction={onAction} />;
-  }
-  if (toolName === 'workflow_optimizeCalendar') {
-    return <CalendarOptimization data={data} onAction={onAction} />;
+  if (toolName === 'workflow_fillEmailBlock') {
+    return <FillEmailBlockWorkflow data={data as FillEmailBlockResponse} onAction={onAction} />;
   }
   
-  // Fallback
-  return <pre className="text-xs">{JSON.stringify(data, null, 2)}</pre>;
+  // Fallback for old workflows that are being removed
+  return (
+    <Card className="p-4">
+      <div className="flex items-start gap-3">
+        <div className="p-2 rounded-full bg-yellow-500/10">
+          <AlertCircle className="h-4 w-4 text-yellow-600" />
+        </div>
+        <div>
+          <h4 className="font-medium">Legacy Workflow</h4>
+          <p className="text-sm text-muted-foreground mt-1">
+            This workflow is being replaced with the new simplified workflows
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
 });
 
-// Schedule optimization component
-const ScheduleOptimization = memo(function ScheduleOptimization({ data, onAction }: any) {
-  if (!data.changes || data.changes.length === 0) {
+// Schedule workflow component
+interface ScheduleWorkflowProps {
+  data: ScheduleResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const ScheduleWorkflow = memo(function ScheduleWorkflow({ data, onAction }: ScheduleWorkflowProps) {
+  // Handle error state
+  if (!data.success) {
     return (
-      <Card className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-full bg-green-500/10">
-            <CheckCircle2 className="h-4 w-4 text-green-600" />
-          </div>
-          <div>
-            <h4 className="font-medium">Schedule Already Optimized</h4>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your schedule for {data.date} is already well-organized!
-            </p>
-          </div>
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to create schedule'}</p>
         </div>
       </Card>
     );
   }
-  
+
   return (
     <Card className="p-4">
       <div className="space-y-4">
         <div className="flex items-start gap-3">
           <div className="p-2 rounded-full bg-blue-500/10">
-            <Sparkles className="h-4 w-4 text-blue-600" />
+            <Calendar className="h-4 w-4 text-blue-600" />
           </div>
           <div className="flex-1">
-            <h4 className="font-medium">Schedule Optimization Proposal</h4>
+            <h4 className="font-medium">Schedule Created</h4>
             <p className="text-sm text-muted-foreground mt-1">
-              Found {data.changes.length} optimization opportunities for {data.date}
+              {data.summary || `Created ${data.blocks.length} blocks for ${data.date}`}
             </p>
           </div>
         </div>
         
-        {/* Metrics improvement */}
-        {data.metrics && (
-          <div className="grid grid-cols-2 gap-3">
-            <Card className="p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Utilization</span>
-                <span className="text-sm font-medium">
-                  {data.metrics.utilizationBefore}% → {data.metrics.utilizationAfter}%
-                </span>
+        {/* Show changes if any */}
+        {data.changes && data.changes.length > 0 && (
+          <div className="space-y-2">
+            <h5 className="text-sm font-medium">Changes Made:</h5>
+            {data.changes.map((change, idx) => (
+              <div key={idx} className="flex items-start gap-2 p-2 bg-muted rounded-md">
+                <Badge variant="outline" className="text-xs">
+                  {change.action}
+                </Badge>
+                <div className="flex-1">
+                  <p className="text-sm">{change.block}</p>
+                  {change.reason && (
+                    <p className="text-xs text-muted-foreground mt-1">{change.reason}</p>
+                  )}
+                </div>
               </div>
-              <Progress 
-                value={data.metrics.utilizationAfter} 
-                className="mt-2 h-2"
-              />
-            </Card>
-            <Card className="p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Focus Time</span>
-                <span className="text-sm font-medium">
-                  +{(data.metrics.focusTimeAfter - data.metrics.focusTimeBefore).toFixed(1)}h
-                </span>
-              </div>
-              <div className="flex items-center gap-1 mt-2">
-                <TrendingUp className="h-4 w-4 text-green-600" />
-                <span className="text-xs text-green-600">Improved</span>
-              </div>
-            </Card>
+            ))}
           </div>
         )}
         
-        {/* Proposed changes */}
+        {/* Show blocks */}
         <div className="space-y-2">
-          <h5 className="text-sm font-medium">Proposed Changes:</h5>
-          {data.changes.map((change: any, idx: number) => (
-            <div key={idx} className="flex items-start gap-2 p-2 bg-muted rounded-md">
-              <ArrowRight className="h-4 w-4 text-muted-foreground mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm">{change.description}</p>
-                {change.impact && (
-                  <p className="text-xs text-muted-foreground mt-1">{change.impact}</p>
-                )}
+          <h5 className="text-sm font-medium">Your Schedule:</h5>
+          {data.blocks.map((block) => (
+            <div key={block.id} className="flex items-center justify-between p-2 bg-muted rounded-md">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-xs">
+                  {block.type}
+                </Badge>
+                <span className="text-sm font-medium">{block.title}</span>
               </div>
+              <span className="text-sm text-muted-foreground">
+                {block.startTime} - {block.endTime} ({block.duration} min)
+              </span>
             </div>
           ))}
         </div>
         
         {/* Actions */}
-        {data.proposalId && (
-          <div className="flex gap-2 pt-2 border-t">
-            <Button
-              size="sm"
-              onClick={() => onAction?.({ 
-                type: 'confirm_proposal', 
-                payload: { proposalId: data.proposalId, confirmed: true } 
-              })}
-            >
-              Apply All Changes
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onAction?.({ 
-                type: 'view_details', 
-                payload: { proposalId: data.proposalId } 
-              })}
-            >
-              View Details
-            </Button>
-          </div>
-        )}
+        <div className="flex gap-2 pt-2 border-t">
+          <Button
+            size="sm"
+            onClick={() => onAction?.({ 
+              type: 'confirm_schedule', 
+              payload: { date: data.date } 
+            })}
+          >
+            Confirm Schedule
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onAction?.({ 
+              type: 'adjust_schedule', 
+              payload: { date: data.date } 
+            })}
+          >
+            Make Adjustments
+          </Button>
+        </div>
       </div>
     </Card>
   );
 });
 
-// Email triage component
-const EmailTriage = memo(function EmailTriage({ data, onAction }: any) {
-  if (!data.success || !data.emailBatches || data.emailBatches.length === 0) {
+// Fill work block workflow component
+interface FillWorkBlockWorkflowProps {
+  data: WorkflowFillWorkBlockResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const FillWorkBlockWorkflow = memo(function FillWorkBlockWorkflow({ data, onAction }: FillWorkBlockWorkflowProps) {
+  // Handle error state
+  if (!data.success) {
     return (
-      <Card className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-full bg-yellow-500/10">
-            <AlertCircle className="h-4 w-4 text-yellow-600" />
-          </div>
-          <div>
-            <h4 className="font-medium">Email Triage Not Available</h4>
-            <p className="text-sm text-muted-foreground mt-1">
-              {data.error || 'Email management workflow will be available soon'}
-            </p>
-          </div>
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to fill work block'}</p>
         </div>
       </Card>
     );
   }
-  
-  return (
-    <Card className="p-4">
-      <div className="space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-full bg-purple-500/10">
-            <Mail className="h-4 w-4 text-purple-600" />
-          </div>
-          <div>
-            <h4 className="font-medium">Email Triage Complete</h4>
-            <p className="text-sm text-muted-foreground mt-1">
-              Organized {data.emailBatches.reduce((sum: number, batch: any) => sum + batch.emails.length, 0)} emails
-            </p>
-          </div>
-        </div>
-        
-        {/* Email batches */}
-        {data.emailBatches.map((batch: any, idx: number) => (
-          <div key={idx} className="p-3 bg-muted rounded-md">
-            <h5 className="font-medium text-sm mb-2">{batch.category}</h5>
-            <div className="space-y-1">
-              {batch.emails.slice(0, 3).map((email: any) => (
-                <div key={email.id} className="text-sm">
-                  <span className="font-medium">{email.from}:</span> {email.subject}
-                  {email.suggestedAction && (
-                    <Badge variant="outline" className="ml-2 text-xs">
-                      {email.suggestedAction}
-                    </Badge>
-                  )}
-                </div>
-              ))}
-              {batch.emails.length > 3 && (
-                <p className="text-xs text-muted-foreground">
-                  +{batch.emails.length - 3} more emails
-                </p>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-});
 
-// Task prioritization component
-const TaskPrioritization = memo(function TaskPrioritization({ data, onAction }: any) {
-  if (!data.success || !data.rankedTasks || data.rankedTasks.length === 0) {
+  if (!data.tasks || data.tasks.length === 0) {
     return (
       <Card className="p-4">
         <div className="flex items-start gap-3">
@@ -220,9 +200,9 @@ const TaskPrioritization = memo(function TaskPrioritization({ data, onAction }: 
             <AlertCircle className="h-4 w-4 text-yellow-600" />
           </div>
           <div>
-            <h4 className="font-medium">Task Prioritization Not Available</h4>
+            <h4 className="font-medium">No Tasks Available</h4>
             <p className="text-sm text-muted-foreground mt-1">
-              {data.error || 'Task intelligence workflow will be available soon'}
+              No tasks found to fill this work block
             </p>
           </div>
         </div>
@@ -238,34 +218,28 @@ const TaskPrioritization = memo(function TaskPrioritization({ data, onAction }: 
             <TrendingUp className="h-4 w-4 text-green-600" />
           </div>
           <div className="flex-1">
-            <h4 className="font-medium">Task Prioritization</h4>
+            <h4 className="font-medium">Work Block Filled</h4>
             <p className="text-sm text-muted-foreground mt-1">
-              Top {data.rankedTasks.length} tasks based on your current context
+              Selected {data.tasks.length} tasks ({data.totalMinutes} minutes)
             </p>
           </div>
         </div>
         
-        {/* Insights */}
-        {data.insights && (
-          <div className="grid grid-cols-3 gap-2">
-            <Card className="p-2 text-center">
-              <div className="text-lg font-bold">{data.insights.overdueCount}</div>
-              <div className="text-xs text-muted-foreground">Overdue</div>
-            </Card>
-            <Card className="p-2 text-center">
-              <div className="text-lg font-bold">{data.insights.highPriorityCount}</div>
-              <div className="text-xs text-muted-foreground">High Priority</div>
-            </Card>
-            <Card className="p-2 text-center">
-              <div className="text-lg font-bold">{data.insights.quickWinsCount}</div>
-              <div className="text-xs text-muted-foreground">Quick Wins</div>
-            </Card>
-          </div>
-        )}
+        {/* Fit quality indicator */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Fit Quality:</span>
+          <Badge 
+            variant={data.fitQuality === 'perfect' ? 'default' : data.fitQuality === 'good' ? 'secondary' : 'outline'}
+            className="text-xs"
+          >
+            {data.fitQuality}
+          </Badge>
+        </div>
         
-        {/* Ranked tasks */}
+        {/* Selected tasks */}
         <div className="space-y-2">
-          {data.rankedTasks.map((task: any, idx: number) => (
+          <h5 className="text-sm font-medium">Selected Tasks:</h5>
+          {data.tasks.map((task, idx) => (
             <div key={task.id} className="flex items-start gap-3 p-2 bg-muted rounded-md">
               <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-xs font-medium">
                 {idx + 1}
@@ -273,19 +247,25 @@ const TaskPrioritization = memo(function TaskPrioritization({ data, onAction }: 
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-sm">{task.title}</span>
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge 
+                    variant={task.priority === 'high' ? 'destructive' : task.priority === 'medium' ? 'default' : 'secondary'} 
+                    className="text-xs"
+                  >
+                    {task.priority}
+                  </Badge>
+                  <Badge variant="outline" className="text-xs">
                     Score: {task.score}
                   </Badge>
                 </div>
-                {task.reason && (
-                  <p className="text-xs text-muted-foreground mt-1">{task.reason}</p>
-                )}
-                {task.suggestedTimeBlock && (
-                  <p className="text-xs mt-1">
+                <div className="flex items-center gap-4 mt-1">
+                  <span className="text-xs text-muted-foreground">
                     <Clock className="inline h-3 w-3 mr-1" />
-                    Best time: {task.suggestedTimeBlock}
-                  </p>
-                )}
+                    {task.estimatedMinutes} minutes
+                  </span>
+                  {task.reason && (
+                    <span className="text-xs text-muted-foreground">{task.reason}</span>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -296,18 +276,21 @@ const TaskPrioritization = memo(function TaskPrioritization({ data, onAction }: 
           <Button
             size="sm"
             onClick={() => onAction?.({ 
-              type: 'schedule_top_task', 
-              payload: { taskId: data.rankedTasks[0].id } 
+              type: 'confirm_tasks', 
+              payload: { blockId: data.blockId, taskIds: data.tasks.map(t => t.id) } 
             })}
           >
-            Schedule Top Task
+            Confirm Tasks
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => onAction?.({ type: 'view_all_tasks' })}
+            onClick={() => onAction?.({ 
+              type: 'select_different_tasks', 
+              payload: { blockId: data.blockId } 
+            })}
           >
-            View All Tasks
+            Select Different Tasks
           </Button>
         </div>
       </div>
@@ -315,19 +298,37 @@ const TaskPrioritization = memo(function TaskPrioritization({ data, onAction }: 
   );
 });
 
-// Calendar optimization component
-const CalendarOptimization = memo(function CalendarOptimization({ data, onAction }: any) {
-  if (!data.success || !data.suggestions || data.suggestions.length === 0) {
+// Fill email block workflow component
+interface FillEmailBlockWorkflowProps {
+  data: FillEmailBlockResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const FillEmailBlockWorkflow = memo(function FillEmailBlockWorkflow({ data, onAction }: FillEmailBlockWorkflowProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to fill email block'}</p>
+        </div>
+      </Card>
+    );
+  }
+
+  if (data.totalToProcess === 0) {
     return (
       <Card className="p-4">
         <div className="flex items-start gap-3">
-          <div className="p-2 rounded-full bg-yellow-500/10">
-            <AlertCircle className="h-4 w-4 text-yellow-600" />
+          <div className="p-2 rounded-full bg-green-500/10">
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
           </div>
           <div>
-            <h4 className="font-medium">Calendar Optimization Not Available</h4>
+            <h4 className="font-medium">Inbox Clear</h4>
             <p className="text-sm text-muted-foreground mt-1">
-              {data.error || 'Calendar optimization workflow will be available soon'}
+              No emails need processing right now
+              {data.archived > 0 && ` (${data.archived} emails auto-archived)`}
             </p>
           </div>
         </div>
@@ -339,69 +340,89 @@ const CalendarOptimization = memo(function CalendarOptimization({ data, onAction
     <Card className="p-4">
       <div className="space-y-4">
         <div className="flex items-start gap-3">
-          <div className="p-2 rounded-full bg-orange-500/10">
-            <Calendar className="h-4 w-4 text-orange-600" />
+          <div className="p-2 rounded-full bg-purple-500/10">
+            <Mail className="h-4 w-4 text-purple-600" />
           </div>
           <div className="flex-1">
-            <h4 className="font-medium">Calendar Optimization</h4>
+            <h4 className="font-medium">Email Block Prepared</h4>
             <p className="text-sm text-muted-foreground mt-1">
-              Found {data.suggestions.length} optimization opportunities
+              {data.totalToProcess} emails to process
+              {data.archived > 0 && ` (${data.archived} auto-archived)`}
             </p>
-            {data.potentialTimeSaved > 0 && (
-              <Badge variant="secondary" className="mt-2">
-                Save {data.potentialTimeSaved} minutes
-              </Badge>
-            )}
           </div>
         </div>
         
-        {/* Suggestions */}
-        <div className="space-y-2">
-          {data.suggestions.map((suggestion: any, idx: number) => (
-            <div key={idx} className="p-3 bg-muted rounded-md">
-              <div className="flex items-start gap-2">
-                <Badge variant="outline" className="text-xs">
-                  {suggestion.type}
-                </Badge>
-                <div className="flex-1">
-                  <p className="text-sm">{suggestion.reason}</p>
-                  {suggestion.impact && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Impact: {suggestion.impact}
+        {/* Urgent emails */}
+        {data.urgent && data.urgent.length > 0 && (
+          <div className="space-y-2">
+            <h5 className="text-sm font-medium flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              Urgent Emails ({data.urgent.length})
+            </h5>
+            {data.urgent.map((email) => (
+              <div key={email.id} className="p-2 bg-red-50 dark:bg-red-950 rounded-md">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{email.from}</p>
+                    <p className="text-sm text-muted-foreground">{email.subject}</p>
+                  </div>
+                  <Badge variant="destructive" className="text-xs ml-2">
+                    {email.reason}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {/* Batched emails */}
+        {data.batched && data.batched.length > 0 && (
+          <div className="space-y-2">
+            <h5 className="text-sm font-medium">Batched by Sender</h5>
+            {data.batched.map((batch, idx) => (
+              <div key={idx} className="p-2 bg-muted rounded-md">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium">{batch.sender}</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {batch.count} emails
+                  </Badge>
+                </div>
+                <div className="space-y-1">
+                  {batch.emails.slice(0, 2).map((email) => (
+                    <p key={email.id} className="text-xs text-muted-foreground truncate">
+                      • {email.subject}
                     </p>
-                  )}
-                  {suggestion.meetings && suggestion.meetings.length > 0 && (
-                    <p className="text-xs mt-1">
-                      Affects: {suggestion.meetings.join(', ')}
+                  ))}
+                  {batch.emails.length > 2 && (
+                    <p className="text-xs text-muted-foreground">
+                      +{batch.emails.length - 2} more
                     </p>
                   )}
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-        
-        {/* Actions */}
-        {data.proposalId && (
-          <div className="flex gap-2 pt-2 border-t">
-            <Button
-              size="sm"
-              onClick={() => onAction?.({ 
-                type: 'confirm_proposal', 
-                payload: { proposalId: data.proposalId, confirmed: true } 
-              })}
-            >
-              Apply Optimizations
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onAction?.({ type: 'view_calendar' })}
-            >
-              View Calendar
-            </Button>
+            ))}
           </div>
         )}
+        
+        {/* Actions */}
+        <div className="flex gap-2 pt-2 border-t">
+          <Button
+            size="sm"
+            onClick={() => onAction?.({ 
+              type: 'start_email_processing', 
+              payload: { blockId: data.blockId } 
+            })}
+          >
+            Start Processing
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onAction?.({ type: 'view_all_emails' })}
+          >
+            View All Emails
+          </Button>
+        </div>
       </div>
     </Card>
   );

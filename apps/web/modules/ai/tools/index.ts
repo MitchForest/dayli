@@ -1,9 +1,10 @@
+// Re-export all tools for easy access
 // Schedule tools (5)
 export { viewSchedule } from './schedule/viewSchedule';
 export { createTimeBlock } from './schedule/createTimeBlock';
 export { moveTimeBlock } from './schedule/moveTimeBlock';
 export { deleteTimeBlock } from './schedule/deleteTimeBlock';
-export { fillWorkBlock } from './schedule/fillWorkBlock';
+export { fillWorkBlock as fillWorkBlockTool } from './schedule/fillWorkBlock';
 
 // Task tools (4)
 export { viewTasks } from './task/viewTasks';
@@ -20,14 +21,13 @@ export { processEmail } from './email/processEmail';
 export { scheduleMeeting } from './calendar/scheduleMeeting';
 export { rescheduleMeeting } from './calendar/rescheduleMeeting';
 
-// Preference tools (1)
+// Preference tool (1)
 export { updatePreferences } from './preference/updatePreferences';
 
-// Workflow tools (4)
-export { optimizeSchedule } from './workflow/optimizeSchedule';
-export { triageEmails } from './workflow/triageEmails';
-export { prioritizeTasks } from './workflow/prioritizeTasks';
-export { optimizeCalendar } from './workflow/optimizeCalendar';
+// Workflow tools (3)
+export { schedule } from './workflow/schedule';
+export { fillWorkBlock } from './workflow/fillWorkBlock';
+export { fillEmailBlock } from './workflow/fillEmailBlock';
 
 // System tools (6)
 export { confirmProposal } from './system/confirmProposal';
@@ -37,5 +37,5 @@ export { provideFeedback } from './system/provideFeedback';
 export { showPatterns } from './system/showPatterns';
 export { clearContext } from './system/clearContext';
 
-// Export registry
+// Export the tool registry
 export { toolRegistry } from './registry'; 

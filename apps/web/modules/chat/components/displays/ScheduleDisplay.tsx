@@ -2,12 +2,19 @@ import { memo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Clock, Coffee, Mail, Briefcase, Video, Ban, Calendar, ChevronRight } from 'lucide-react';
+import { Clock, Coffee, Mail, Briefcase, Video, Ban, Calendar, ChevronRight, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
+import type { 
+  ScheduleViewResponse, 
+  CreateTimeBlockResponse, 
+  MoveTimeBlockResponse,
+  DeleteTimeBlockResponse,
+  FillWorkBlockResponse 
+} from '@/modules/ai/tools/types/responses';
 
 interface ScheduleDisplayProps {
   toolName: string;
-  data: any;
+  data: any; // Will be one of the schedule response types
   onAction?: (action: { type: string; payload?: any }) => void;
 }
 
@@ -18,19 +25,19 @@ export const ScheduleDisplay = memo(function ScheduleDisplay({
 }: ScheduleDisplayProps) {
   // Handle different schedule tool responses
   if (toolName === 'schedule_viewSchedule') {
-    return <ScheduleView data={data} onAction={onAction} />;
+    return <ScheduleView data={data as ScheduleViewResponse} onAction={onAction} />;
   }
   if (toolName === 'schedule_createTimeBlock') {
-    return <TimeBlockCreated data={data} onAction={onAction} />;
+    return <TimeBlockCreated data={data as CreateTimeBlockResponse} onAction={onAction} />;
   }
   if (toolName === 'schedule_moveTimeBlock') {
-    return <TimeBlockMoved data={data} onAction={onAction} />;
+    return <TimeBlockMoved data={data as MoveTimeBlockResponse} onAction={onAction} />;
   }
   if (toolName === 'schedule_deleteTimeBlock') {
-    return <TimeBlockDeleted data={data} onAction={onAction} />;
+    return <TimeBlockDeleted data={data as DeleteTimeBlockResponse} onAction={onAction} />;
   }
   if (toolName === 'schedule_fillWorkBlock') {
-    return <WorkBlockFilled data={data} onAction={onAction} />;
+    return <WorkBlockFilled data={data as FillWorkBlockResponse} onAction={onAction} />;
   }
   
   // Fallback for unknown schedule tools
@@ -38,7 +45,24 @@ export const ScheduleDisplay = memo(function ScheduleDisplay({
 });
 
 // Schedule view component
-const ScheduleView = memo(function ScheduleView({ data, onAction }: any) {
+interface ScheduleViewProps {
+  data: ScheduleViewResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const ScheduleView = memo(function ScheduleView({ data, onAction }: ScheduleViewProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to load schedule'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   const getBlockIcon = (type: string) => {
     const icons: Record<string, any> = {
       work: Briefcase,
@@ -78,7 +102,7 @@ const ScheduleView = memo(function ScheduleView({ data, onAction }: any) {
         </div>
         {data.stats && (
           <div className="flex gap-3 text-sm text-muted-foreground">
-            <span>{data.blocks.length} blocks</span>
+            <span>{data.blocks?.length || 0} blocks</span>
             <span>{data.stats.totalHours.toFixed(1)}h total</span>
             <span>{data.stats.utilization}% utilized</span>
           </div>
@@ -87,7 +111,7 @@ const ScheduleView = memo(function ScheduleView({ data, onAction }: any) {
       
       {/* Timeline */}
       <div className="space-y-2">
-        {data.blocks.map((block: any) => {
+        {data.blocks?.map((block) => {
           const Icon = getBlockIcon(block.type);
           return (
             <Card
@@ -114,7 +138,7 @@ const ScheduleView = memo(function ScheduleView({ data, onAction }: any) {
                   {/* Show tasks for work blocks */}
                   {block.tasks && block.tasks.length > 0 && (
                     <div className="mt-2 space-y-1">
-                      {block.tasks.slice(0, 3).map((task: any) => (
+                      {block.tasks.slice(0, 3).map((task) => (
                         <div key={task.id} className="flex items-center gap-2 text-sm">
                           <input
                             type="checkbox"
@@ -149,7 +173,7 @@ const ScheduleView = memo(function ScheduleView({ data, onAction }: any) {
       </div>
       
       {/* Empty state */}
-      {data.blocks.length === 0 && (
+      {(!data.blocks || data.blocks.length === 0) && (
         <Card className="p-8 text-center">
           <Clock className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
           <p className="text-muted-foreground mb-3">No blocks scheduled for this date</p>
@@ -185,7 +209,24 @@ const ScheduleView = memo(function ScheduleView({ data, onAction }: any) {
 });
 
 // Time block created component
-const TimeBlockCreated = memo(function TimeBlockCreated({ data }: any) {
+interface TimeBlockCreatedProps {
+  data: CreateTimeBlockResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const TimeBlockCreated = memo(function TimeBlockCreated({ data }: TimeBlockCreatedProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to create time block'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   const formatTime = (date: Date | string): string => {
     const d = typeof date === 'string' ? new Date(date) : date;
     return format(d, 'h:mm a');
@@ -216,7 +257,24 @@ const TimeBlockCreated = memo(function TimeBlockCreated({ data }: any) {
 });
 
 // Time block moved component
-const TimeBlockMoved = memo(function TimeBlockMoved({ data }: any) {
+interface TimeBlockMovedProps {
+  data: MoveTimeBlockResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const TimeBlockMoved = memo(function TimeBlockMoved({ data }: TimeBlockMovedProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to move time block'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   const formatTime = (date: Date | string): string => {
     const d = typeof date === 'string' ? new Date(date) : date;
     return format(d, 'h:mm a');
@@ -241,7 +299,24 @@ const TimeBlockMoved = memo(function TimeBlockMoved({ data }: any) {
 });
 
 // Time block deleted component
-const TimeBlockDeleted = memo(function TimeBlockDeleted({ data }: any) {
+interface TimeBlockDeletedProps {
+  data: DeleteTimeBlockResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const TimeBlockDeleted = memo(function TimeBlockDeleted({ data }: TimeBlockDeletedProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to delete time block'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-4">
       <div className="flex items-start gap-3">
@@ -260,7 +335,24 @@ const TimeBlockDeleted = memo(function TimeBlockDeleted({ data }: any) {
 });
 
 // Work block filled component
-const WorkBlockFilled = memo(function WorkBlockFilled({ data }: any) {
+interface WorkBlockFilledProps {
+  data: FillWorkBlockResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const WorkBlockFilled = memo(function WorkBlockFilled({ data }: WorkBlockFilledProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to fill work block'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-4">
       <div className="flex items-start gap-3">
@@ -270,11 +362,11 @@ const WorkBlockFilled = memo(function WorkBlockFilled({ data }: any) {
         <div className="flex-1">
           <h4 className="font-medium">Work Block Filled</h4>
           <p className="text-sm text-muted-foreground mt-1">
-            Added {data.assignedTasks.length} tasks • {data.utilization}% utilized • {data.remainingMinutes} minutes remaining
+            Added {data.assignedTasks?.length || 0} tasks • {data.utilization}% utilized • {data.remainingMinutes} minutes remaining
           </p>
-          {data.assignedTasks.length > 0 && (
+          {data.assignedTasks && data.assignedTasks.length > 0 && (
             <div className="mt-3 space-y-1">
-              {data.assignedTasks.slice(0, 3).map((task: any) => (
+              {data.assignedTasks.slice(0, 3).map((task) => (
                 <div key={task.id} className="flex items-center gap-2 text-sm">
                   <Badge variant="outline" className="text-xs">
                     {task.priority}

@@ -23,6 +23,9 @@ const intentSchema = z.object({
   confidence: z.number().min(0).max(1).describe('Confidence score between 0 and 1'),
   subcategory: z.string().optional().describe('More specific categorization'),
   complexity: z.enum(['simple', 'complex']).describe('Task complexity assessment'),
+  workflow: z.string().optional().describe('Workflow name if category is workflow'),
+  tools: z.array(z.string()).optional().describe('Tool names if category is tool'),
+  params: z.record(z.any()).optional().describe('Parameters for the workflow or tool'),
   entities: z.object({
     dates: z.array(z.string()).optional().describe('Date references found'),
     times: z.array(z.string()).optional().describe('Time references found'),
@@ -91,15 +94,29 @@ Consider:
 3. Is this just a conversation/question?
 
 Workflow examples:
-- "Plan my day" → optimizeSchedule workflow
-- "Process my emails" → triageEmails workflow
-- "What should I work on?" → prioritizeTasks workflow
-- "Fix my calendar" → optimizeCalendar workflow
+- "Plan my day" → workflow: "workflow_schedule"
+- "Process my emails" → workflow: "workflow_triageEmails"
+- "What should I work on?" → workflow: "workflow_prioritizeTasks"
+- "Fix my calendar" → workflow: "workflow_optimizeCalendar"
 
-Tool examples:
-- "Show my schedule" → viewSchedule tool
-- "Create a meeting at 2pm" → scheduleMeeting tool
-- "Mark task as done" → completeTask tool
+Tool examples (use the exact tool name):
+- "Show my schedule" → tools: ["schedule_viewSchedule"]
+- "Add a work block" → tools: ["schedule_createTimeBlock"]
+- "Create a time block" → tools: ["schedule_createTimeBlock"]
+- "Block time for deep work" → tools: ["schedule_createTimeBlock"]
+- "Add a break at 3pm" → tools: ["schedule_createTimeBlock"]
+- "Move my work block to 2pm" → tools: ["schedule_moveTimeBlock"]
+- "Delete the meeting block" → tools: ["schedule_deleteTimeBlock"]
+- "Fill my work block with tasks" → tools: ["schedule_fillWorkBlock"]
+- "Create a meeting at 2pm" → tools: ["calendar_scheduleMeeting"]
+- "Schedule a call with John" → tools: ["calendar_scheduleMeeting"]
+- "Mark task as done" → tools: ["task_completeTask"]
+- "Show my tasks" → tools: ["task_viewTasks"]
+- "Read email from John" → tools: ["email_readEmail"]
+
+Important distinctions:
+- Time blocks (work, break, email, blocked time) → use schedule_createTimeBlock
+- Meetings with attendees → use calendar_scheduleMeeting
 
 Provide high confidence (>0.8) when the intent is clear.`,
         system: `You are an expert at understanding user intent in a productivity assistant context.
@@ -110,6 +127,7 @@ Classify requests accurately considering:
 - Task and email backlog pressure
 - Past user behavior and preferences
 
+When classifying as 'tool', provide the full tool name with prefix (e.g., "schedule_viewSchedule", not just "viewSchedule").
 Be specific with workflow/tool names when confidence is high.`,
         temperature: 0.3, // Lower temperature for more consistent classification
       });
@@ -123,11 +141,7 @@ Be specific with workflow/tool names when confidence is high.`,
           ...entities,
           ...(classification.entities || {}),
         },
-        suggestedHandler: {
-          type: classification.suggestedHandler.type || 'direct',
-          name: classification.suggestedHandler.name,
-          params: classification.suggestedHandler.params,
-        },
+        suggestedHandler: this.determineHandler(classification, context),
         reasoning: classification.reasoning,
       };
       
@@ -296,7 +310,7 @@ Be specific with workflow/tool names when confidence is high.`,
     
     // Workflow keywords
     const workflowKeywords = {
-      optimizeSchedule: ['plan', 'organize', 'schedule my day', 'optimize my day'],
+      schedule: ['plan', 'organize', 'schedule my day', 'optimize my day'],
       triageEmails: ['process emails', 'triage emails', 'handle emails', 'email backlog'],
       prioritizeTasks: ['what should i work on', 'prioritize', 'task recommendations'],
       optimizeCalendar: ['fix calendar', 'optimize calendar', 'reschedule meetings'],
@@ -317,10 +331,15 @@ Be specific with workflow/tool names when confidence is high.`,
     // Tool keywords
     const toolKeywords = {
       viewSchedule: ['show schedule', 'view schedule', 'my schedule', 'calendar'],
-      createTimeBlock: ['block time', 'create block', 'add block'],
+      createTimeBlock: ['block time', 'create block', 'add block', 'work block', 'break block', 'add a break', 'block for', 'time block'],
+      moveTimeBlock: ['move block', 'reschedule block', 'change block time'],
+      deleteTimeBlock: ['delete block', 'remove block', 'cancel block'],
+      fillWorkBlock: ['fill work block', 'assign tasks to block', 'populate block'],
       createTask: ['create task', 'add task', 'new task'],
       viewTasks: ['show tasks', 'list tasks', 'my tasks'],
       viewEmails: ['show emails', 'list emails', 'my emails'],
+      scheduleMeeting: ['schedule meeting', 'create meeting', 'book meeting', 'meeting with'],
+      rescheduleMeeting: ['reschedule meeting', 'move meeting', 'change meeting time'],
     };
     
     for (const [tool, keywords] of Object.entries(toolKeywords)) {
@@ -409,5 +428,75 @@ Be specific with workflow/tool names when confidence is high.`,
       maxSize: this.cacheMaxSize,
       ttl: this.cacheTTL,
     };
+  }
+  
+  private determineHandler(
+    classification: any,
+    context: OrchestrationContext
+  ): UserIntent['suggestedHandler'] {
+    if (classification.category === 'workflow') {
+      // Map workflow names to full registered names
+      const workflowMap: Record<string, string> = {
+        'schedule': 'workflow_schedule',
+        'triageEmails': 'workflow_triageEmails',
+        'prioritizeTasks': 'workflow_prioritizeTasks',
+        'optimizeCalendar': 'workflow_optimizeCalendar',
+      };
+      
+      return {
+        type: 'workflow',
+        name: workflowMap[classification.workflow] || classification.workflow,
+        params: classification.params,
+      };
+    }
+    
+    if (classification.category === 'tool' && classification.tools?.length > 0) {
+      // Map tool names to full registered names
+      const toolMap: Record<string, string> = {
+        'viewSchedule': 'schedule_viewSchedule',
+        'createTimeBlock': 'schedule_createTimeBlock',
+        'moveTimeBlock': 'schedule_moveTimeBlock',
+        'deleteTimeBlock': 'schedule_deleteTimeBlock',
+        'fillWorkBlock': 'schedule_fillWorkBlock',
+        'viewTasks': 'task_viewTasks',
+        'createTask': 'task_createTask',
+        'updateTask': 'task_updateTask',
+        'completeTask': 'task_completeTask',
+        'viewEmails': 'email_viewEmails',
+        'readEmail': 'email_readEmail',
+        'processEmail': 'email_processEmail',
+        'scheduleMeeting': 'calendar_scheduleMeeting',
+        'rescheduleMeeting': 'calendar_rescheduleMeeting',
+        'updatePreferences': 'preference_updatePreferences',
+        'confirmProposal': 'system_confirmProposal',
+        'showWorkflowHistory': 'system_showWorkflowHistory',
+        'resumeWorkflow': 'system_resumeWorkflow',
+        'provideFeedback': 'system_provideFeedback',
+        'showPatterns': 'system_showPatterns',
+        'clearContext': 'system_clearContext',
+      };
+      
+      // For single tool operations
+      if (classification.tools.length === 1) {
+        const toolName = classification.tools[0];
+        return {
+          type: 'tool',
+          name: toolMap[toolName] || toolName,
+          params: classification.params,
+        };
+      }
+      
+      // Multiple tools might need orchestration
+      return {
+        type: 'workflow',
+        name: 'custom',
+        params: {
+          tools: classification.tools.map((t: string) => toolMap[t] || t),
+          ...classification.params,
+        },
+      };
+    }
+    
+    return { type: 'direct' };
   }
 }

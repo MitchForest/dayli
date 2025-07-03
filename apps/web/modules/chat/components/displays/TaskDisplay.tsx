@@ -4,10 +4,16 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { CheckCircle2, Circle, Clock, Flag, AlertCircle, Calendar, TrendingUp } from 'lucide-react';
+import type { 
+  TaskListResponse,
+  CreateTaskResponse,
+  UpdateTaskResponse,
+  CompleteTaskResponse
+} from '@/modules/ai/tools/types/responses';
 
 interface TaskDisplayProps {
   toolName: string;
-  data: any;
+  data: any; // Will be one of the task response types
   onAction?: (action: { type: string; payload?: any }) => void;
 }
 
@@ -18,16 +24,16 @@ export const TaskDisplay = memo(function TaskDisplay({
 }: TaskDisplayProps) {
   // Handle different task tool responses
   if (toolName === 'task_viewTasks') {
-    return <TaskList data={data} onAction={onAction} />;
+    return <TaskList data={data as TaskListResponse} onAction={onAction} />;
   }
   if (toolName === 'task_createTask') {
-    return <TaskCreated data={data} onAction={onAction} />;
+    return <TaskCreated data={data as CreateTaskResponse} onAction={onAction} />;
   }
   if (toolName === 'task_updateTask') {
-    return <TaskUpdated data={data} onAction={onAction} />;
+    return <TaskUpdated data={data as UpdateTaskResponse} onAction={onAction} />;
   }
   if (toolName === 'task_completeTask') {
-    return <TaskCompleted data={data} onAction={onAction} />;
+    return <TaskCompleted data={data as CompleteTaskResponse} onAction={onAction} />;
   }
   
   // Fallback
@@ -35,7 +41,24 @@ export const TaskDisplay = memo(function TaskDisplay({
 });
 
 // Task list component
-const TaskList = memo(function TaskList({ data, onAction }: any) {
+interface TaskListProps {
+  data: TaskListResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const TaskList = memo(function TaskList({ data, onAction }: TaskListProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to load tasks'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   const getPriorityColor = (priority: string) => {
     const colors: Record<string, string> = {
       high: 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30',
@@ -76,7 +99,7 @@ const TaskList = memo(function TaskList({ data, onAction }: any) {
       
       {/* Task list */}
       <div className="space-y-2">
-        {data.tasks.map((task: any) => {
+        {data.tasks?.map((task) => {
           const StatusIcon = getStatusIcon(task.status);
           const isCompleted = task.status === 'completed';
           
@@ -117,7 +140,7 @@ const TaskList = memo(function TaskList({ data, onAction }: any) {
                         <Flag className="h-3 w-3 mr-1" />
                         {task.priority}
                       </Badge>
-                      {task.score && (
+                      {task.score !== undefined && (
                         <Badge variant="secondary" className="text-xs">
                           Score: {task.score}
                         </Badge>
@@ -144,7 +167,7 @@ const TaskList = memo(function TaskList({ data, onAction }: any) {
                         {new Date(task.dueDate).toLocaleDateString()}
                       </div>
                     )}
-                    {task.daysInBacklog && task.daysInBacklog > 3 && (
+                    {task.daysInBacklog !== undefined && task.daysInBacklog > 3 && (
                       <div className="flex items-center gap-1 text-yellow-600">
                         <AlertCircle className="h-3 w-3" />
                         {task.daysInBacklog} days in backlog
@@ -159,7 +182,7 @@ const TaskList = memo(function TaskList({ data, onAction }: any) {
       </div>
       
       {/* Empty state */}
-      {data.tasks.length === 0 && (
+      {(!data.tasks || data.tasks.length === 0) && (
         <Card className="p-8 text-center">
           <CheckCircle2 className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
           <p className="text-muted-foreground mb-3">No tasks found</p>
@@ -196,7 +219,24 @@ const TaskList = memo(function TaskList({ data, onAction }: any) {
 });
 
 // Task created component
-const TaskCreated = memo(function TaskCreated({ data }: any) {
+interface TaskCreatedProps {
+  data: CreateTaskResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const TaskCreated = memo(function TaskCreated({ data }: TaskCreatedProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to create task'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-4">
       <div className="flex items-start gap-3">
@@ -225,7 +265,24 @@ const TaskCreated = memo(function TaskCreated({ data }: any) {
 });
 
 // Task updated component
-const TaskUpdated = memo(function TaskUpdated({ data }: any) {
+interface TaskUpdatedProps {
+  data: UpdateTaskResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const TaskUpdated = memo(function TaskUpdated({ data }: TaskUpdatedProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to update task'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-4">
       <div className="flex items-start gap-3">
@@ -251,7 +308,24 @@ const TaskUpdated = memo(function TaskUpdated({ data }: any) {
 });
 
 // Task completed component
-const TaskCompleted = memo(function TaskCompleted({ data }: any) {
+interface TaskCompletedProps {
+  data: CompleteTaskResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const TaskCompleted = memo(function TaskCompleted({ data }: TaskCompletedProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to complete task'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-4 bg-green-500/5 border-green-500/20">
       <div className="flex items-start gap-3">

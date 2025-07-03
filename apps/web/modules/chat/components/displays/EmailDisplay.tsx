@@ -4,10 +4,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Mail, MailOpen, Paperclip, AlertCircle, Send, FileText, Archive, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import type { 
+  EmailListResponse,
+  ReadEmailResponse,
+  ProcessEmailResponse
+} from '@/modules/ai/tools/types/responses';
 
 interface EmailDisplayProps {
   toolName: string;
-  data: any;
+  data: any; // Will be one of the email response types
   onAction?: (action: { type: string; payload?: any }) => void;
 }
 
@@ -18,13 +23,13 @@ export const EmailDisplay = memo(function EmailDisplay({
 }: EmailDisplayProps) {
   // Handle different email tool responses
   if (toolName === 'email_viewEmails') {
-    return <EmailList data={data} onAction={onAction} />;
+    return <EmailList data={data as EmailListResponse} onAction={onAction} />;
   }
   if (toolName === 'email_readEmail') {
-    return <EmailContent data={data} onAction={onAction} />;
+    return <EmailContent data={data as ReadEmailResponse} onAction={onAction} />;
   }
   if (toolName === 'email_processEmail') {
-    return <EmailProcessed data={data} onAction={onAction} />;
+    return <EmailProcessed data={data as ProcessEmailResponse} onAction={onAction} />;
   }
   
   // Fallback
@@ -32,7 +37,24 @@ export const EmailDisplay = memo(function EmailDisplay({
 });
 
 // Email list component
-const EmailList = memo(function EmailList({ data, onAction }: any) {
+interface EmailListProps {
+  data: EmailListResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const EmailList = memo(function EmailList({ data, onAction }: EmailListProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to load emails'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   const getUrgencyColor = (urgency: string) => {
     const colors: Record<string, string> = {
       urgent: 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30',
@@ -66,7 +88,7 @@ const EmailList = memo(function EmailList({ data, onAction }: any) {
       
       {/* Email list */}
       <div className="space-y-2">
-        {data.emails.map((email: any) => (
+        {data.emails?.map((email) => (
           <Card
             key={email.id}
             className={`p-4 cursor-pointer transition-all hover:shadow-sm ${
@@ -123,7 +145,7 @@ const EmailList = memo(function EmailList({ data, onAction }: any) {
       </div>
       
       {/* Empty state */}
-      {data.emails.length === 0 && (
+      {(!data.emails || data.emails.length === 0) && (
         <Card className="p-8 text-center">
           <Mail className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
           <p className="text-muted-foreground">No emails found</p>
@@ -152,7 +174,24 @@ const EmailList = memo(function EmailList({ data, onAction }: any) {
 });
 
 // Email content component
-const EmailContent = memo(function EmailContent({ data, onAction }: any) {
+interface EmailContentProps {
+  data: ReadEmailResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const EmailContent = memo(function EmailContent({ data, onAction }: EmailContentProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to load email'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   const email = data.email;
   
   return (
@@ -188,7 +227,7 @@ const EmailContent = memo(function EmailContent({ data, onAction }: any) {
           <div>
             <h4 className="text-sm font-medium mb-2">Attachments</h4>
             <div className="space-y-1">
-              {email.attachments.map((attachment: any, idx: number) => (
+              {email.attachments.map((attachment, idx) => (
                 <div key={idx} className="flex items-center gap-2 text-sm">
                   <Paperclip className="h-3 w-3" />
                   <span>{attachment.filename}</span>
@@ -206,7 +245,7 @@ const EmailContent = memo(function EmailContent({ data, onAction }: any) {
           <div>
             <h4 className="text-sm font-medium mb-2">Detected Action Items</h4>
             <div className="space-y-1">
-              {email.extractedActions.map((action: string, idx: number) => (
+              {email.extractedActions.map((action, idx) => (
                 <div key={idx} className="flex items-start gap-2">
                   <span className="text-xs text-muted-foreground">{idx + 1}.</span>
                   <span className="text-sm">{action}</span>
@@ -257,7 +296,24 @@ const EmailContent = memo(function EmailContent({ data, onAction }: any) {
 });
 
 // Email processed component
-const EmailProcessed = memo(function EmailProcessed({ data }: any) {
+interface EmailProcessedProps {
+  data: ProcessEmailResponse;
+  onAction?: (action: { type: string; payload?: any }) => void;
+}
+
+const EmailProcessed = memo(function EmailProcessed({ data, onAction }: EmailProcessedProps) {
+  // Handle error state
+  if (!data.success) {
+    return (
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to process email'}</p>
+        </div>
+      </Card>
+    );
+  }
+
   const getActionIcon = (action: string) => {
     const icons: Record<string, any> = {
       draft: Send,
@@ -294,7 +350,7 @@ const EmailProcessed = memo(function EmailProcessed({ data }: any) {
           <p className="text-sm text-muted-foreground mt-1">
             {getActionMessage(data.action, data.result)}
           </p>
-          {data.result.draftContent && (
+          {data.result?.draftContent && (
             <div className="mt-3 p-3 bg-muted rounded-md">
               <p className="text-sm whitespace-pre-wrap">{data.result.draftContent}</p>
             </div>

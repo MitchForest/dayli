@@ -31,39 +31,28 @@ const allCommands: Command[] = [
     commands: [
       {
         title: 'Plan My Day',
-        description: 'Create an intelligent schedule based on your tasks and preferences',
-        examples: ['Plan my day', 'What should I work on today?', 'Schedule my tasks']
+        description: 'Create an intelligent schedule with work blocks, breaks, and email time',
+        examples: ['Plan my day', 'Schedule my day for tomorrow', 'Create a schedule for July 5th']
+      },
+      {
+        title: 'View Schedule',
+        description: 'See your current schedule and time blocks',
+        examples: ['Show my schedule', 'What\'s on my calendar today?', 'View tomorrow\'s schedule']
       },
       {
         title: 'Create Time Block',
         description: 'Add a new time block to your schedule',
-        examples: ['Block 2pm-4pm for deep work', 'Schedule email time at 10am', 'Add a meeting from 3-4pm']
+        examples: ['Block 2pm-4pm for deep work', 'Add a break at 3pm', 'Create a meeting from 10-11am']
       },
       {
         title: 'Move Time Block',
         description: 'Reschedule an existing time block',
-        examples: ['Move my 2pm block to 4pm', 'Reschedule the design review']
-      }
-    ]
-  },
-  {
-    category: 'Email Management',
-    icon: Mail,
-    commands: [
-      {
-        title: 'Triage Emails',
-        description: 'Process and categorize your unread emails by importance and urgency',
-        examples: ['Check my emails', 'What emails need attention?', 'Show me urgent emails']
+        examples: ['Move my 2pm block to 4pm', 'Reschedule the design review', 'Change my break to 3:30pm']
       },
       {
-        title: 'Draft Response',
-        description: 'Generate an intelligent email response',
-        examples: ['Draft a response to the latest email', 'Reply to John about the proposal']
-      },
-      {
-        title: 'Process Email to Task',
-        description: 'Convert an email into an actionable task',
-        examples: ['Turn this email into a task', 'Create a task from the project update email']
+        title: 'Delete Time Block',
+        description: 'Remove a time block from your schedule',
+        examples: ['Delete my 3pm meeting', 'Remove the afternoon break', 'Cancel the work block']
       }
     ]
   },
@@ -72,19 +61,71 @@ const allCommands: Command[] = [
     icon: CheckSquare,
     commands: [
       {
-        title: 'Create Task',
-        description: 'Add a new task with natural language',
-        examples: ['Create task: Review Q4 budget', 'Add a task to call Sarah tomorrow']
+        title: 'Fill Work Block',
+        description: 'Automatically assign the best tasks to a work block',
+        examples: ['Fill my morning work block', 'What should I work on in my next block?', 'Assign tasks to my 2pm block']
       },
       {
-        title: 'Find Tasks',
-        description: 'Search and filter your tasks',
-        examples: ['Show me high priority tasks', 'What tasks are due this week?', 'Find all design tasks']
+        title: 'View Tasks',
+        description: 'See your tasks with priority scores',
+        examples: ['Show my tasks', 'What tasks are high priority?', 'List all pending tasks']
+      },
+      {
+        title: 'Create Task',
+        description: 'Add a new task with natural language',
+        examples: ['Create task: Review Q4 budget', 'Add a task to call Sarah tomorrow', 'New task: Update documentation']
+      },
+      {
+        title: 'Update Task',
+        description: 'Modify an existing task',
+        examples: ['Update task priority to high', 'Change task deadline to Friday', 'Edit the budget review task']
       },
       {
         title: 'Complete Task',
         description: 'Mark a task as completed',
-        examples: ['Complete the budget review task', 'Mark design mockup as done']
+        examples: ['Complete the budget review task', 'Mark design mockup as done', 'Finish task #123']
+      }
+    ]
+  },
+  {
+    category: 'Email Management',
+    icon: Mail,
+    commands: [
+      {
+        title: 'Fill Email Block',
+        description: 'Organize emails by urgency and batch by sender for an email block',
+        examples: ['Fill my email block', 'Organize emails for my email time', 'What emails should I process?']
+      },
+      {
+        title: 'View Emails',
+        description: 'See your unread emails with urgency scores',
+        examples: ['Show my emails', 'What emails need attention?', 'List unread emails']
+      },
+      {
+        title: 'Read Email',
+        description: 'Read a specific email with AI-powered summary',
+        examples: ['Read the latest email', 'Show email from John', 'Read email about the project update']
+      },
+      {
+        title: 'Process Email',
+        description: 'Take action on an email (reply, task, archive)',
+        examples: ['Reply to John\'s email', 'Turn this email into a task', 'Archive marketing emails']
+      }
+    ]
+  },
+  {
+    category: 'Calendar & Meetings',
+    icon: Clock,
+    commands: [
+      {
+        title: 'Schedule Meeting',
+        description: 'Create a new meeting and find the best time',
+        examples: ['Schedule a meeting with Sarah at 2pm', 'Book 30 minutes with the team tomorrow', 'Create a 1-hour design review']
+      },
+      {
+        title: 'Reschedule Meeting',
+        description: 'Move an existing meeting to a new time',
+        examples: ['Reschedule my 2pm meeting', 'Move the team sync to 4pm', 'Change the design review to tomorrow']
       }
     ]
   },
@@ -96,22 +137,27 @@ const allCommands: Command[] = [
         title: 'Update Preferences',
         description: 'Change your work preferences and schedule settings',
         examples: ['I prefer lunch at 11:30 now', 'Change my work hours to 8am-4pm', 'I need longer breaks']
-      },
-      {
-        title: 'View Preferences',
-        description: 'See your current preferences and settings',
-        examples: ['Show my preferences', 'What are my work hours?', 'When is my lunch break?']
       }
     ]
   },
   {
-    category: 'Workflows',
+    category: 'System & Workflows',
     icon: Workflow,
     commands: [
       {
-        title: 'Daily Planning',
-        description: 'Run the adaptive daily planning workflow',
-        examples: ['Run daily planning', 'Optimize my schedule', 'Reorganize my day']
+        title: 'Confirm Proposal',
+        description: 'Confirm or reject a workflow proposal',
+        examples: ['Confirm the schedule', 'Accept the task assignments', 'Reject the proposal']
+      },
+      {
+        title: 'Show Workflow History',
+        description: 'View past workflow executions',
+        examples: ['Show workflow history', 'What workflows ran today?', 'View past schedules']
+      },
+      {
+        title: 'Clear Context',
+        description: 'Clear the AI\'s context and start fresh',
+        examples: ['Clear context', 'Start over', 'Reset conversation']
       }
     ]
   }
@@ -120,9 +166,9 @@ const allCommands: Command[] = [
 // Most common commands for the concise view
 const commonCommands = [
   { text: 'Plan my day', icon: Calendar },
-  { text: 'Check my emails', icon: Mail },
-  { text: 'Show my tasks', icon: CheckSquare },
-  { text: 'What\'s next?', icon: Clock },
+  { text: 'Show my schedule', icon: Clock },
+  { text: 'What should I work on?', icon: CheckSquare },
+  { text: 'Show my emails', icon: Mail },
 ];
 
 interface CommandListMessageProps {
