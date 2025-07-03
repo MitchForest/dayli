@@ -1,10 +1,15 @@
 import { z } from "zod";
 import { createTool } from '../base/tool-factory';
 import { registerTool } from '../base/tool-registry';
-import { getCurrentUserId } from '../utils/helpers';
-import { format, parse, addMinutes, isWithinInterval, differenceInMinutes } from 'date-fns';
-import { ServiceFactory } from '@/services/factory/service.factory';
-import { type ScheduleResponse } from '../types/responses';
+import { type WorkflowScheduleResponse } from '../types/responses';
+import { format, parse, addMinutes, differenceInMinutes, addDays } from 'date-fns';
+import { proposalStore } from '../../utils/proposal-store';
+
+// Import our atomic tools
+import { viewSchedule } from '../schedule/viewSchedule';
+import { findGaps } from '../schedule/findGaps';
+import { analyzeUtilization } from '../schedule/analyzeUtilization';
+import { batchCreateBlocks } from '../schedule/batchCreateBlocks';
 
 const parameters = z.object({
   date: z.string().optional().describe("Date to schedule in YYYY-MM-DD format"),
@@ -14,31 +19,47 @@ const parameters = z.object({
     lunchDuration: z.number().default(60),
     breakDuration: z.number().default(15)
   }).optional(),
-  feedback: z.string().optional().describe("User feedback about schedule adjustments")
+  feedback: z.string().optional().describe("User feedback about schedule adjustments"),
+  confirmation: z.object({
+    approved: z.boolean(),
+    proposalId: z.string(),
+    modifiedBlocks: z.array(z.object({
+      type: z.enum(['work', 'meeting', 'email', 'break', 'blocked']),
+      title: z.string(),
+      startTime: z.string(),
+      endTime: z.string(),
+      description: z.string().optional(),
+    })).optional()
+  }).optional().describe("Confirmation of proposed schedule")
 });
 
 export const schedule = registerTool(
-  createTool<typeof parameters, ScheduleResponse>({
+  createTool<typeof parameters, WorkflowScheduleResponse>({
     name: 'workflow_schedule',
-    description: "Create and manage time blocks for your day - creates work blocks, email blocks, breaks, and lunch",
+    description: "Multi-step schedule optimization workflow with user confirmation",
     parameters,
     metadata: {
       category: 'workflow',
-      displayName: 'Schedule Day',
+      displayName: 'Plan My Day',
       requiresConfirmation: true,
       supportsStreaming: true,
     },
-    execute: async ({ date, preferences = {}, feedback }) => {
+    execute: async ({ date, preferences = {}, feedback, confirmation }) => {
       try {
-        // Try to get userId but don't fail if we can't (for testing)
-        let userId: string | null = null;
-        try {
-          userId = await getCurrentUserId();
-        } catch (error) {
-          console.log('[Schedule Workflow] Running without user context (testing mode)');
-        }
+        // Smart date determination
+        const now = new Date();
+        const currentHour = now.getHours();
+        let targetDate = date;
         
-        const targetDate = date || format(new Date(), 'yyyy-MM-dd');
+        if (!targetDate) {
+          // If it's after 3 PM, assume they mean tomorrow
+          if (currentHour >= 15) {
+            targetDate = format(addDays(now, 1), 'yyyy-MM-dd');
+            console.log('[Schedule Workflow] Evening request detected, planning for tomorrow:', targetDate);
+          } else {
+            targetDate = format(now, 'yyyy-MM-dd');
+          }
+        }
         
         // Merge with default preferences
         const userPrefs = {
@@ -49,270 +70,466 @@ export const schedule = registerTool(
           ...preferences
         };
         
-        const factory = ServiceFactory.getInstance();
-        const scheduleService = factory.getScheduleService();
+        // PHASE 1: ANALYSIS & PROPOSAL (no confirmation provided)
+        if (!confirmation) {
+          console.log('[Schedule Workflow] Phase 1: Analyzing and generating proposals');
+          
+          // Step 1: Get current schedule using atomic tool
+          const currentScheduleResult = await viewSchedule.execute({ date: targetDate });
+          if (!currentScheduleResult.success) {
+            throw new Error('Failed to get current schedule');
+          }
+          
+          // Step 2: Find gaps using atomic tool
+          const gapsResult = await findGaps.execute({
+            date: targetDate,
+            minDuration: 30,
+            between: {
+              start: userPrefs.workStart,
+              end: userPrefs.workEnd
+            }
+          });
+          if (!gapsResult.success) {
+            throw new Error('Failed to find schedule gaps');
+          }
+          
+          // Step 3: Analyze utilization using atomic tool
+          const utilizationResult = await analyzeUtilization.execute({ date: targetDate });
+          if (!utilizationResult.success) {
+            throw new Error('Failed to analyze schedule');
+          }
+          
+          // Step 4: Generate block proposals based on analysis
+          const proposals = generateScheduleProposals(
+            currentScheduleResult.blocks,
+            gapsResult.gaps,
+            utilizationResult,
+            userPrefs,
+            feedback
+          );
+          
+          // Store proposal for later confirmation
+          const proposalId = crypto.randomUUID();
+          proposalStore.store(proposalId, 'workflow_schedule', {
+            date: targetDate,
+            blocks: proposals.blocks,
+            changes: proposals.changes,
+            timestamp: new Date()
+          }, { date: targetDate });
+          
+          // Return proposal for user review
+          return {
+            success: true,
+            phase: 'proposal',
+            requiresConfirmation: true,
+            proposalId,
+            date: targetDate,
+            blocks: proposals.blocks,
+            changes: proposals.changes,
+            summary: proposals.summary,
+            message: "Here's your proposed schedule. Would you like me to create these time blocks?",
+            utilizationBefore: utilizationResult.utilization,
+            utilizationAfter: proposals.estimatedUtilization,
+          };
+        }
         
-        // Get existing schedule
-        const existingBlocks = await scheduleService.getScheduleForDate(targetDate);
+        // PHASE 2: EXECUTION (user confirmed)
+        console.log('[Schedule Workflow] Phase 2: Executing approved schedule');
         
-        // Sort blocks by start time
-        const sortedBlocks = existingBlocks.sort((a: any, b: any) => 
-          a.startTime.getTime() - b.startTime.getTime()
+        // Get the stored proposal
+        const storedProposal = proposalStore.get(confirmation.proposalId);
+        if (!storedProposal) {
+          throw new Error('Proposal not found or expired');
+        }
+        
+        const proposal = storedProposal.data;
+        const proposalDate = proposal.date; // Get the date from the proposal
+        
+        console.log('[Schedule Workflow] Using date from proposal:', proposalDate);
+        
+        // Use modified blocks if provided, otherwise use original proposal
+        const blocksToCreate = confirmation.modifiedBlocks || proposal.blocks;
+        
+        // Filter out existing blocks (only create new ones)
+        const existingSchedule = await viewSchedule.execute({ date: proposalDate });
+        const existingBlockIds = new Set(existingSchedule.blocks.map((b: any) => b.id));
+        
+        const newBlocks = blocksToCreate.filter((block: any) => 
+          !block.id || !existingBlockIds.has(block.id)
         );
         
-        // Extract protected blocks (existing meetings)
-        const protectedBlocks = sortedBlocks.filter((block: any) => 
-          block.type === 'meeting' || block.isProtected
-        );
-        
-        // Process user feedback if provided
-        const adjustments = parseFeedback(feedback, userPrefs);
-        
-        // Create new blocks
-        const newBlocks: any[] = [];
-        const changes: any[] = [];
-        
-        // Helper to check if time slot is available
-        const isTimeSlotAvailable = (startTime: Date, endTime: Date): boolean => {
-          return !protectedBlocks.some((block: any) => {
-            const blockStart = block.startTime;
-            const blockEnd = block.endTime;
-            return (
-              (startTime >= blockStart && startTime < blockEnd) ||
-              (endTime > blockStart && endTime <= blockEnd) ||
-              (startTime <= blockStart && endTime >= blockEnd)
-            );
-          });
-        };
-        
-        // 1. Create lunch block
-        const lunchStart = parse(adjustments.lunchTime || "12:00", 'HH:mm', new Date(targetDate));
-        const lunchEnd = addMinutes(lunchStart, adjustments.lunchDuration || userPrefs.lunchDuration);
-        
-        if (isTimeSlotAvailable(lunchStart, lunchEnd)) {
-          newBlocks.push({
-            id: crypto.randomUUID(),
-            type: 'break',
-            title: 'Lunch Break',
-            startTime: format(lunchStart, 'HH:mm'),
-            endTime: format(lunchEnd, 'HH:mm'),
-            duration: adjustments.lunchDuration || userPrefs.lunchDuration,
-            isProtected: true
-          });
-          changes.push({
-            action: 'created',
-            block: 'Lunch Break',
-            reason: feedback?.includes('lunch') ? 'Extended lunch as requested' : 'Standard lunch break'
-          });
-        }
-        
-        // 2. Find gaps for work blocks
-        const workStart = parse(userPrefs.workStart, 'HH:mm', new Date(targetDate));
-        const workEnd = parse(userPrefs.workEnd, 'HH:mm', new Date(targetDate));
-        
-        // Get all occupied time slots (protected + new blocks)
-        const allBlocks = [...protectedBlocks, ...newBlocks].sort((a, b) => {
-          const aStart = typeof a.startTime === 'string' 
-            ? parse(a.startTime, 'HH:mm', new Date(targetDate))
-            : a.startTime;
-          const bStart = typeof b.startTime === 'string'
-            ? parse(b.startTime, 'HH:mm', new Date(targetDate))
-            : b.startTime;
-          return aStart.getTime() - bStart.getTime();
+        // Step 5: Create blocks using atomic tool
+        const createResult = await batchCreateBlocks.execute({
+          date: proposalDate,
+          blocks: newBlocks
         });
         
-        // Find gaps and create work blocks
-        let currentTime = workStart;
-        let workBlockCount = 0;
-        let emailBlockCreated = false;
-        
-        for (const block of allBlocks) {
-          const blockStart = typeof block.startTime === 'string'
-            ? parse(block.startTime, 'HH:mm', new Date(targetDate))
-            : block.startTime;
-          
-          const gapMinutes = differenceInMinutes(blockStart, currentTime);
-          
-          // If we have a gap of at least 30 minutes
-          if (gapMinutes >= 30) {
-            // Create email block in afternoon if not created
-            if (!emailBlockCreated && currentTime.getHours() >= 14 && gapMinutes >= 30) {
-              const emailDuration = Math.min(30, gapMinutes);
-              newBlocks.push({
-                id: crypto.randomUUID(),
-                type: 'email',
-                title: 'Email Processing',
-                startTime: format(currentTime, 'HH:mm'),
-                endTime: format(addMinutes(currentTime, emailDuration), 'HH:mm'),
-                duration: emailDuration,
-                isProtected: false
-              });
-              changes.push({
-                action: 'created',
-                block: 'Email Processing',
-                reason: 'Dedicated time for email management'
-              });
-              emailBlockCreated = true;
-              currentTime = addMinutes(currentTime, emailDuration);
-              continue;
-            }
-            
-            // Create work blocks
-            if (gapMinutes >= 60) {
-              const workDuration = Math.min(120, gapMinutes); // Max 2-hour blocks
-              const blockTitle = workBlockCount === 0 ? 'Deep Work Block' : 
-                               workBlockCount === 1 ? 'Focus Block' : 
-                               'Work Block';
-              
-              newBlocks.push({
-                id: crypto.randomUUID(),
-                type: 'work',
-                title: blockTitle,
-                startTime: format(currentTime, 'HH:mm'),
-                endTime: format(addMinutes(currentTime, workDuration), 'HH:mm'),
-                duration: workDuration,
-                isProtected: false
-              });
-              changes.push({
-                action: 'created',
-                block: blockTitle,
-                reason: gapMinutes >= 120 ? 'Extended focus time available' : 'Productive work slot'
-              });
-              workBlockCount++;
-              currentTime = addMinutes(currentTime, workDuration);
-              
-              // Add break after work block if there's time
-              if (differenceInMinutes(blockStart, currentTime) >= userPrefs.breakDuration) {
-                newBlocks.push({
-                  id: crypto.randomUUID(),
-                  type: 'break',
-                  title: 'Short Break',
-                  startTime: format(currentTime, 'HH:mm'),
-                  endTime: format(addMinutes(currentTime, userPrefs.breakDuration), 'HH:mm'),
-                  duration: userPrefs.breakDuration,
-                  isProtected: false
-                });
-                changes.push({
-                  action: 'created',
-                  block: 'Short Break',
-                  reason: 'Recovery time between work blocks'
-                });
-              }
-            }
-          }
-          
-          // Move current time to end of this block
-          currentTime = typeof block.endTime === 'string'
-            ? parse(block.endTime, 'HH:mm', new Date(targetDate))
-            : block.endTime;
+        if (!createResult.success) {
+          throw new Error('Failed to create time blocks');
         }
         
-        // Handle remaining time at end of day
-        const remainingMinutes = differenceInMinutes(workEnd, currentTime);
-        if (remainingMinutes >= 30) {
-          if (!emailBlockCreated && remainingMinutes >= 30) {
-            newBlocks.push({
-              id: crypto.randomUUID(),
-              type: 'email',
-              title: 'Email Wrap-up',
-              startTime: format(currentTime, 'HH:mm'),
-              endTime: format(addMinutes(currentTime, 30), 'HH:mm'),
-              duration: 30,
-              isProtected: false
-            });
-            changes.push({
-              action: 'created',
-              block: 'Email Wrap-up',
-              reason: 'End-of-day email check'
-            });
-          } else if (remainingMinutes >= 60) {
-            newBlocks.push({
-              id: crypto.randomUUID(),
-              type: 'work',
-              title: 'Wrap-up Tasks',
-              startTime: format(currentTime, 'HH:mm'),
-              endTime: format(workEnd, 'HH:mm'),
-              duration: remainingMinutes,
-              isProtected: false
-            });
-            changes.push({
-              action: 'created',
-              block: 'Wrap-up Tasks',
-              reason: 'End-of-day task completion'
-            });
-          }
-        }
+        // Step 6: Get final schedule and utilization
+        const finalSchedule = await viewSchedule.execute({ date: proposalDate });
+        const finalUtilization = await analyzeUtilization.execute({ date: proposalDate });
         
-        // Add afternoon break if day is packed
-        const totalWorkMinutes = newBlocks
-          .filter(b => b.type === 'work')
-          .reduce((sum, b) => sum + b.duration, 0);
-        
-        if (totalWorkMinutes > 240 && !newBlocks.some(b => b.type === 'break' && b.startTime.includes('15:'))) {
-          // Try to insert afternoon break around 3pm
-          const afternoonBreakTime = parse("15:00", 'HH:mm', new Date(targetDate));
-          const afternoonBreakEnd = addMinutes(afternoonBreakTime, userPrefs.breakDuration);
-          
-          if (isTimeSlotAvailable(afternoonBreakTime, afternoonBreakEnd)) {
-            newBlocks.push({
-              id: crypto.randomUUID(),
-              type: 'break',
-              title: 'Afternoon Break',
-              startTime: format(afternoonBreakTime, 'HH:mm'),
-              endTime: format(afternoonBreakEnd, 'HH:mm'),
-              duration: userPrefs.breakDuration,
-              isProtected: true
-            });
-            changes.push({
-              action: 'created',
-              block: 'Afternoon Break',
-              reason: 'Prevent afternoon fatigue'
-            });
-          }
-        }
-        
-        // Combine all blocks for final schedule
-        const finalBlocks = [...protectedBlocks.map((b: any) => ({
-          id: b.id,
-          type: b.type,
-          title: b.title,
-          startTime: format(b.startTime, 'HH:mm'),
-          endTime: format(b.endTime, 'HH:mm'),
-          duration: differenceInMinutes(b.endTime, b.startTime),
-          isProtected: true
-        })), ...newBlocks].sort((a, b) => {
-          const aTime = parse(a.startTime, 'HH:mm', new Date());
-          const bTime = parse(b.startTime, 'HH:mm', new Date());
-          return aTime.getTime() - bTime.getTime();
-        });
-        
-        // Generate summary
-        const workBlocks = finalBlocks.filter(b => b.type === 'work').length;
-        const emailBlocks = finalBlocks.filter(b => b.type === 'email').length;
-        const breaks = finalBlocks.filter(b => b.type === 'break').length;
+        // Clean up proposal
+        proposalStore.delete(confirmation.proposalId);
         
         return {
           success: true,
-          date: targetDate,
-          blocks: finalBlocks,
-          changes,
-          summary: `Created ${workBlocks} work blocks, ${emailBlocks} email block${emailBlocks !== 1 ? 's' : ''}, and ${breaks} breaks`
+          phase: 'completed',
+          date: proposalDate,
+          blocks: finalSchedule.blocks,
+          changes: [
+            ...proposal.changes,
+            {
+              action: 'executed',
+              block: 'All blocks',
+              reason: `Created ${createResult.totalCreated} blocks, ${createResult.conflicts.length} conflicts`
+            }
+          ],
+          summary: `Successfully created ${createResult.totalCreated} time blocks. Your day is ${finalUtilization.utilization}% scheduled.`,
+          created: createResult.created,
+          conflicts: createResult.conflicts,
         };
         
       } catch (error) {
         console.error('[Workflow: schedule] Error:', error);
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to create schedule',
+          error: error instanceof Error ? error.message : 'Failed to manage schedule',
+          phase: confirmation ? 'execution' : 'proposal',
           date: date || format(new Date(), 'yyyy-MM-dd'),
           blocks: [],
           changes: [],
-          summary: 'Failed to create schedule'
+          summary: 'Failed to manage schedule'
         };
       }
     },
   })
 );
+
+// Helper function to generate schedule proposals
+function generateScheduleProposals(
+  existingBlocks: any[],
+  gaps: any[],
+  utilization: any,
+  preferences: any,
+  feedback?: string
+): {
+  blocks: any[];
+  changes: any[];
+  summary: string;
+  estimatedUtilization: number;
+} {
+  const proposals: any[] = [];
+  const changes: any[] = [];
+  
+  console.log('[Schedule Proposals] Starting generation with:', {
+    existingBlocksCount: existingBlocks.length,
+    gapsCount: gaps.length,
+    gaps: gaps,
+    preferences,
+    feedback
+  });
+  
+  // Parse feedback for adjustments
+  const adjustments = parseFeedback(feedback, preferences);
+  
+  // Sort gaps by start time
+  const sortedGaps = gaps.sort((a, b) => {
+    const aTime = parse(a.startTime, 'HH:mm', new Date());
+    const bTime = parse(b.startTime, 'HH:mm', new Date());
+    return aTime.getTime() - bTime.getTime();
+  });
+  
+  // Analyze existing schedule
+  const hasLunch = existingBlocks.some(b => 
+    b.type === 'break' && b.title?.toLowerCase().includes('lunch')
+  );
+  const hasEmailTime = existingBlocks.some(b => b.type === 'email');
+  const meetingCount = existingBlocks.filter(b => b.type === 'meeting').length;
+  const workBlockCount = existingBlocks.filter(b => b.type === 'work').length;
+  
+  // Track what we've added
+  let addedLunch = false;
+  let addedEmailBlock = false;
+  let addedMorningBreak = false;
+  let addedAfternoonBreak = false;
+  let addedWorkBlocks = 0;
+  
+  // Process each gap
+  for (const gap of sortedGaps) {
+    const gapStart = parse(gap.startTime, 'HH:mm', new Date());
+    const gapEnd = parse(gap.endTime, 'HH:mm', new Date());
+    let currentTime = gapStart;
+    let remainingTime = gap.duration;
+    
+    console.log(`[Schedule Proposals] Processing gap: ${gap.startTime}-${gap.endTime} (${gap.duration} min)`);
+    
+    // Skip if gap is too small
+    if (gap.duration < 15) {
+      console.log('[Schedule Proposals] Gap too small, skipping');
+      continue;
+    }
+    
+    while (remainingTime >= 15 && currentTime < gapEnd) {
+      const currentHour = currentTime.getHours();
+      const currentMinutes = currentTime.getMinutes();
+      
+      // Determine what to add based on time and what's missing
+      let blockToAdd = null;
+      
+      // Morning routine (7-9am) - only if very early
+      if (currentHour < 8 && remainingTime >= 30) {
+        blockToAdd = {
+          type: 'blocked',
+          title: 'Morning Routine',
+          duration: Math.min(60, remainingTime),
+          description: 'Prepare for the day'
+        };
+      }
+      // Morning break (10-11am)
+      else if (!addedMorningBreak && currentHour >= 10 && currentHour < 11 && remainingTime >= 15) {
+        blockToAdd = {
+          type: 'break',
+          title: 'Morning Break',
+          duration: 15,
+          description: 'Quick refresh'
+        };
+        addedMorningBreak = true;
+      }
+      // Lunch (11:30am-1:30pm)
+      else if (!hasLunch && !addedLunch && currentHour >= 11 && currentHour < 14 && remainingTime >= 45) {
+        // Prefer noon-ish for lunch
+        if ((currentHour === 11 && currentMinutes >= 30) || currentHour === 12 || (currentHour === 13 && currentMinutes === 0)) {
+          blockToAdd = {
+            type: 'break',
+            title: 'Lunch Break',
+            duration: Math.min(60, remainingTime),
+            description: 'Recharge with a meal'
+          };
+          addedLunch = true;
+        }
+      }
+      // Email block (2-4pm)
+      else if (!hasEmailTime && !addedEmailBlock && currentHour >= 14 && currentHour < 16 && remainingTime >= 30) {
+        blockToAdd = {
+          type: 'email',
+          title: 'Email Processing',
+          duration: Math.min(45, remainingTime),
+          description: 'Batch process emails'
+        };
+        addedEmailBlock = true;
+      }
+      // Afternoon break (3-4pm)
+      else if (!addedAfternoonBreak && currentHour >= 15 && currentHour < 16 && remainingTime >= 15) {
+        blockToAdd = {
+          type: 'break',
+          title: 'Afternoon Break',
+          duration: 15,
+          description: 'Recharge for final push'
+        };
+        addedAfternoonBreak = true;
+      }
+      // Work blocks based on time of day
+      else if (currentHour >= 8 && currentHour < 18 && remainingTime >= 30) {
+        const duration = Math.min(120, remainingTime); // Max 2 hours
+        
+        // Determine work block type based on time
+        let title, description;
+        if (currentHour < 12 && workBlockCount + addedWorkBlocks === 0) {
+          title = 'Deep Work Block';
+          description = 'Prime focus time for complex tasks';
+        } else if (currentHour < 12) {
+          title = 'Morning Focus Block';
+          description = 'Continue morning productivity';
+        } else if (currentHour < 15) {
+          title = 'Afternoon Work Block';
+          description = 'Collaborative work and meetings';
+        } else if (currentHour < 17) {
+          title = 'Project Time';
+          description = 'Dedicated project work';
+        } else {
+          title = 'Admin & Planning';
+          description = 'Wrap up and plan ahead';
+        }
+        
+        blockToAdd = {
+          type: 'work',
+          title,
+          duration: duration >= 60 ? duration : Math.max(30, remainingTime), // At least 30 min for work
+          description
+        };
+        addedWorkBlocks++;
+      }
+      // Evening wind-down (after 6pm)
+      else if (currentHour >= 18 && remainingTime >= 30) {
+        blockToAdd = {
+          type: 'blocked',
+          title: 'Evening Time',
+          duration: remainingTime,
+          description: 'Personal time'
+        };
+      }
+      
+      // Add the block if we found something suitable
+      if (blockToAdd) {
+        const endTime = addMinutes(currentTime, blockToAdd.duration);
+        
+        // Make sure we don't exceed the gap
+        if (endTime > gapEnd) {
+          blockToAdd.duration = differenceInMinutes(gapEnd, currentTime);
+          if (blockToAdd.duration < 15) break; // Too small
+        }
+        
+        const proposal = {
+          type: blockToAdd.type,
+          title: blockToAdd.title,
+          startTime: format(currentTime, 'HH:mm'),
+          endTime: format(addMinutes(currentTime, blockToAdd.duration), 'HH:mm'),
+          description: blockToAdd.description
+        };
+        
+        proposals.push(proposal);
+        changes.push({
+          action: 'create',
+          block: blockToAdd.title,
+          reason: getBlockReason(blockToAdd.type, blockToAdd.title, currentHour)
+        });
+        
+        console.log(`[Schedule Proposals] Added ${blockToAdd.title}:`, proposal);
+        
+        currentTime = addMinutes(currentTime, blockToAdd.duration);
+        remainingTime -= blockToAdd.duration;
+      } else {
+        // If we can't find anything suitable, move forward 15 minutes
+        currentTime = addMinutes(currentTime, 15);
+        remainingTime -= 15;
+      }
+    }
+  }
+  
+  // Add recommendations for missing essential blocks
+  if (!hasLunch && !addedLunch) {
+    changes.push({
+      action: 'recommend',
+      block: 'Lunch Break',
+      reason: 'No lunch break scheduled - consider adding one around noon'
+    });
+  }
+  
+  if (!hasEmailTime && !addedEmailBlock && proposals.length > 0) {
+    changes.push({
+      action: 'recommend',
+      block: 'Email Time',
+      reason: 'No dedicated email time - consider batching emails in the afternoon'
+    });
+  }
+  
+  console.log('[Schedule Proposals] Generated proposals:', {
+    proposalsCount: proposals.length,
+    proposals
+  });
+  
+  // Calculate estimated utilization
+  const totalProposedMinutes = proposals.reduce((sum, block) => {
+    const start = parse(block.startTime, 'HH:mm', new Date());
+    const end = parse(block.endTime, 'HH:mm', new Date());
+    return sum + differenceInMinutes(end, start);
+  }, 0);
+  
+  const existingMinutes = utilization.totalScheduledMinutes || 0;
+  const totalMinutes = existingMinutes + totalProposedMinutes;
+  const workDayMinutes = 480; // 8-hour work day
+  const estimatedUtilization = Math.round((totalMinutes / workDayMinutes) * 100);
+  
+  // Generate summary
+  const workBlocks = proposals.filter(b => b.type === 'work').length;
+  const emailBlocks = proposals.filter(b => b.type === 'email').length;
+  const breaks = proposals.filter(b => b.type === 'break').length;
+  const blocked = proposals.filter(b => b.type === 'blocked').length;
+  
+  let summaryParts = [];
+  if (workBlocks > 0) summaryParts.push(`${workBlocks} work block${workBlocks !== 1 ? 's' : ''}`);
+  if (emailBlocks > 0) summaryParts.push(`${emailBlocks} email block${emailBlocks !== 1 ? 's' : ''}`);
+  if (breaks > 0) summaryParts.push(`${breaks} break${breaks !== 1 ? 's' : ''}`);
+  if (blocked > 0) summaryParts.push(`${blocked} personal block${blocked !== 1 ? 's' : ''}`);
+  
+  let summary: string;
+  if (summaryParts.length > 0) {
+    summary = `Proposing ${summaryParts.join(', ')}`;
+  } else if (existingBlocks.length > 0) {
+    // Provide helpful feedback when schedule already has blocks
+    const totalGapMinutes = gaps.reduce((sum, gap) => sum + gap.duration, 0);
+    if (totalGapMinutes < 60) {
+      summary = `Your schedule is already well-filled with ${existingBlocks.length} blocks. Only small gaps remain.`;
+    } else {
+      const gapHours = Math.floor(totalGapMinutes / 60);
+      const gapMinutes = totalGapMinutes % 60;
+      const timeStr = gapHours > 0 ? `${gapHours}h ${gapMinutes}m` : `${gapMinutes}m`;
+      summary = `Found ${gaps.length} gaps totaling ${timeStr} in your schedule. Consider adding specific activities or keeping as buffer time.`;
+    }
+  } else {
+    summary = 'Your day is completely open. Would you like me to create a full schedule?';
+  }
+  
+  // Add context about existing schedule
+  if (existingBlocks.length > 0 && proposals.length === 0) {
+    const meetingCount = existingBlocks.filter(b => b.type === 'meeting').length;
+    const workCount = existingBlocks.filter(b => b.type === 'work').length;
+    
+    changes.push({
+      action: 'info',
+      block: 'Current Schedule',
+      reason: `You have ${existingBlocks.length} blocks scheduled${meetingCount > 0 ? ` including ${meetingCount} meeting${meetingCount !== 1 ? 's' : ''}` : ''}`
+    });
+    
+    if (!hasLunch && gaps.some(g => {
+      const start = parse(g.startTime, 'HH:mm', new Date());
+      const hour = start.getHours();
+      return hour >= 11 && hour <= 14 && g.duration >= 45;
+    })) {
+      changes.push({
+        action: 'suggest',
+        block: 'Lunch Break',
+        reason: 'No lunch scheduled - you have time available around midday'
+      });
+    }
+  }
+  
+  return {
+    blocks: proposals,
+    changes,
+    summary,
+    estimatedUtilization
+  };
+}
+
+// Helper function to get contextual reason for block
+function getBlockReason(type: string, title: string, hour: number): string {
+  const reasons: Record<string, string> = {
+    // Work blocks
+    'work-deep work block': 'Morning is ideal for deep, focused work',
+    'work-morning focus block': 'Continue productive morning momentum',
+    'work-afternoon work block': 'Good time for collaborative tasks',
+    'work-project time': 'Dedicated time for project progress',
+    'work-admin & planning': 'Wrap up tasks and prepare for tomorrow',
+    
+    // Breaks
+    'break-morning break': 'Short break to maintain energy',
+    'break-lunch break': 'Essential midday break for sustained productivity',
+    'break-afternoon break': 'Combat afternoon fatigue',
+    
+    // Other
+    'email-email processing': 'Batch process emails for efficiency',
+    'blocked-morning routine': 'Protected time for morning preparation',
+    'blocked-evening time': 'Maintain work-life balance',
+  };
+  
+  const key = `${type}-${title.toLowerCase()}`;
+  return reasons[key] || `Optimize your ${hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'} schedule`;
+}
 
 // Helper function to parse user feedback
 function parseFeedback(feedback: string | undefined, defaults: any): any {
@@ -334,9 +551,13 @@ function parseFeedback(feedback: string | undefined, defaults: any): any {
     adjustments.lunchTime = `${hour.toString().padStart(2, '0')}:00`;
   }
   
-  // Parse blocked time requests
-  if (feedback.match(/block.*afternoon/i)) {
-    adjustments.blockAfternoon = true;
+  // Parse work preferences
+  if (feedback.match(/more\s+breaks/i)) {
+    adjustments.breakDuration = 20;
+  }
+  
+  if (feedback.match(/longer\s+work\s+blocks/i)) {
+    adjustments.preferLongBlocks = true;
   }
   
   return adjustments;

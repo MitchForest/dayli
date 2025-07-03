@@ -19,9 +19,20 @@ interface ProposalStoreOptions {
   maxSize?: number; // Maximum number of proposals to store
 }
 
+interface StoredProposal {
+  proposalId: string;
+  workflowType: string;
+  date?: string;
+  blockId?: string;
+  data: any;
+  timestamp: Date;
+  userId?: string;
+}
+
 export class ProposalStore {
   private static instance: ProposalStore;
-  private proposals = new Map<string, Proposal>();
+  private proposals = new Map<string, StoredProposal>();
+  private proposalsByKey = new Map<string, string>(); // composite key -> proposalId
   private cleanupInterval?: NodeJS.Timeout;
   private options: Required<ProposalStoreOptions>;
   
@@ -46,154 +57,121 @@ export class ProposalStore {
    * Store a proposal
    */
   store(
-    type: string,
-    description: string,
+    proposalId: string,
+    workflowType: string,
     data: any,
-    metadata?: Record<string, any>
-  ): string {
-    // Clean up if we're at max size
-    if (this.proposals.size >= this.options.maxSize) {
-      this.cleanupOldest();
-    }
-    
-    const id = uuidv4();
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + this.options.ttlMinutes * 60 * 1000);
-    
-    const proposal: Proposal = {
-      id,
-      type,
-      description,
+    metadata?: { date?: string; blockId?: string; userId?: string }
+  ): void {
+    const proposal: StoredProposal = {
+      proposalId,
+      workflowType,
+      date: metadata?.date,
+      blockId: metadata?.blockId,
       data,
-      createdAt: now,
-      expiresAt,
-      metadata,
+      timestamp: new Date(),
+      userId: metadata?.userId
     };
     
-    this.proposals.set(id, proposal);
+    this.proposals.set(proposalId, proposal);
     
-    console.log(`[ProposalStore] Stored proposal ${id} of type ${type}`);
-    return id;
+    // Create composite keys for easier lookup
+    if (metadata?.date) {
+      const dateKey = `${workflowType}:${metadata.date}`;
+      this.proposalsByKey.set(dateKey, proposalId);
+    }
+    
+    if (metadata?.blockId) {
+      const blockKey = `${workflowType}:block:${metadata.blockId}`;
+      this.proposalsByKey.set(blockKey, proposalId);
+    }
+    
+    // Clean up old proposals (older than 10 minutes)
+    this.cleanup();
   }
   
   /**
    * Retrieve a proposal by ID
    */
-  get(id: string): Proposal | null {
-    const proposal = this.proposals.get(id);
-    
-    if (!proposal) {
-      return null;
-    }
-    
-    // Check if expired
-    if (proposal.expiresAt < new Date()) {
-      this.proposals.delete(id);
-      console.log(`[ProposalStore] Proposal ${id} has expired`);
-      return null;
-    }
-    
-    return proposal;
+  get(proposalId: string): StoredProposal | null {
+    return this.proposals.get(proposalId) || null;
   }
   
   /**
-   * Execute and remove a proposal
+   * Find a proposal by workflow and date
    */
-  consume(id: string): Proposal | null {
-    const proposal = this.get(id);
+  findByWorkflowAndDate(workflowType: string, date: string): StoredProposal | null {
+    const key = `${workflowType}:${date}`;
+    const proposalId = this.proposalsByKey.get(key);
+    return proposalId ? this.get(proposalId) : null;
+  }
+  
+  /**
+   * Find a proposal by workflow and block
+   */
+  findByWorkflowAndBlock(workflowType: string, blockId: string): StoredProposal | null {
+    const key = `${workflowType}:block:${blockId}`;
+    const proposalId = this.proposalsByKey.get(key);
+    return proposalId ? this.get(proposalId) : null;
+  }
+  
+  /**
+   * Get the latest proposal by workflow
+   */
+  getLatestByWorkflow(workflowType: string): StoredProposal | null {
+    let latest: StoredProposal | null = null;
     
-    if (proposal) {
-      this.proposals.delete(id);
-      console.log(`[ProposalStore] Consumed proposal ${id}`);
+    for (const proposal of this.proposals.values()) {
+      if (proposal.workflowType === workflowType) {
+        if (!latest || proposal.timestamp > latest.timestamp) {
+          latest = proposal;
+        }
+      }
     }
     
-    return proposal;
+    return latest;
   }
   
   /**
    * Delete a proposal
    */
-  delete(id: string): boolean {
-    const deleted = this.proposals.delete(id);
-    if (deleted) {
-      console.log(`[ProposalStore] Deleted proposal ${id}`);
-    }
-    return deleted;
-  }
-  
-  /**
-   * List all active proposals
-   */
-  list(): Proposal[] {
-    const now = new Date();
-    const active: Proposal[] = [];
-    
-    // Clean up expired while listing
-    for (const [id, proposal] of this.proposals.entries()) {
-      if (proposal.expiresAt < now) {
-        this.proposals.delete(id);
-      } else {
-        active.push(proposal);
+  delete(proposalId: string): void {
+    const proposal = this.proposals.get(proposalId);
+    if (proposal) {
+      this.proposals.delete(proposalId);
+      
+      // Remove composite keys
+      if (proposal.date) {
+        const dateKey = `${proposal.workflowType}:${proposal.date}`;
+        this.proposalsByKey.delete(dateKey);
+      }
+      
+      if (proposal.blockId) {
+        const blockKey = `${proposal.workflowType}:block:${proposal.blockId}`;
+        this.proposalsByKey.delete(blockKey);
       }
     }
-    
-    return active;
-  }
-  
-  /**
-   * Clear all proposals
-   */
-  clear(): void {
-    const size = this.proposals.size;
-    this.proposals.clear();
-    console.log(`[ProposalStore] Cleared ${size} proposals`);
-  }
-  
-  /**
-   * Get store size
-   */
-  size(): number {
-    return this.proposals.size;
   }
   
   /**
    * Clean up expired proposals
    */
   private cleanup(): void {
-    const now = new Date();
-    let cleaned = 0;
+    const now = Date.now();
+    const maxAge = 10 * 60 * 1000; // 10 minutes
     
-    for (const [id, proposal] of this.proposals.entries()) {
-      if (proposal.expiresAt < now) {
-        this.proposals.delete(id);
-        cleaned++;
+    for (const [proposalId, proposal] of this.proposals.entries()) {
+      if (now - proposal.timestamp.getTime() > maxAge) {
+        this.delete(proposalId);
       }
-    }
-    
-    if (cleaned > 0) {
-      console.log(`[ProposalStore] Cleaned up ${cleaned} expired proposals`);
     }
   }
   
   /**
-   * Clean up oldest proposals when at max size
+   * Clear all proposals
    */
-  private cleanupOldest(): void {
-    // Sort by creation date and remove oldest 10%
-    const sorted = Array.from(this.proposals.entries())
-      .sort((a, b) => a[1].createdAt.getTime() - b[1].createdAt.getTime());
-    
-    const toRemove = Math.ceil(sorted.length * 0.1);
-    
-    for (let i = 0; i < toRemove; i++) {
-      const entry = sorted[i];
-      if (entry) {
-        const [id] = entry;
-        this.proposals.delete(id);
-      }
-    }
-    
-    console.log(`[ProposalStore] Removed ${toRemove} oldest proposals`);
+  clear(): void {
+    this.proposals.clear();
+    this.proposalsByKey.clear();
   }
   
   /**
@@ -217,34 +195,14 @@ export class ProposalStore {
   }
   
   /**
-   * Create a confirmation proposal
+   * Destroy the store and clean up resources
    */
-  createConfirmation(
-    action: string,
-    details: any,
-    consequences?: string[]
-  ): string {
-    return this.store(
-      'confirmation',
-      action,
-      details,
-      { consequences }
-    );
-  }
-  
-  /**
-   * Create a multi-choice proposal
-   */
-  createChoice(
-    question: string,
-    options: Array<{ id: string; label: string; data: any }>,
-    context?: any
-  ): string {
-    return this.store(
-      'choice',
-      question,
-      { options, context }
-    );
+  destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = undefined;
+    }
+    this.clear();
   }
 }
 

@@ -2,7 +2,7 @@
   "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Dayli",
   "version": "0.1.0",
-  "identifier": "com.dayli.desktop",
+  "identifier": "com.mitchforest.dayli",
   "build": {
     "devUrl": "http://localhost:3000",
     "beforeDevCommand": "",
@@ -17,7 +17,7 @@
         "resizable": true,
         "fullscreen": false,
         "center": true,
-        "url": "http://localhost:3000",
+        "url": "https://dayli-web-qttm.vercel.app",
         "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
       }
     ],

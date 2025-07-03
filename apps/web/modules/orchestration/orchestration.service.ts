@@ -31,7 +31,7 @@ const intentSchema = z.object({
     times: z.array(z.string()).optional().describe('Time references found'),
     people: z.array(z.string()).optional().describe('People mentioned'),
     tasks: z.array(z.string()).optional().describe('Task references'),
-    duration: z.number().optional().describe('Duration in minutes if mentioned'),
+    duration: z.number().nullable().optional().describe('Duration in minutes if mentioned'),
   }),
   suggestedHandler: z.object({
     type: z.enum(['workflow', 'tool', 'direct']).describe('Handler type'),
@@ -95,9 +95,10 @@ Consider:
 
 Workflow examples:
 - "Plan my day" → workflow: "workflow_schedule"
-- "Process my emails" → workflow: "workflow_triageEmails"
-- "What should I work on?" → workflow: "workflow_prioritizeTasks"
-- "Fix my calendar" → workflow: "workflow_optimizeCalendar"
+- "What should I work on?" → workflow: "workflow_fillWorkBlock"
+- "Fill my work block" → workflow: "workflow_fillWorkBlock"
+- "Process my emails" → workflow: "workflow_fillEmailBlock"
+- "Handle my emails" → workflow: "workflow_fillEmailBlock"
 
 Tool examples (use the exact tool name):
 - "Show my schedule" → tools: ["schedule_viewSchedule"]
@@ -141,7 +142,7 @@ Be specific with workflow/tool names when confidence is high.`,
           ...entities,
           ...(classification.entities || {}),
         },
-        suggestedHandler: this.determineHandler(classification, context),
+        suggestedHandler: this.determineHandler(classification, context, message),
         reasoning: classification.reasoning,
       };
       
@@ -177,6 +178,13 @@ Be specific with workflow/tool names when confidence is high.`,
     const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
     parts.push(`Current time: ${context.currentTime.toLocaleString()} (${timeOfDay})`);
     parts.push(`Timezone: ${context.timezone}`);
+    
+    // Viewing context
+    if (context.viewingContext) {
+      if (!context.viewingContext.isViewingToday) {
+        parts.push(`User is viewing schedule for: ${context.viewingContext.scheduleDateStr}`);
+      }
+    }
     
     // Schedule state
     if (context.scheduleState.hasBlocksToday) {
@@ -308,33 +316,66 @@ Be specific with workflow/tool names when confidence is high.`,
   private keywordFallback(message: string, entities: UserIntent['entities']): UserIntent {
     const lower = message.toLowerCase();
     
+    // Check for approval patterns first
+    if (lower.includes('approve') && (lower.includes('schedule') || lower.includes('proposal'))) {
+      // Extract date if mentioned
+      const dateMatch = message.match(/\d{4}-\d{2}-\d{2}/);
+      return {
+        category: 'workflow',
+        confidence: 0.8,
+        suggestedHandler: { 
+          type: 'workflow', 
+          name: 'workflow_schedule',
+          params: { 
+            isApproval: true,
+            date: dateMatch ? dateMatch[0] : undefined
+          }
+        },
+        entities,
+        reasoning: 'User is approving a schedule proposal',
+      };
+    }
+    
     // Workflow keywords
     const workflowKeywords = {
-      schedule: ['plan', 'organize', 'schedule my day', 'optimize my day'],
-      triageEmails: ['process emails', 'triage emails', 'handle emails', 'email backlog'],
-      prioritizeTasks: ['what should i work on', 'prioritize', 'task recommendations'],
-      optimizeCalendar: ['fix calendar', 'optimize calendar', 'reschedule meetings'],
+      workflow_schedule: ['plan', 'organize', 'schedule my day', 'optimize my day', 'plan my day'],
+      workflow_fillWorkBlock: ['what should i work on', 'fill work block', 'assign tasks', 'task recommendations'],
+      workflow_fillEmailBlock: ['process emails', 'triage emails', 'handle emails', 'email backlog'],
     };
     
     for (const [workflow, keywords] of Object.entries(workflowKeywords)) {
       if (keywords.some(kw => lower.includes(kw))) {
+        const params: Record<string, any> = {};
+        
+        // For schedule workflow, check if we should use viewing date
+        if (workflow === 'workflow_schedule') {
+          // This is a fallback, so we don't have full context
+          // But we can still check for explicit date mentions
+          const hasExplicitDate = /\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2})\b/i.test(message);
+          if (!hasExplicitDate) {
+            // In fallback mode, we can't access viewing context
+            // The date will need to be determined by the workflow itself
+            params.useViewingDate = true;
+          }
+        }
+        
         return {
           category: 'workflow',
           confidence: 0.7,
-          suggestedHandler: { type: 'workflow', name: workflow },
+          suggestedHandler: { type: 'workflow', name: workflow, params },
           entities,
           reasoning: `Keyword match for ${workflow} workflow`,
         };
       }
     }
     
-    // Tool keywords
+    // Tool keywords - ORDER MATTERS! More specific patterns first
     const toolKeywords = {
-      viewSchedule: ['show schedule', 'view schedule', 'my schedule', 'calendar'],
-      createTimeBlock: ['block time', 'create block', 'add block', 'work block', 'break block', 'add a break', 'block for', 'time block'],
-      moveTimeBlock: ['move block', 'reschedule block', 'change block time'],
-      deleteTimeBlock: ['delete block', 'remove block', 'cancel block'],
+      deleteTimeBlock: ['delete block', 'remove block', 'cancel block', 'delete the', 'remove the', 'cancel the'],
+      moveTimeBlock: ['move block', 'reschedule block', 'change block time', 'move the', 'reschedule the'],
       fillWorkBlock: ['fill work block', 'assign tasks to block', 'populate block'],
+      createTimeBlock: ['create block', 'add block', 'add a break', 'block for', 'schedule block', 'new block'],
+      viewSchedule: ['show schedule', 'view schedule', 'my schedule', 'see schedule', 'what\'s on my schedule'],
       createTask: ['create task', 'add task', 'new task'],
       viewTasks: ['show tasks', 'list tasks', 'my tasks'],
       viewEmails: ['show emails', 'list emails', 'my emails'],
@@ -432,21 +473,133 @@ Be specific with workflow/tool names when confidence is high.`,
   
   private determineHandler(
     classification: any,
-    context: OrchestrationContext
+    context: OrchestrationContext,
+    message: string
   ): UserIntent['suggestedHandler'] {
-    if (classification.category === 'workflow') {
-      // Map workflow names to full registered names
-      const workflowMap: Record<string, string> = {
-        'schedule': 'workflow_schedule',
-        'triageEmails': 'workflow_triageEmails',
-        'prioritizeTasks': 'workflow_prioritizeTasks',
-        'optimizeCalendar': 'workflow_optimizeCalendar',
-      };
+    // Handle explicit tool names from classification
+    if (classification.suggestedHandler?.name) {
+      const handler = classification.suggestedHandler;
+      
+      // For schedule-related operations, ensure we pass the viewing date
+      if (handler.name && (handler.name.includes('schedule') || handler.name.includes('workflow_schedule'))) {
+        const params = handler.params || {};
+        
+        // If user is viewing a different date and didn't specify a date, use the viewing date
+        if (context.viewingContext && !context.viewingContext.isViewingToday) {
+          // Check if the message contains explicit date references
+          const hasExplicitDate = /\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2})\b/i.test(message);
+          
+          if (!hasExplicitDate && !params.date) {
+            params.date = context.viewingContext.scheduleDateStr;
+            console.log('[Orchestrator] Using viewing date for schedule operation:', params.date);
+          }
+        }
+        
+        return {
+          ...handler,
+          params
+        };
+      }
+      
+      return handler;
+    }
+    
+    // Handle workflow routing
+    if (classification.category === 'workflow' && classification.workflow) {
+      const workflowName = classification.workflow;
+      const params: Record<string, any> = classification.params || {};
+      
+      // For schedule workflow, add viewing date if not viewing today
+      if (workflowName === 'workflow_schedule' && context.viewingContext && !context.viewingContext.isViewingToday) {
+        // Check if the message contains explicit date references
+        const hasExplicitDate = /\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2})\b/i.test(message);
+        
+        if (!hasExplicitDate && !params.date) {
+          params.date = context.viewingContext.scheduleDateStr;
+          console.log('[Orchestrator] Using viewing date for schedule workflow:', params.date);
+        }
+      }
+      
+      // Special handling for approval messages
+      if (message.toLowerCase().includes('approve') && 
+          (message.toLowerCase().includes('schedule') || message.toLowerCase().includes('proposal'))) {
+        // Extract proposal ID if mentioned
+        const proposalIdMatch = message.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i);
+        if (proposalIdMatch) {
+          params.proposalId = proposalIdMatch[0];
+        }
+        params.isApproval = true;
+      }
+      
+      // Special handling for fillEmailBlock workflow
+      if (workflowName === 'workflow_fillEmailBlock') {
+        // Extract time reference from the message
+        const timeMatch = message.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm|AM|PM)?|\d{1,2}:\d{2})/i);
+        if (timeMatch) {
+          const timeRef = timeMatch[0];
+          console.log('[Orchestrator] Detected time reference in message:', timeRef);
+          
+          // Find the block that matches this time
+          const scheduleBlocks = context.viewingContext?.viewDateSchedule || [];
+          const matchingBlock = scheduleBlocks.find((block: any) => {
+            if (block.type !== 'email') return false;
+            
+            // Parse the block's start time
+            const blockTime = new Date(block.startTime || block.start_time);
+            const blockHour = blockTime.getHours();
+            const blockMinute = blockTime.getMinutes();
+            
+            // Parse the user's time reference
+            const normalizedTime = timeRef.toLowerCase().replace(/\s+/g, '');
+            let targetHour: number;
+            let targetMinute = 0;
+            
+            if (normalizedTime.includes(':')) {
+              const parts = normalizedTime.split(':');
+              const h = parts[0];
+              const m = parts[1];
+              if (h && m) {
+                targetHour = parseInt(h);
+                const minutePart = m.replace(/[apm]/g, '');
+                targetMinute = parseInt(minutePart) || 0;
+              } else {
+                return false;
+              }
+            } else {
+              targetHour = parseInt(normalizedTime.replace(/[apm]/g, ''));
+            }
+            
+            // Adjust for PM
+            if (normalizedTime.includes('pm') && targetHour < 12) {
+              targetHour += 12;
+            } else if (normalizedTime.includes('am') && targetHour === 12) {
+              targetHour = 0;
+            }
+            
+            // If no AM/PM specified and hour is <= 6, assume PM for work hours
+            if (!normalizedTime.includes('am') && !normalizedTime.includes('pm') && targetHour <= 6) {
+              targetHour += 12;
+            }
+            
+            // Check if times match
+            return blockHour === targetHour && blockMinute === targetMinute;
+          });
+          
+          if (matchingBlock) {
+            console.log('[Orchestrator] Found matching email block:', matchingBlock.id);
+            params.blockId = matchingBlock.id;
+          } else {
+            console.log('[Orchestrator] No email block found for time:', timeRef);
+            // Still pass the time reference so the workflow can provide a better error
+            params.blockId = timeRef;
+          }
+        }
+      }
       
       return {
         type: 'workflow',
-        name: workflowMap[classification.workflow] || classification.workflow,
-        params: classification.params,
+        name: workflowName,
+        params,
       };
     }
     
@@ -476,27 +629,30 @@ Be specific with workflow/tool names when confidence is high.`,
         'clearContext': 'system_clearContext',
       };
       
-      // For single tool operations
-      if (classification.tools.length === 1) {
-        const toolName = classification.tools[0];
-        return {
-          type: 'tool',
-          name: toolMap[toolName] || toolName,
-          params: classification.params,
-        };
+      const toolName = classification.tools[0];
+      const mappedName = toolMap[toolName] || toolName;
+      const params = classification.params || {};
+      
+      // For schedule tools, add viewing date if needed
+      if (mappedName.includes('schedule_') && context.viewingContext && !context.viewingContext.isViewingToday) {
+        const hasExplicitDate = /\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2})\b/i.test(message);
+        
+        if (!hasExplicitDate && !params.date) {
+          params.date = context.viewingContext.scheduleDateStr;
+          console.log('[Orchestrator] Using viewing date for schedule tool:', params.date);
+        }
       }
       
-      // Multiple tools might need orchestration
       return {
-        type: 'workflow',
-        name: 'custom',
-        params: {
-          tools: classification.tools.map((t: string) => toolMap[t] || t),
-          ...classification.params,
-        },
+        type: 'tool',
+        name: mappedName,
+        params,
       };
     }
     
-    return { type: 'direct' };
+    // Default to direct conversation
+    return {
+      type: 'direct',
+    };
   }
 }

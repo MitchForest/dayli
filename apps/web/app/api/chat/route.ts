@@ -8,6 +8,21 @@ import { OrchestrationService } from '@/modules/orchestration/orchestration.serv
 import { buildOrchestrationContext } from '@/modules/orchestration/context-builder';
 import type { UserIntent } from '@/modules/orchestration/types';
 
+// Type helpers for tool invocations
+interface ToolInvocation {
+  toolName: string;
+  state: string;
+  args?: Record<string, unknown>;
+}
+
+interface ToolInvocationWithResult extends ToolInvocation {
+  result: {
+    phase?: string;
+    requiresConfirmation?: boolean;
+    [key: string]: unknown;
+  };
+}
+
 // Create singleton orchestrator instance
 const orchestrator = new OrchestrationService();
 
@@ -35,48 +50,49 @@ function getUserWorkHours(): string {
 }
 
 // System prompts for different routing paths
-const workflowSystemPrompt = (workflowName: string, intent: UserIntent) => `You are dayli, an AI executive assistant executing the ${workflowName} workflow.
+const workflowSystemPrompt = (workflowName: string, intent: UserIntent, viewingDate?: string) => `You are dayli, an AI executive assistant executing the ${workflowName} workflow.
 
 CONTEXT:
 - Current time: ${getCurrentTime()}
 - Day of week: ${getDayOfWeek()}
 - User's typical work hours: ${getUserWorkHours()}
+${viewingDate ? `- User is viewing schedule for: ${viewingDate}` : ''}
 
 WORKFLOW EXECUTION:
 - Executing: ${workflowName}
 - Intent analysis: ${intent.reasoning}
 - Confidence: ${(intent.confidence * 100).toFixed(0)}%
+${intent.suggestedHandler.params && Object.keys(intent.suggestedHandler.params).length > 0 ? `- Parameters: ${JSON.stringify(intent.suggestedHandler.params)}` : ''}
 
-This workflow will analyze and optimize based on the user's request.
+${intent.suggestedHandler.params?.isApproval ? `
+APPROVAL DETECTED:
+The user is trying to approve a proposal. You need to:
+1. First use the system_getProposal tool to find the proposal ID
+2. Then call the ${workflowName} workflow with the confirmation parameter including the proposalId
 
-CRITICAL RULES - YOU MUST FOLLOW THESE:
-1. DO NOT describe what the workflow results show
-2. DO NOT list items from the workflow results  
-3. DO NOT reformat or summarize workflow data
-4. DO NOT say things like "I've optimized your schedule by..." followed by details
-5. The workflow results will be displayed with rich UI components automatically
-6. Your ONLY job is to execute the workflow - the UI handles all display
-7. Keep your response to 1-2 sentences MAX introducing the workflow execution
-8. NEVER write out proposals, changes, or recommendations - the UI shows these
+Example:
+- First: system_getProposal with workflowType="${workflowName}" and date="${intent.suggestedHandler.params?.date || viewingDate || 'today'}"
+- Then: ${workflowName} with confirmation: { approved: true, proposalId: <from getProposal result> }
+` : `This workflow will analyze and optimize based on the user's request.
 
-GOOD EXAMPLES:
-- "I'm optimizing your schedule." [workflow displays results]
-- "Processing your email triage." [workflow displays results]
-- "Analyzing your calendar." [workflow displays results]
+${workflowName === 'workflow_schedule' ? `
+IMPORTANT: ${viewingDate ? `The user is viewing the schedule for ${viewingDate}. Use date="${viewingDate}" when calling the workflow unless they explicitly mention a different date.` : 'If no date is specified, the workflow will determine the appropriate date.'}
+` : ''}`}
 
-BAD EXAMPLES (NEVER DO THIS):
-- "I've moved your meeting from 2pm to 3pm..." ❌
-- "Here are the emails to process: 1. From Sarah..." ❌
-- "I recommend the following changes..." ❌
+CRITICAL WORKFLOW RULES:
+1. Let the workflow tool display its results - DO NOT describe what was created
+2. After a workflow completes (phase: 'completed'), the UI shows everything - no need to repeat
+3. For completed workflows, just provide a brief acknowledgment like "Done!" or "All set!"
+4. NEVER ask for additional confirmation after a workflow shows phase: 'completed'
+5. The workflow UI already shows all blocks, changes, and summaries - don't repeat them`;
 
-Remember: The workflow UI is sophisticated and will show all the details. You don't need to describe anything.`;
-
-const toolSystemPrompt = (toolName: string | undefined, intent: UserIntent) => `You are dayli, an AI executive assistant executing specific tool operations.
+const toolSystemPrompt = (toolName: string | undefined, intent: UserIntent, viewingDate?: string) => `You are dayli, an AI executive assistant executing specific tool operations.
 
 CONTEXT:
 - Current time: ${getCurrentTime()}
 - Day of week: ${getDayOfWeek()}
 - User's typical work hours: ${getUserWorkHours()}
+${viewingDate ? `- User is viewing schedule for: ${viewingDate}` : ''}
 
 TOOL EXECUTION:
 - The user's request has been classified as needing ${toolName ? `the ${toolName} tool` : 'specific tools'}
@@ -84,27 +100,34 @@ TOOL EXECUTION:
 - Confidence: ${(intent.confidence * 100).toFixed(0)}%
 ${intent.suggestedHandler.params ? `- Suggested parameters: ${JSON.stringify(intent.suggestedHandler.params)}` : ''}
 
+${toolName && toolName.includes('schedule_') && viewingDate ? `
+IMPORTANT: The user is viewing the schedule for ${viewingDate}. Use date="${viewingDate}" when calling schedule tools unless they explicitly mention a different date.
+` : ''}
+
 Execute the requested operation and present the results clearly.
 
 CRITICAL RULES - YOU MUST FOLLOW THESE:
 1. DO NOT describe what the tool results show
 2. DO NOT list items from the tool results  
 3. DO NOT reformat or summarize tool data
-4. DO NOT say things like "Here's your schedule:" followed by a list
+4. DO NOT say things like "Here are the highest priority tasks you can focus on:" - the UI shows this
 5. The tool results will be displayed with rich UI components automatically
 6. Your ONLY job is to execute the tool - the UI handles all display
-7. Keep your response to 1-2 sentences MAX introducing the tool execution
-8. NEVER write out schedule items, task lists, or email summaries - the UI shows these
+7. If you MUST say something, use ONLY: "Let me check that for you." or similar
+8. NEVER write out task names, priorities, scores, or any data - the UI shows these
+9. DO NOT use markdown formatting like ** ** in your response
+10. DO NOT add any commentary before or after tool execution
 
 GOOD EXAMPLES:
-- "Here's your schedule for today." [tool displays schedule]
-- "I've retrieved your tasks." [tool displays tasks]
-- "Your emails are shown below." [tool displays emails]
+- "Let me check that for you." [tool displays results]
+- "Looking that up now." [tool displays results]
+- [Just execute the tool with no text response]
 
 BAD EXAMPLES (NEVER DO THIS):
-- "Here's your schedule: You have a meeting at 9am..." ❌
-- "Your tasks include: 1. Review PR 2. Update docs..." ❌
-- "You have 5 emails from..." ❌
+- "Here are the highest priority tasks you can focus on:" ❌
+- "**Conduct User Interviews** - It's critical..." ❌
+- "Would you like to schedule any of these tasks?" ❌
+- Any text that duplicates what the UI will show ❌
 
 Remember: The tool UI is sophisticated and will show all the details. You don't need to describe anything.`;
 
@@ -251,6 +274,12 @@ TASK INTELLIGENCE EXAMPLES:
 - "Your morning work block would be ideal for 'Refactor auth module' - it's complex and needs your fresh focus."
 - "I notice 'Client demo prep' has been in your backlog for 3 days and is becoming urgent. Shall I schedule it?"
 
+WORKFLOW APPROVALS:
+When user says "Approve the schedule proposal" or similar:
+1. First use system_getProposal to find the proposal ID
+2. Then call the workflow again with confirmation parameter
+Example: workflow_schedule with confirmation: { approved: true, proposalId: "..." }
+
 NEVER:
 - Show JSON or data structures
 - Use technical jargon
@@ -340,13 +369,13 @@ export async function POST(req: Request) {
       factory.updateUserId(user.id);
     }
 
-    const { messages } = await req.json();
-    const lastMessage = messages[messages.length - 1];
+    // Parse request
+    const { messages, viewingDate } = await req.json();
     
     console.log('[Chat API] Processing request:', { 
       userId: user.id, 
       messageCount: messages.length,
-      lastMessage: lastMessage?.content?.substring(0, 100) 
+      lastMessage: messages[messages.length - 1]?.content?.substring(0, 100) 
     });
 
     // Auto-register all tools on first request
@@ -356,23 +385,64 @@ export async function POST(req: Request) {
       console.log('[Chat API] Registered tools:', toolRegistry.listTools());
     }
 
-    // Build orchestration context
+    // Build orchestration context with viewing date
     console.log('[Orchestration] Building context...');
-    const context = await buildOrchestrationContext(user.id);
+    const context = await buildOrchestrationContext(user.id, 'America/New_York', viewingDate);
+    
+    // Check for active workflows/proposals in recent messages
+    const recentMessages = messages.slice(-5); // Last 5 messages
+    const hasActiveProposal = recentMessages.some((msg: Message) => 
+      msg.toolInvocations?.some((inv: ToolInvocation) => 
+        inv.state === 'result' && 
+        (inv as ToolInvocationWithResult).result?.phase === 'proposal' && 
+        (inv as ToolInvocationWithResult).result?.requiresConfirmation
+      )
+    );
     
     // Classify intent
     console.log('[Orchestration] Classifying intent...');
     const intent = await orchestrator.classifyIntent(
-      lastMessage.content,
+      messages[messages.length - 1].content,
       context
     );
     
     console.log('[Orchestration] Intent classified:', {
       category: intent.category,
       confidence: intent.confidence,
-      handler: intent.suggestedHandler,
+      handler: intent.suggestedHandler?.name,
       reasoning: intent.reasoning,
+      isApproval: messages[messages.length - 1].content.toLowerCase().includes('approve')
     });
+    
+    // If user is approving and we have an active proposal, ensure we route to workflow
+    if (hasActiveProposal && messages[messages.length - 1].content.toLowerCase().includes('approve')) {
+      // Find the workflow that created the proposal
+      const proposalMessage = recentMessages.find((msg: Message) => 
+        msg.toolInvocations?.some((inv: ToolInvocation) => 
+          inv.state === 'result' && 
+          (inv as ToolInvocationWithResult).result?.phase === 'proposal' && 
+          (inv as ToolInvocationWithResult).result?.requiresConfirmation
+        )
+      );
+      
+      const workflowTool = proposalMessage?.toolInvocations?.find((inv: ToolInvocation) => 
+        inv.toolName.includes('workflow_')
+      );
+      
+      if (workflowTool) {
+        console.log('[Orchestration] Detected approval for active workflow:', workflowTool.toolName);
+        intent.category = 'workflow';
+        intent.suggestedHandler = {
+          type: 'workflow',
+          name: workflowTool.toolName,
+          params: {
+            ...intent.suggestedHandler?.params,
+            isApproval: true,
+            date: (workflowTool as ToolInvocation).args?.date || viewingDate
+          }
+        };
+      }
+    }
     
     // Route based on intent
     try {
@@ -382,7 +452,8 @@ export async function POST(req: Request) {
             messages,
             intent,
             user.id,
-            headers
+            headers,
+            viewingDate
           );
           
         case 'tool':
@@ -390,7 +461,8 @@ export async function POST(req: Request) {
             messages,
             intent,
             user.id,
-            headers
+            headers,
+            viewingDate
           );
           
         case 'direct':
@@ -436,7 +508,8 @@ async function handleWorkflowRequest(
   messages: Message[],
   intent: UserIntent,
   userId: string,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  viewingDate?: string
 ) {
   const workflowName = intent.suggestedHandler.name || 'unknown';
   
@@ -462,7 +535,7 @@ async function handleWorkflowRequest(
     model: openai('gpt-4-turbo'),
     messages: enhancedMessages,
     tools: { [workflowName]: workflowTool },
-    system: workflowSystemPrompt(workflowName, intent),
+    system: workflowSystemPrompt(workflowName, intent, viewingDate),
     temperature: 0.7,
     maxSteps: 1, // Workflow is a single tool call
     experimental_toolCallStreaming: true,
@@ -486,7 +559,8 @@ async function handleToolRequest(
   messages: Message[],
   intent: UserIntent,
   userId: string,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  viewingDate?: string
 ) {
   // Get specific tools needed
   let tools;
@@ -508,7 +582,7 @@ async function handleToolRequest(
     model: openai('gpt-4-turbo'),
     messages,
     tools,
-    system: toolSystemPrompt(intent.suggestedHandler.name, intent),
+    system: toolSystemPrompt(intent.suggestedHandler.name, intent, viewingDate),
     temperature: 0.7,
     maxSteps: 5, // Allow multiple tool calls if needed
     experimental_toolCallStreaming: true,

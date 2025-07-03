@@ -7,6 +7,8 @@ import { format } from 'date-fns';
 import { MessageContent } from './MessageContent';
 import { CommandListMessage } from './CommandListMessage';
 import { ToolResultRenderer } from './ToolResultRenderer';
+import { ToolInvocationDisplay } from './ToolInvocationDisplay';
+import { WorkflowToolSequence } from './WorkflowToolSequence';
 import type { Message } from 'ai';
 import type { Entity, MessageMetadata } from '../types/chat.types';
 
@@ -61,6 +63,49 @@ export function MessageList({
         }
         break;
       
+      // Proposal actions (NEW for Sprint 4.3)
+      case 'approve_proposal':
+        if (onSuggestionSelect) {
+          const workflowType = action.payload?.workflowType;
+          if (workflowType === 'schedule') {
+            onSuggestionSelect(`Approve the schedule proposal for ${action.payload?.date || 'today'}`);
+          } else if (workflowType === 'tasks') {
+            onSuggestionSelect(`Approve the task assignments for block ${action.payload?.blockId}`);
+          } else if (workflowType === 'emails') {
+            onSuggestionSelect(`Approve the email triage plan`);
+          } else {
+            onSuggestionSelect(`Approve this proposal`);
+          }
+        }
+        break;
+      
+      case 'modify_proposal':
+        if (onSuggestionSelect) {
+          const workflowType = action.payload?.workflowType;
+          let modifyText = '';
+          if (workflowType === 'schedule') {
+            modifyText = `I'd like to modify the schedule proposal. `;
+          } else if (workflowType === 'tasks') {
+            modifyText = `I'd like different tasks for this block. `;
+          } else if (workflowType === 'emails') {
+            modifyText = `I'd like to modify the email triage plan. `;
+          } else {
+            modifyText = `I'd like to modify this proposal. `;
+          }
+          // For modify, just set the input without submitting
+          // This allows the user to type their specific modifications
+          const event = new Event('modify_proposal', { bubbles: true });
+          (event as any).detail = { text: modifyText, submit: false };
+          window.dispatchEvent(event);
+        }
+        break;
+      
+      case 'cancel_proposal':
+        if (onSuggestionSelect) {
+          onSuggestionSelect(`Cancel the ${action.payload?.workflowType || 'current'} proposal`);
+        }
+        break;
+      
       // Task workflow actions
       case 'confirm_tasks':
         if (onSuggestionSelect) {
@@ -89,6 +134,20 @@ export function MessageList({
         }
         break;
       
+      // Task selection actions
+      case 'select_task':
+        if (onSuggestionSelect && action.payload?.taskId) {
+          onSuggestionSelect(`Assign task ${action.payload.taskId} to my next available work block`);
+        }
+        break;
+      
+      case 'select_combination':
+        if (onSuggestionSelect && action.payload?.combination) {
+          const taskIds = action.payload.combination.map((t: any) => t.id).join(', ');
+          onSuggestionSelect(`Create a work block with these tasks: ${taskIds}`);
+        }
+        break;
+      
       // Original tool actions
       case 'create_block':
       case 'edit_block':
@@ -97,6 +156,7 @@ export function MessageList({
       case 'read_email':
       case 'draft_reply':
       case 'confirm_proposal':
+      case 'view_block':
         // These could trigger new messages or navigation
         if (onSuggestionSelect) {
           // Convert action to a natural language command
@@ -130,6 +190,8 @@ export function MessageList({
         return action.payload?.confirmed 
           ? `Confirm proposal ${action.payload?.proposalId}`
           : `Cancel proposal ${action.payload?.proposalId}`;
+      case 'view_block':
+        return `Show my schedule${action.payload?.blockId ? ` for block ${action.payload.blockId}` : ''}`;
       default:
         return null;
     }
@@ -158,13 +220,13 @@ export function MessageList({
     return metadata;
   };
 
-  // Render tool results using the new ToolResultRenderer
-  const renderToolResults = (message: Message) => {
+  // Render tool invocations and results
+  const renderToolInvocations = (message: Message) => {
     if (!message.toolInvocations || message.toolInvocations.length === 0) {
       return null;
     }
     
-    console.log('[MessageList] Rendering tool results for message:', {
+    console.log('[MessageList] Rendering tool invocations for message:', {
       messageId: message.id,
       toolInvocations: message.toolInvocations.map(inv => ({
         toolName: inv.toolName,
@@ -174,32 +236,98 @@ export function MessageList({
       }))
     });
     
+    // Check if this is a workflow (multiple related tools)
+    const isWorkflow = message.toolInvocations.some(inv => inv.toolName.includes('workflow_'));
+    const hasMultipleTools = message.toolInvocations.length > 1;
+    
+    if (isWorkflow && hasMultipleTools) {
+      // Extract workflow info from the first workflow tool
+      const workflowTool = message.toolInvocations.find(inv => inv.toolName.includes('workflow_'));
+      const workflowName = workflowTool?.toolName || 'workflow';
+      
+      // Map all tools to workflow tool format
+      const tools = message.toolInvocations.map(inv => ({
+        name: inv.toolName,
+        state: (inv.state === 'result' ? 'completed' : 
+               inv.state === 'partial-call' ? 'running' : 
+               'pending') as 'completed' | 'running' | 'pending' | 'failed',
+        error: inv.state === 'result' && (inv as any).result?.error
+      }));
+      
+      return (
+        <div className="mt-3 space-y-3">
+          <WorkflowToolSequence
+            workflowName={workflowName}
+            tools={tools}
+          />
+          {/* Show results for completed tools */}
+          {message.toolInvocations
+            .filter(inv => inv.state === 'result')
+            .map((invocation, idx) => {
+              const result = (invocation as any).result;
+              return (
+                <ToolResultRenderer
+                  key={`${message.id}-result-${idx}`}
+                  toolName={invocation.toolName}
+                  result={result}
+                  isStreaming={false}
+                  streamProgress={100}
+                  onAction={handleToolAction}
+                />
+              );
+            })}
+        </div>
+      );
+    }
+    
+    // Single tool or multiple independent tools
     return (
       <div className="mt-3 space-y-3">
-        {message.toolInvocations
-          .filter(inv => inv.state === 'result' || inv.state === 'partial-call')
-          .map((invocation, idx) => {
-            const isStreaming = invocation.state === 'partial-call';
-            const progress = isStreaming ? 50 : 100;
-            const result = invocation.state === 'result' ? (invocation as any).result : null;
-            
-            console.log(`[MessageList] Tool ${idx}:`, {
-              toolName: invocation.toolName,
-              state: invocation.state,
-              result: result
-            });
-            
-            return (
-              <ToolResultRenderer
-                key={`${message.id}-tool-${idx}`}
-                toolName={invocation.toolName}
-                result={result}
-                isStreaming={isStreaming}
-                streamProgress={progress}
-                onAction={handleToolAction}
-              />
-            );
-          })}
+        {message.toolInvocations.map((invocation, idx) => {
+          const isStreaming = invocation.state === 'partial-call';
+          const isComplete = invocation.state === 'result';
+          const result = isComplete ? (invocation as any).result : null;
+          
+          console.log(`[MessageList] Tool ${idx}:`, {
+            toolName: invocation.toolName,
+            state: invocation.state,
+            result: result
+          });
+          
+          return (
+            <div key={`${message.id}-tool-${idx}`} className="space-y-2">
+              {/* Show tool invocation */}
+              {!isComplete && (
+                <ToolInvocationDisplay
+                  toolName={invocation.toolName}
+                  state={isStreaming ? 'running' : 'pending'}
+                />
+              )}
+              
+              {/* Show tool result when complete */}
+              {isComplete && (
+                <ToolResultRenderer
+                  toolName={invocation.toolName}
+                  result={result}
+                  isStreaming={false}
+                  streamProgress={100}
+                  onAction={handleToolAction}
+                />
+              )}
+              
+              {/* Show streaming progress if available */}
+              {isStreaming && invocation.args && (
+                <ToolResultRenderer
+                  toolName={invocation.toolName}
+                  result={invocation.args}
+                  isStreaming={true}
+                  streamProgress={50}
+                  onAction={handleToolAction}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -264,7 +392,7 @@ export function MessageList({
             )}
             
             {/* Display tool results using new renderer */}
-            {renderToolResults(message)}
+            {renderToolInvocations(message)}
             
             <p className={cn(
               "text-xs mt-1",

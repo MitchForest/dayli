@@ -9,9 +9,14 @@ const displays = {
   email: lazy(() => import('./displays/EmailDisplay')),
   calendar: lazy(() => import('./displays/CalendarDisplay')),
   preference: lazy(() => import('./displays/PreferenceDisplay')),
-  workflow: lazy(() => import('./displays/WorkflowDisplay')),
   system: lazy(() => import('./displays/SystemDisplay')),
   default: lazy(() => import('./displays/DefaultDisplay')),
+  // New displays for Sprint 4.3
+  scheduleAnalysis: lazy(() => import('./displays/ScheduleAnalysisDisplay')),
+  taskManagement: lazy(() => import('./displays/TaskManagementDisplay')),
+  emailManagement: lazy(() => import('./displays/EmailManagementDisplay')),
+  proposal: lazy(() => import('./displays/ProposalDisplay')),
+  workflow: lazy(() => import('./displays/WorkflowDisplay')),
 };
 
 interface ToolResultRendererProps {
@@ -29,49 +34,76 @@ export const ToolResultRenderer = memo(function ToolResultRenderer({
   streamProgress,
   onAction,
 }: ToolResultRendererProps) {
-  // Extract category from tool name (e.g., "schedule_viewSchedule" -> "schedule")
-  const getDisplayCategory = (): keyof typeof displays => {
-    const parts = toolName.split('_');
-    const category = parts[0];
-    
-    // Map category to display component
-    if (category && category in displays) {
-      return category as keyof typeof displays;
+  // Use tool name to determine display type
+  const getDisplayType = (): keyof typeof displays => {
+    // Check if this is a workflow (proposal or completed)
+    if (toolName.includes('workflow_')) {
+      // If it's a proposal phase, use proposal display
+      if (result?.phase === 'proposal' && result?.requiresConfirmation) {
+        return 'proposal';
+      }
+      // Otherwise use workflow display (for completed or other phases)
+      return 'workflow';
     }
     
-    // Fallback detection based on tool name patterns
-    if (toolName.includes('schedule') || toolName.includes('TimeBlock')) return 'schedule';
-    if (toolName.includes('task')) return 'task';
-    if (toolName.includes('email')) return 'email';
-    if (toolName.includes('meeting') || toolName.includes('calendar')) return 'calendar';
-    if (toolName.includes('preference')) return 'preference';
-    if (toolName.includes('optimize') || toolName.includes('triage') || toolName.includes('prioritize')) return 'workflow';
-    if (toolName.includes('confirm') || toolName.includes('show') || toolName.includes('clear') || toolName.includes('provide') || toolName.includes('resume')) return 'system';
+    // New atomic tools from Sprint 4.3 - Schedule Analysis
+    if (toolName.includes('schedule_findGaps') || 
+        toolName.includes('schedule_batchCreateBlocks') || 
+        toolName.includes('schedule_analyzeUtilization')) {
+      return 'scheduleAnalysis';
+    }
     
+    // Task Management tools
+    if (toolName.includes('task_getBacklogWithScores') || 
+        toolName.includes('task_assignToTimeBlock') || 
+        toolName.includes('task_suggestForDuration')) {
+      return 'taskManagement';
+    }
+    
+    // Email Management tools - be careful with the order here
+    if (toolName.includes('email_getBacklog') || 
+        toolName.includes('email_categorizeEmail') || 
+        toolName.includes('email_batchCategorize') || 
+        toolName.includes('email_groupBySender') || 
+        toolName.includes('email_archiveBatch') || 
+        toolName.includes('email_createTaskFromEmail')) {
+      return 'emailManagement';
+    }
+    
+    // Existing tools - check full tool names to avoid conflicts
+    if (toolName.startsWith('schedule_')) return 'schedule';
+    if (toolName.startsWith('task_')) return 'task';
+    if (toolName.startsWith('email_')) return 'email';
+    if (toolName.startsWith('calendar_')) return 'calendar';
+    if (toolName.startsWith('preference_')) return 'preference';
+    if (toolName.startsWith('system_')) return 'system';
+    
+    // Default fallback
     return 'default';
   };
   
-  const displayCategory = getDisplayCategory();
-  const Display = displays[displayCategory];
+  const displayType = getDisplayType();
+  const Display = displays[displayType];
   
   // Show streaming progress if applicable
   if (isStreaming && streamProgress !== undefined && streamProgress < 100) {
     return (
-      <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">
             {result?.stage || 'Processing...'}
           </span>
-          <span className="text-sm text-muted-foreground">
-            {streamProgress}%
-          </span>
+          <span className="text-muted-foreground">{streamProgress}%</span>
         </div>
-        <Progress value={streamProgress} className="h-2" />
+        <div className="w-full bg-secondary rounded-full h-2">
+          <div 
+            className="bg-primary h-2 rounded-full transition-all duration-300"
+            style={{ width: `${streamProgress}%` }}
+          />
+        </div>
         {result?.partialResult && (
-          <div className="mt-3 p-3 bg-background rounded-md border">
-            <pre className="text-xs text-muted-foreground overflow-auto max-h-32">
-              {JSON.stringify(result.partialResult, null, 2)}
-            </pre>
+          <div className="mt-2 p-2 bg-muted rounded-md">
+            <pre className="text-xs">{JSON.stringify(result.partialResult, null, 2)}</pre>
           </div>
         )}
       </div>
@@ -91,20 +123,8 @@ export const ToolResultRenderer = memo(function ToolResultRenderer({
   
   // Render the appropriate display component
   return (
-    <Suspense 
-      fallback={
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-1/3" />
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-4 w-2/3" />
-        </div>
-      }
-    >
-      <Display 
-        toolName={toolName}
-        data={result} 
-        onAction={onAction} 
-      />
+    <Suspense fallback={<Skeleton className="h-32 w-full" />}>
+      <Display toolName={toolName} data={result} onAction={onAction} />
     </Suspense>
   );
 });

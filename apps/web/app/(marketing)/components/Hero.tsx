@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Download } from "lucide-react";
 import Link from "next/link";
 import { HeroVisual } from "./HeroVisual";
+import { useState, useEffect } from "react";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -29,7 +30,51 @@ const itemVariants = {
   },
 };
 
+interface GitHubRelease {
+  tag_name: string;
+  assets: Array<{
+    name: string;
+    browser_download_url: string;
+  }>;
+}
+
 export function Hero() {
+  const [latestRelease, setLatestRelease] = useState<GitHubRelease | null>(null);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+
+  // Fetch latest release on mount
+  useEffect(() => {
+    fetch('https://api.github.com/repos/MitchForest/dayli/releases/latest')
+      .then(res => res.json())
+      .then(data => {
+        if (data.assets) {
+          setLatestRelease(data);
+        }
+      })
+      .catch(err => console.error('Failed to fetch release:', err));
+  }, []);
+
+  const handleDownload = () => {
+    if (!latestRelease) return;
+
+    // Find the DMG file for Mac
+    const dmgAsset = latestRelease.assets.find((asset) => 
+      asset.name.endsWith('.dmg')
+    );
+
+    if (dmgAsset) {
+      setDownloadLoading(true);
+      window.open(dmgAsset.browser_download_url, '_blank');
+      setTimeout(() => setDownloadLoading(false), 2000);
+    }
+  };
+
+  const getDownloadText = () => {
+    if (downloadLoading) return "Starting download...";
+    if (!latestRelease) return "Download coming soon";
+    return "Download for Mac";
+  };
+
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden pt-16">
       {/* Background gradient */}
@@ -74,9 +119,15 @@ export function Hero() {
                 </Link>
               </Button>
               
-              <Button size="lg" variant="outline" className="group">
+              <Button 
+                size="lg" 
+                variant="outline" 
+                className="group"
+                onClick={handleDownload}
+                disabled={!latestRelease || downloadLoading}
+              >
                 <Download className="mr-2 h-4 w-4" />
-                Download for Mac
+                {getDownloadText()}
               </Button>
             </motion.div>
             
@@ -85,13 +136,18 @@ export function Hero() {
               className="mt-8 text-sm text-muted-foreground"
             >
               Free forever for personal use • No credit card required
+              {latestRelease && (
+                <span className="block mt-1 text-xs">
+                  Version {latestRelease.tag_name} available
+                </span>
+              )}
             </motion.p>
           </div>
           
           {/* Right column - Visual */}
           <motion.div
             variants={itemVariants}
-            className="relative lg:pl-8"
+            className="hidden lg:block"
           >
             <HeroVisual />
           </motion.div>

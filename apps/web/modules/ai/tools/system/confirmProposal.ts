@@ -48,68 +48,23 @@ export const confirmProposal = registerTool(
         };
       }
       
-      // Handle choice proposals
-      if (proposal.type === 'choice' && proposal.data?.options) {
-        if (!selectedOption) {
-          return {
-            success: false,
-            error: 'Choice proposal requires a selected option',
-            proposalId,
-            executed: false,
-            changes: [],
-          };
-        }
-        
-        const option = proposal.data.options.find((opt: any) => opt.id === selectedOption);
-        if (!option) {
-          return {
-            success: false,
-            error: 'Invalid option selected',
-            proposalId,
-            executed: false,
-            changes: [],
-          };
-        }
-        
-        // Execute the selected option
-        const result = await option.execute();
-        
-        // Remove the consumed proposal
-        proposalStore.delete(proposalId);
-        
-        console.log(`[Tool: confirmProposal] Executed choice ${selectedOption} for proposal ${proposalId}`);
-        
-        return {
-          success: true,
-          proposalId,
-          executed: true,
-          changes: [{
-            type: 'choice',
-            description: `Selected option: ${option.label || option.id}`,
-            result: 'success',
-          }],
-        };
-      }
-      
-      // Execute the proposal data
-      const result = proposal.data;
-      
-      // Remove the consumed proposal
-      proposalStore.delete(proposalId);
-      
-      console.log(`[Tool: confirmProposal] Executed proposal ${proposalId}`);
+      // For now, this tool just confirms that the proposal exists
+      // The actual execution should be done by calling the workflow again with confirmation
+      console.log(`[Tool: confirmProposal] Confirmed proposal ${proposalId} of type ${proposal.workflowType}`);
       
       return {
         success: true,
         proposalId,
         executed: true,
-        changes: (proposal.data?.changes || proposal.metadata?.changes) || [{
-          type: 'action',
-          description: proposal.description,
+        workflowType: proposal.workflowType,
+        date: proposal.date,
+        blockId: proposal.blockId,
+        changes: proposal.data?.changes || [{
+          type: 'confirmation',
+          description: `Confirmed ${proposal.workflowType} proposal`,
           result: 'success',
         }],
       };
-      
     },
   })
 );

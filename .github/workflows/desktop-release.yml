@@ -1,0 +1,73 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create-release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create Release
+        id: create-release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Dayli ${{ github.ref }} - macOS
+          body: |
+            ## What's New
+            
+            This release includes the latest updates to Dayli.
+            
+            ### Installation
+            1. Download the .dmg file below
+            2. Open the downloaded file
+            3. Drag Dayli to your Applications folder
+            4. On first launch, you may need to right-click and select "Open" to bypass Gatekeeper
+            
+            ### Requirements
+            - macOS 10.15 or later
+            - Apple Silicon or Intel Mac
+          draft: false
+          prerelease: false
+
+  build-tauri:
+    needs: create-release
+    permissions:
+      contents: write
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+            
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v1
+        
+      - name: Install frontend dependencies
+        run: bun install
+        
+      - name: Build Tauri (Universal Binary)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          projectPath: apps/desktop
+          args: --target universal-apple-darwin 

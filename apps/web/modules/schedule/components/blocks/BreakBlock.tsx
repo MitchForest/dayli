@@ -4,6 +4,7 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import { Coffee, Clock } from 'lucide-react';
 import { CELL_HEIGHT, MIN_BLOCK_HEIGHT } from '../../constants/grid-constants';
+import { BlockContextMenu } from './BlockContextMenu';
 
 interface BreakBlockProps {
   id: string;
@@ -47,7 +48,7 @@ export function BreakBlock({
         "hover:from-green-200 hover:to-green-300",
         "transition-all duration-200",
         "shadow-sm hover:shadow-md hover:shadow-green-300/20",
-        "overflow-hidden",
+        "overflow-hidden group relative",
         className
       )}
       style={{
@@ -55,6 +56,16 @@ export function BreakBlock({
         height: `${baseHeight}px`
       }}
     >
+      {/* Context menu button */}
+      <BlockContextMenu
+        id={id}
+        title={title}
+        type="break"
+        startTime={startTime}
+        endTime={endTime}
+        color="green"
+      />
+      
       <div className="p-2 h-full flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between">

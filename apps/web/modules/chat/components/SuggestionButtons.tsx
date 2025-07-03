@@ -99,45 +99,55 @@ export function useContextualSuggestions(
 ): string[] {
   if (!lastMessage) {
     return [
-      "What should I focus on today?",
-      "Show my schedule",
-      "Any urgent emails?",
-      "Plan my day"
+      "Plan my day",
+      "What should I work on?",
+      "Process my emails",
+      "Show my schedule"
     ];
   }
 
   const lower = lastMessage.toLowerCase();
 
-  // Schedule-related suggestions
-  if (lower.includes('schedule') || lower.includes('calendar') || lower.includes('block')) {
+  // Workflow-related suggestions (proposals)
+  if (lower.includes('proposal') || lower.includes('review') || lower.includes('approve')) {
     return [
-      "Show my schedule",
-      "What's next?",
-      "Find free time",
-      "Add a work block",
-      "Clear my afternoon"
+      "Approve this proposal",
+      "I'd like to modify it",
+      "Cancel the proposal",
+      "Show me the details again"
     ];
   }
 
-  // Email-related suggestions
-  if (lower.includes('email') || lower.includes('message')) {
+  // Schedule-related suggestions
+  if (lower.includes('schedule') || lower.includes('calendar') || lower.includes('block')) {
     return [
-      "Show urgent emails",
-      "Process email backlog",
-      "Draft a response",
-      "Archive newsletters",
-      "Create email block"
+      "Find gaps in my schedule",
+      "Analyze my schedule efficiency",
+      "Create a work block",
+      "Move a time block",
+      "What's next?"
     ];
   }
 
   // Task-related suggestions
-  if (lower.includes('task') || lower.includes('todo')) {
+  if (lower.includes('task') || lower.includes('todo') || lower.includes('work on')) {
     return [
-      "Show all tasks",
-      "What's most important?",
-      "Create a task",
-      "Show completed tasks",
-      "Add tasks to schedule"
+      "Show task scores",
+      "What can I do in 30 minutes?",
+      "Fill my work block",
+      "Create a new task",
+      "Show completed tasks"
+    ];
+  }
+
+  // Email-related suggestions
+  if (lower.includes('email') || lower.includes('inbox') || lower.includes('message')) {
+    return [
+      "Show email backlog",
+      "Categorize my emails",
+      "Group emails by sender",
+      "Process urgent emails",
+      "Archive old emails"
     ];
   }
 
@@ -146,40 +156,50 @@ export function useContextualSuggestions(
     return [
       "Schedule a meeting",
       "Find meeting times",
-      "Show today's meetings",
+      "Reschedule meeting",
       "Add prep time",
-      "Reschedule meeting"
+      "Show today's meetings"
     ];
   }
 
-  // Time-specific suggestions
+  // Analysis/insights suggestions
+  if (lower.includes('analyze') || lower.includes('efficiency') || lower.includes('pattern')) {
+    return [
+      "Show my work patterns",
+      "Analyze schedule utilization",
+      "View workflow history",
+      "Show productivity insights"
+    ];
+  }
+
+  // Time-specific suggestions based on context
   const hour = new Date().getHours();
   if (hour < 10) {
     return [
       "Plan my day",
       "What's my first task?",
-      "Show morning routine",
-      "Review priorities"
+      "Show morning schedule",
+      "Find focus time"
     ];
   } else if (hour < 14) {
     return [
-      "What's next?",
+      "What should I work on?",
+      "Fill my work block",
       "Schedule lunch break",
-      "Show afternoon tasks",
-      "Find focus time"
+      "Show afternoon tasks"
     ];
   } else if (hour < 17) {
     return [
-      "Review progress",
-      "Clear urgent items",
+      "Process emails",
+      "Review today's progress",
       "Plan tomorrow",
-      "Wrap up tasks"
+      "Find remaining gaps"
     ];
   } else {
     return [
       "Plan tomorrow",
       "Review today",
-      "Clear inbox",
+      "Process email backlog",
       "Set priorities"
     ];
   }

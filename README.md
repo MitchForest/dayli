@@ -218,10 +218,10 @@ Our AI architecture represents a sophisticated orchestration of multiple technol
         ┌────────────┴────────────┬─────────────────┐
         ▼                         ▼                 ▼
 ┌───────────────┐       ┌───────────────┐   ┌───────────────┐
-│  AI SDK Tools │       │   LangGraph   │   │    Direct     │
-│   (Atomic)    │       │  (Workflows)  │   │  Response     │
-│               │       │               │   │               │
-│  25 Tools     │       │  4 Workflows  │   │ Conversation  │
+│ Atomic Tools  │       │  Multi-Step   │   │    Direct     │
+│  (33 Tools)   │       │  Workflows    │   │  Response     │
+│               │       │  (3 Flows)    │   │               │
+│ Single-purpose│       │ Tool composer │   │ Conversation  │
 └───────────────┘       └───────────────┘   └───────────────┘
         │                         │                 │
         └─────────────┬───────────┴─────────────────┘
@@ -281,7 +281,7 @@ interface UserIntent {
    - Questions, clarifications, general assistance
    - "How should I prioritize my day?"
 
-### The Tool System: 25 Essential Operations
+### The Tool System: 33 Essential Operations
 
 All tools use the tool factory pattern and return pure domain data without UI instructions:
 
@@ -292,7 +292,7 @@ export const createTimeBlock = registerTool(
     name: 'schedule_createTimeBlock',
     description: "Create a new time block in the schedule",
     parameters: z.object({
-      type: z.enum(['focus', 'email', 'meeting', 'break']),
+      type: z.enum(['work', 'meeting', 'email', 'break', 'blocked']),
       title: z.string(),
       startTime: z.string(),
       duration: z.number()
@@ -316,54 +316,71 @@ export const createTimeBlock = registerTool(
 ```
 
 **Tool Categories:**
-- **Schedule Tools (5)**: viewSchedule, createTimeBlock, moveTimeBlock, deleteTimeBlock, fillWorkBlock
-- **Task Tools (4)**: createTask, updateTask, completeTask, viewTasks
-- **Email Tools (3)**: viewEmails, readEmail, processEmail
+- **Schedule Tools (8)**: viewSchedule, createTimeBlock, moveTimeBlock, deleteTimeBlock, fillWorkBlock, findGaps, batchCreateBlocks, analyzeUtilization
+- **Task Tools (7)**: viewTasks, createTask, updateTask, completeTask, getBacklogWithScores, assignToTimeBlock, suggestForDuration
+- **Email Tools (9)**: viewEmails, readEmail, processEmail, getBacklog, categorizeEmail, batchCategorize, groupBySender, archiveBatch, createTaskFromEmail
 - **Calendar Tools (2)**: scheduleMeeting, rescheduleMeeting
 - **Preference Tool (1)**: updatePreferences
-- **Workflow Tools (4)**: optimizeSchedule, triageEmails, prioritizeTasks, optimizeCalendar
 - **System Tools (6)**: confirmProposal, showWorkflowHistory, resumeWorkflow, provideFeedback, showPatterns, clearContext
 
-### LangGraph Workflows: Complex Multi-Step Operations
+### Multi-Step Workflows: Sophisticated Tool Composition
 
-Workflows use LangGraph for sophisticated state management and decision trees:
+Our workflows compose atomic tools to achieve complex goals through a proposal-confirmation pattern:
 
-#### Adaptive Scheduling Workflow
+#### 1. Schedule Workflow (`workflow_schedule`)
 ```typescript
-interface SchedulingState {
-  userId: string;
-  date: string;
-  currentSchedule: TimeBlock[];
-  tasks: TaskWithScore[];
-  emails: EmailWithUrgency[];
-  preferences: UserPreferences;
-  analysis: ScheduleAnalysis;
-  strategy: 'full' | 'optimize' | 'partial' | 'minimal';
-  proposedChanges: ScheduleChange[];
-}
+// Phase 1: Analysis using atomic tools
+const schedule = await viewSchedule.execute({ date });
+const gaps = await findGaps.execute({ date, minDuration: 30 });
+const utilization = await analyzeUtilization.execute({ date });
 
-// Workflow intelligently routes based on schedule state
-workflow.addConditionalEdges(
-  "determineStrategy",
-  (state) => state.strategy,
-  {
-    full: "fullPlanningNode",      // Empty schedule
-    optimize: "optimizationNode",   // Inefficient schedule
-    partial: "partialFillNode",     // Some gaps
-    minimal: "minimalAdjustNode"    // Nearly full
-  }
-);
+// Phase 2: Generate proposals based on analysis
+const proposals = generateOptimalSchedule(schedule, gaps, utilization);
+
+// Phase 3: User confirmation
+// Present proposals to user for review/modification
+
+// Phase 4: Execution
+const result = await batchCreateBlocks.execute({ blocks: approvedBlocks });
 ```
 
-**Key Innovations:**
-- **Smart Strategy Selection**: Analyzes schedule density and inefficiencies
-- **RAG Enhancement**: Every decision informed by user patterns
-- **Atomic Changes**: All modifications as discrete, revertable operations
+**Key Features:**
+- **Intelligent Gap Analysis**: Finds available time slots
+- **Utilization Optimization**: Balances work, breaks, and email time
+- **User Preferences**: Respects lunch time, work hours, break duration
+- **Atomic Execution**: All changes applied together or not at all
 
-### 2. Email Management Workflow
-Two-dimensional analysis (importance × urgency) with intelligent batching:
+#### 2. Work Block Workflow (`workflow_fillWorkBlock`)
+Task assignment with sophisticated scoring:
 
 ```typescript
+// Get scored tasks from backlog
+const tasks = await getBacklogWithScores.execute({ 
+  maxDuration: blockDuration 
+});
+
+// Find optimal task combinations
+const suggestions = await suggestForDuration.execute({
+  duration: blockDuration,
+  strategy: timeOfDay < 12 ? 'priority' : 'mixed'
+});
+
+// Scoring algorithm
+score = basePriority(60%) + taskAge(40%) + contextBonus;
+```
+
+#### 3. Email Workflow (`workflow_fillEmailBlock`)
+Two-dimensional email triage:
+
+```typescript
+// Batch categorize emails
+const categorized = await batchCategorize.execute({ emailIds });
+
+// Group by sender for efficiency
+const groups = await groupBySender.execute({ 
+  emailIds: categorized.filter(e => e.needsReply) 
+});
+
 // The 2D analysis matrix
 const actionMatrix = {
   'important_urgent': 'morning_focus',
@@ -373,44 +390,6 @@ const actionMatrix = {
   'not_important_can_wait': 'tomorrow',
   'archive_*': 'auto_archive'
 };
-
-// Smart batching creates time-boxed blocks
-emailBatches: [
-  { type: 'morning_focus', emails: [...], totalTime: 45, slot: '9:00 AM' },
-  { type: 'quick_batch', emails: [...], totalTime: 15, slot: '2:00 PM' }
-]
-```
-
-### 3. Task Intelligence Workflow
-Context-aware task scoring with multiple factors:
-
-```typescript
-// Sophisticated scoring algorithm
-score = basePriority + ageFactor + energyMatch + timeOptimization + ragBoost + deadlineUrgency;
-
-// Produces ranked tasks with reasoning
-{
-  task: "API Refactor",
-  score: 85,
-  reasoning: "High priority + morning energy match + similar past success",
-  confidence: 0.92
-}
-```
-
-### 4. Calendar Optimization Workflow
-Intelligent conflict resolution and meeting consolidation:
-
-```typescript
-// Detects various meeting inefficiencies
-- Overlapping meetings with severity scoring
-- Back-to-back without breaks
-- Meeting clustering opportunities
-- Low-value recurring meetings
-
-// Generates smart resolutions based on:
-- Meeting importance scores
-- Attendee flexibility
-- User's preferred meeting times (from RAG)
 ```
 
 ### The RAG Learning System in Detail
@@ -583,42 +562,45 @@ All operations return pure domain data for clean separation of concerns. The cli
 
 ## Current Implementation Status
 
-### ✅ What's Built & Working (Epic 4 - Sprint Fix-AI Complete)
-- **25 Essential Tools**: All migrated to pure data pattern (100% complete)
-- **Pure Data Architecture**: Tools return domain data without UI instructions
+### ✅ What's Built & Working (Sprint 4.3 Complete)
+- **33 Atomic Tools**: All implemented with pure data pattern
+  - 8 Schedule tools (including gap analysis, batch creation, utilization)
+  - 7 Task tools (including intelligent scoring and suggestions)
+  - 9 Email tools (including AI categorization and batch operations)
+  - 2 Calendar tools
+  - 1 Preference tool
+  - 6 System tools
+- **3 Multi-Step Workflows**: Sophisticated tool composition
+  - Schedule workflow with 4-phase execution
+  - Work block workflow with intelligent task selection
+  - Email workflow with two-dimensional triage
+- **Orchestration Layer**: GPT-4 powered intent classification
+- **Pure Data Architecture**: Complete separation of logic and presentation
 - **Tool Factory Pattern**: Consistent tool creation with metadata
 - **Service Factory Pattern**: Mock/real data switching
 - **Database Schema**: Consolidated tables with pgvector
 - **AI Chat Interface**: Streaming responses with tool execution
 - **Tool Registry**: Auto-discovery and registration with categories
-- **Time Block UI**: Complete with all block types
 
-### 🚧 In Active Development (Epic 4 - Next Steps)
-- **ToolResultRenderer**: Client-side component for intelligent rendering
-- **Display Components**: Specialized components for each data type
-- **MessageList Update**: Simplified tool result extraction
-- **Legacy Code Removal**: Clean up UniversalToolResponse references
+### 🚧 In Active Development (Sprint 4.4)
+- **RAG Learning System**: Pattern recognition and personalization
+- **ToolResultRenderer**: Enhanced client-side rendering
+- **Display Components**: Rich interactive components for each tool type
 
-### 📋 Upcoming Sprints
-- **Sprint 4.2**: Orchestration Layer with intent classification
-- **Sprint 4.3**: Domain Workflows (4 LangGraph workflows)
-- **Sprint 4.4**: RAG & Learning System
-- **Sprint 4.5**: UI Enhancement (Rich components)
-- **Sprint 4.6**: Integration & Polish
+### 📋 Upcoming Features
+- **Gmail & Calendar API**: Real data integration
+- **Voice Commands**: Natural language input
+- **Mobile App**: iOS/Android versions
+- **Team Features**: Shared schedules and collaboration
 
-### Recent Architecture Migration
+### Recent Architecture Achievements
 
-We've migrated from the complex `UniversalToolResponse` format to a pure data architecture:
-- Tools now return only domain data (no UI instructions)
-- Client-side `ToolResultRenderer` handles all display logic
-- Better separation of concerns and improved performance
-- All 25 tools updated to use the new pattern
-
-### 🔮 Not Yet Implemented
-- Gmail & Calendar API integration
-- Voice commands
-- Mobile app
-- Team features
+We've completed a major architectural evolution:
+- Migrated from 25 to 33 atomic tools with enhanced capabilities
+- Refactored workflows to use pure tool composition (no internal logic)
+- Implemented proposal-confirmation pattern for user control
+- Added intelligent scoring algorithms for tasks and emails
+- Created comprehensive tool metadata for smart client-side rendering
 
 ## The Philosophy (Why We Built It This Way)
 
@@ -708,7 +690,8 @@ AI: "You completed 5 of 6 planned tasks. The API refactor was moved to tomorrow'
 - **AI Architecture**: 
   - **Orchestration Layer**: GPT-4 intent classification & routing
   - **Vercel AI SDK**: Chat interface, streaming, tool execution
-  - **LangGraph**: Complex stateful workflows
+  - **Tool System**: 33 atomic tools via factory pattern
+  - **Workflows**: 3 multi-step operations with tool composition
   - **RAG System**: pgvector for embeddings & learning
 - **LLM**: OpenAI GPT-4 Turbo
 - **Database**: PostgreSQL with RLS (Supabase)
@@ -721,7 +704,7 @@ AI: "You completed 5 of 6 planned tasks. The API refactor was moved to tomorrow'
 1. **Multi-Layer Intelligence**: Orchestration → Tools/Workflows → Pure Data → Smart UI
 2. **Continuous Learning**: RAG system improves with every interaction
 3. **Type Safety**: TypeScript from database to UI with clear data contracts
-4. **Scalability**: 25 tools instead of 95, clear separation of concerns
+4. **Scalability**: 33 atomic tools with clear separation of concerns
 5. **User Experience**: Natural language only, no configuration needed
 6. **Clean Architecture**: Tools focus on business logic, UI handles presentation
 

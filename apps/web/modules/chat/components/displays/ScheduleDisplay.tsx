@@ -199,9 +199,9 @@ const ScheduleView = memo(function ScheduleView({ data, onAction }: ScheduleView
         <Button
           variant="outline"
           size="sm"
-          onClick={() => onAction?.({ type: 'optimize_schedule', payload: { date: data.date } })}
+          onClick={() => onAction?.({ type: 'find_gaps', payload: { date: data.date } })}
         >
-          Optimize
+          Find Gaps
         </Button>
       </div>
     </div>

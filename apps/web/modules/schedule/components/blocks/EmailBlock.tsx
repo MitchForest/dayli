@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
-import { Mail, Clock, ChevronRight, Inbox, AlertCircle } from 'lucide-react';
+import { Mail, Clock, Inbox, AlertCircle } from 'lucide-react';
 import type { EmailDecision } from '@/modules/email/types/email.types';
 import { CELL_HEIGHT, MIN_BLOCK_HEIGHT } from '../../constants/grid-constants';
 import {
@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { BlockContextMenu } from './BlockContextMenu';
 
 interface EmailBlockProps {
   id: string;
@@ -58,7 +59,7 @@ export function EmailBlock({
           "hover:from-purple-200 hover:to-purple-300",
           "transition-all duration-200 cursor-pointer",
           "shadow-sm hover:shadow-md hover:shadow-purple-300/20",
-          "overflow-hidden group",
+          "overflow-hidden group relative",
           className
         )}
         style={{
@@ -67,14 +68,21 @@ export function EmailBlock({
         }}
         onClick={() => setShowDetails(true)}
       >
+        {/* Context menu button */}
+        <BlockContextMenu
+          id={id}
+          title={title}
+          type="email"
+          startTime={startTime}
+          endTime={endTime}
+          color="purple"
+        />
+        
         <div className="p-2 h-full flex flex-col">
           {/* Header - Always shown */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-purple-900">
-              <Mail size={14} className="text-purple-700" />
-              <span>{startTime} - {endTime}</span>
-            </div>
-            <ChevronRight size={14} className="text-purple-600 group-hover:translate-x-0.5 transition-transform" />
+          <div className="flex items-center gap-1.5 text-xs font-medium text-purple-900">
+            <Mail size={14} className="text-purple-700" />
+            <span>{startTime} - {endTime}</span>
           </div>
           
           {/* Title - Always shown */}

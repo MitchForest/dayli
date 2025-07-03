@@ -80,6 +80,51 @@ export interface FillWorkBlockResponse extends BaseToolResponse {
   remainingMinutes: number;
 }
 
+export interface FindGapsResponse extends BaseToolResponse {
+  gaps: Array<{
+    startTime: string;
+    endTime: string;
+    duration: number;
+  }>;
+  totalAvailableMinutes: number;
+}
+
+export interface BatchCreateBlocksResponse extends BaseToolResponse {
+  created: Array<{
+    id: string;
+    type: 'work' | 'meeting' | 'email' | 'break' | 'blocked';
+    title: string;
+    startTime: Date;
+    endTime: Date;
+    description?: string;
+  }>;
+  conflicts: Array<{
+    block: {
+      type: string;
+      title: string;
+      startTime: string;
+      endTime: string;
+    };
+    reason: string;
+    conflictsWith?: string;
+  }>;
+  totalRequested: number;
+  totalCreated: number;
+}
+
+export interface AnalyzeUtilizationResponse extends BaseToolResponse {
+  utilization: number;
+  totalScheduledMinutes: number;
+  focusTime: number;
+  meetingTime: number;
+  breakTime: number;
+  emailTime: number;
+  fragmentedTime: number;
+  longestWorkBlock: number;
+  suggestions: string[];
+  blockCount: number;
+}
+
 // Task tool responses
 export interface TaskListResponse extends BaseToolResponse {
   tasks: Array<{
@@ -225,10 +270,100 @@ export interface ScheduleResponse extends BaseToolResponse {
     isProtected?: boolean;
   }>;
   changes: Array<{
-    action: 'created' | 'moved' | 'removed';
+    action: string;
     block: string;
     reason: string;
   }>;
+  summary: string;
+}
+
+export interface WorkflowScheduleResponse extends BaseToolResponse {
+  phase: 'proposal' | 'completed' | 'execution';
+  requiresConfirmation?: boolean;
+  proposalId?: string;
+  date: string;
+  blocks: Array<{
+    id?: string;
+    type: 'work' | 'meeting' | 'email' | 'break' | 'blocked';
+    title: string;
+    startTime: string;
+    endTime: string;
+    description?: string;
+  }>;
+  changes: Array<{
+    action: string;
+    block: string;
+    reason: string;
+  }>;
+  summary: string;
+  message?: string;
+  utilizationBefore?: number;
+  utilizationAfter?: number;
+  created?: Array<{
+    id: string;
+    type: 'work' | 'meeting' | 'email' | 'break' | 'blocked';
+    title: string;
+    startTime: Date;
+    endTime: Date;
+    description?: string;
+  }>;
+  conflicts?: Array<{
+    block: {
+      type: string;
+      title: string;
+      startTime: string;
+      endTime: string;
+    };
+    reason: string;
+    conflictsWith?: string;
+  }>;
+}
+
+export interface WorkflowFillWorkBlockResponse extends BaseToolResponse {
+  phase: 'proposal' | 'completed';
+  requiresConfirmation?: boolean;
+  proposalId?: string;
+  blockId: string;
+  blockTitle?: string;
+  proposals?: {
+    combination: Array<{
+      id: string;
+      title: string;
+      estimatedMinutes: number;
+      priority: 'low' | 'medium' | 'high';
+    }>;
+    totalMinutes: number;
+    totalScore: number;
+    reasoning: string;
+  };
+  message?: string;
+  assigned?: string[];
+  summary: string;
+}
+
+export interface WorkflowFillEmailBlockResponse extends BaseToolResponse {
+  phase: 'proposal' | 'completed';
+  requiresConfirmation?: boolean;
+  proposalId?: string;
+  blockId: string;
+  blockDuration?: number;
+  proposals?: {
+    urgent: Array<{
+      emailId: string;
+      category: string;
+      urgencyScore: number;
+    }>;
+    batched: Array<{
+      sender: string;
+      senderEmail: string;
+      count: number;
+      emailIds: string[];
+    }>;
+    toArchive: string[];
+  };
+  message?: string;
+  processed?: number;
+  archived?: number;
   summary: string;
 }
 
@@ -252,20 +387,6 @@ export interface FillEmailBlockResponse extends BaseToolResponse {
   }>;
   archived: number;
   totalToProcess: number;
-}
-
-export interface WorkflowFillWorkBlockResponse extends BaseToolResponse {
-  blockId: string;
-  tasks: Array<{
-    id: string;
-    title: string;
-    estimatedMinutes: number;
-    priority: 'high' | 'medium' | 'low';
-    score: number;
-    reason: string;
-  }>;
-  totalMinutes: number;
-  fitQuality: 'perfect' | 'good' | 'acceptable';
 }
 
 export interface OptimizeCalendarResponse extends BaseToolResponse {
@@ -324,4 +445,149 @@ export interface ShowPatternsResponse extends BaseToolResponse {
 export interface ClearContextResponse extends BaseToolResponse {
   cleared: boolean;
   scope: 'conversation' | 'all';
+}
+
+export interface ViewTasksResponse extends BaseToolResponse {
+  tasks: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    status: 'pending' | 'in_progress' | 'completed';
+    priority: 'low' | 'medium' | 'high';
+    estimatedMinutes?: number;
+    createdAt: Date;
+    updatedAt: Date;
+  }>;
+  totalTasks: number;
+  completedTasks: number;
+  pendingTasks: number;
+}
+
+export interface GetBacklogWithScoresResponse extends BaseToolResponse {
+  tasks: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    priority: 'low' | 'medium' | 'high';
+    status: string;
+    estimatedMinutes: number;
+    dueDate?: string;
+    daysInBacklog: number;
+    score: number;
+    scoreBreakdown: {
+      priority: number;
+      age: number;
+      urgency: number;
+    };
+  }>;
+  totalTasks: number;
+  averageScore: number;
+}
+
+export interface AssignToTimeBlockResponse extends BaseToolResponse {
+  assigned: string[];
+  failed: Array<{
+    taskId: string;
+    reason: string;
+  }>;
+  blockId: string;
+  totalRequested: number;
+  totalAssigned: number;
+}
+
+export interface SuggestForDurationResponse extends BaseToolResponse {
+  suggestions: Array<{
+    combination: Array<{
+      id: string;
+      title: string;
+      estimatedMinutes: number;
+      priority: 'low' | 'medium' | 'high';
+    }>;
+    totalMinutes: number;
+    totalScore: number;
+    reasoning: string;
+  }>;
+  availableDuration: number;
+  totalTasksConsidered: number;
+}
+
+// Email tool responses
+export interface ViewEmailsResponse extends BaseToolResponse {
+  emails: Array<{
+    id: string;
+    from: string;
+    subject: string;
+    snippet: string;
+    date: string;
+    isUnread: boolean;
+    hasAttachments: boolean;
+  }>;
+  totalEmails: number;
+  unreadCount: number;
+}
+
+export interface GetEmailBacklogResponse extends BaseToolResponse {
+  emails: Array<{
+    id: string;
+    from: string;
+    subject: string;
+    snippet: string;
+    receivedAt: string;
+    status: 'unread' | 'backlog';
+    hasAttachments: boolean;
+    threadId: string;
+    labelIds: string[];
+  }>;
+  total: number;
+  hasMore: boolean;
+}
+
+export interface CategorizeEmailResponse extends BaseToolResponse {
+  category: 'needs_reply' | 'important_info' | 'potential_task' | 'can_archive';
+  confidence: number;
+  suggestedAction: string;
+  urgencyScore: number;
+}
+
+export interface BatchCategorizeResponse extends BaseToolResponse {
+  categorized: Array<{
+    emailId: string;
+    category: 'needs_reply' | 'important_info' | 'potential_task' | 'can_archive';
+    urgencyScore: number;
+  }>;
+  failed: Array<{
+    emailId: string;
+    reason: string;
+  }>;
+  totalProcessed: number;
+  totalFailed: number;
+}
+
+export interface GroupBySenderResponse extends BaseToolResponse {
+  groups: Array<{
+    sender: string;
+    senderEmail: string;
+    count: number;
+    emailIds: string[];
+  }>;
+  totalGroups: number;
+  totalGroupedEmails: number;
+  ungroupedEmails: number;
+}
+
+export interface ArchiveBatchResponse extends BaseToolResponse {
+  archived: number;
+  failed: string[];
+  archivedIds: string[];
+}
+
+export interface CreateTaskFromEmailResponse extends BaseToolResponse {
+  task: {
+    id: string;
+    title: string;
+    description: string;
+    estimatedMinutes: number;
+    source: 'email';
+    emailId: string;
+  };
 }

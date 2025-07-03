@@ -44,7 +44,7 @@
 
 ### AI-First Architecture
 
-The entire system is built around a sophisticated multi-layered AI architecture that makes intelligent decisions on behalf of the user:
+The entire system is built around a sophisticated multi-layered AI architecture that combines intelligent orchestration, atomic tool composition, and adaptive multi-step workflows:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -53,20 +53,20 @@ The entire system is built around a sophisticated multi-layered AI architecture 
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  Orchestration Layer                         │
-│  • Intent Classification (GPT-4)                             │
-│  • RAG Context Injection                                     │
-│  • Confidence Scoring                                        │
-│  • Route Determination                                       │
+│              Intelligent Orchestration Layer                 │
+│  • GPT-4 Intent Classification                               │
+│  • Context-Aware Routing (schedule, tasks, emails)          │
+│  • Confidence Scoring & Reasoning                           │
+│  • LRU Cache with 5-minute TTL                             │
 └────────────────────┬────────────────────────────────────────┘
                      │
         ┌────────────┴────────────┬─────────────────┐
         ▼                         ▼                 ▼
 ┌───────────────┐       ┌───────────────┐   ┌───────────────┐
-│  AI SDK Tools │       │   LangGraph   │   │    Direct     │
-│   (Atomic)    │       │  (Workflows)  │   │  Response     │
-│               │       │               │   │               │
-│  25 Tools     │       │  4 Workflows  │   │ Conversation  │
+│ Atomic Tools  │       │  Multi-Step   │   │    Direct     │
+│  (33 Tools)   │       │  Workflows    │   │  Response     │
+│               │       │  (3 Flows)    │   │               │
+│ Single-purpose│       │ Tool composer │   │ Conversation  │
 └───────────────┘       └───────────────┘   └───────────────┘
         │                         │                 │
         └─────────────┬───────────┴─────────────────┘
@@ -80,7 +80,7 @@ The entire system is built around a sophisticated multi-layered AI architecture 
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Client-Side Rendering                           │
+│              Client-Side Intelligence                        │
 │  • ToolResultRenderer detects type                          │
 │  • Loads appropriate display component                       │
 │  • Interactive UI without AI formatting                      │
@@ -89,44 +89,50 @@ The entire system is built around a sophisticated multi-layered AI architecture 
 
 ### Core Components
 
-#### 1. Orchestration Service
-The brain of the system that intelligently routes requests based on complexity and intent.
+#### 1. Intelligent Orchestration Service
+The cognitive center that routes requests based on complexity and intent:
+- GPT-4 powered intent classification with structured output
+- Context awareness: time of day, schedule density, task backlog, email pressure
+- Intelligent caching for common queries
+- Graceful fallback to keyword matching
 
-#### 2. Tool System (25 Essential Operations)
-Atomic operations that return pure domain data:
-- **Schedule Tools** (5): View, create, move, delete, fill time blocks
-- **Task Tools** (4): View, create, update, complete tasks  
-- **Email Tools** (3): View, read, process emails
-- **Calendar Tools** (2): Schedule, reschedule meetings
+#### 2. Atomic Tool System (33 Essential Operations)
+Focused, single-purpose tools that return pure domain data:
+- **Schedule Tools** (8): View, create, move, delete blocks + gap finding, batch creation, utilization analysis
+- **Task Tools** (7): CRUD operations + intelligent scoring, time-based suggestions, block assignment
+- **Email Tools** (9): View, read, process + backlog retrieval, AI categorization, batch operations, task conversion
+- **Calendar Tools** (2): Schedule and reschedule meetings
 - **Preference Tool** (1): Update user preferences
-- **System Tools** (6): Confirmations, history, feedback, patterns
-- **Workflow Tools** (4): Complex multi-step operations
+- **System Tools** (6): Confirmations, history, feedback, patterns, context management
 
-#### 3. Workflow Engine (LangGraph)
-Complex, multi-step operations with state management:
-- **Email Triage**: Batch process emails with intelligent action extraction
-- **Schedule Optimization**: Full day optimization with conflict resolution
-- **Daily Planning**: Morning routine with task scheduling
-- **Calendar Optimization**: Meeting conflict resolution
+#### 3. Multi-Step Workflow System (3 Complex Operations)
+Sophisticated workflows that compose atomic tools with proposal-confirmation pattern:
+- **Schedule Workflow**: Full day planning with analysis → proposal → confirmation → execution
+- **Work Block Workflow**: Intelligent task assignment based on scoring and duration
+- **Email Block Workflow**: Two-dimensional triage with batch processing
 
 #### 4. RAG Context System
-Three-layer context building for personalized responses:
-- Recent tool executions (last 7 days)
-- Workflow patterns
-- User preferences
+Three-layer learning for continuous personalization:
+- Recent executions (last 7 days)
+- Workflow patterns (common sequences)
+- User preferences (learned behaviors)
 
 #### 5. Pure Data Architecture
-Tools return only domain data without UI formatting instructions. The client-side ToolResultRenderer intelligently renders based on tool type.
+Complete separation of concerns:
+- Tools return only domain data
+- Client-side ToolResultRenderer handles all UI decisions
+- Type-safe contracts between layers
 
 ## Technology Stack
 
 - **Frontend**: Next.js 14 + TypeScript + Tailwind CSS
 - **Desktop**: Tauri (10MB native app)
 - **AI Architecture**: 
-  - Orchestration Layer: GPT-4 intent classification & routing
-  - Vercel AI SDK: Chat interface, streaming, tool execution
-  - LangGraph: Complex stateful workflows
-  - RAG System: pgvector for embeddings & learning
+  - **Orchestration Layer**: GPT-4 intent classification with structured output
+  - **Tool System**: 33 atomic tools via factory pattern + registry
+  - **Workflows**: 3 multi-step operations with proposal-confirmation flow
+  - **Vercel AI SDK**: Chat interface, streaming, tool execution
+  - **RAG System**: pgvector for embeddings & continuous learning
 - **LLM**: OpenAI GPT-4 Turbo
 - **Database**: PostgreSQL with RLS (Supabase)
 - **Auth**: Supabase Auth (Google OAuth)
@@ -252,29 +258,35 @@ interface UserPreference {
 
 ## Implementation Status
 
-### ✅ Completed (100%)
-- **25 Essential Tools**: All migrated to pure data pattern
-- **Pure Data Architecture**: Tools return domain data without UI instructions
-- **Tool Factory Pattern**: Consistent tool creation with metadata
-- **Service Factory Pattern**: Mock/real data switching
-- **Database Schema**: Consolidated tables with pgvector
-- **AI Chat Interface**: Streaming responses with tool execution
-- **Tool Registry**: Auto-discovery and registration with categories
-- **Time Block UI**: Complete with all block types
+### ✅ Completed (Sprint 4.3)
+- **33 Atomic Tools**: All implemented with pure data pattern
+  - 8 Schedule tools (including new analysis tools)
+  - 7 Task tools (including scoring and suggestions)
+  - 9 Email tools (including AI categorization and batch ops)
+  - 2 Calendar tools
+  - 1 Preference tool
+  - 6 System tools
+- **3 Multi-Step Workflows**: Refactored to compose atomic tools
+  - Schedule workflow with 4-phase execution
+  - Work block filling with intelligent task selection
+  - Email triage with two-dimensional analysis
+- **Pure Data Architecture**: Complete separation of logic and presentation
+- **Tool Factory Pattern**: Consistent tool creation and error handling
+- **Tool Registry**: Auto-discovery and registration by category
+- **Orchestration Layer**: GPT-4 powered intent classification
+- **Database Schema**: Consolidated with pgvector support
+- **Service Factory**: Mock/real data switching for all services
 
-### 🚧 In Progress
-- **ToolResultRenderer**: Client-side component for intelligent rendering
-- **Display Components**: Specialized components for each data type
-- **MessageList Update**: Simplified tool result extraction
-- **Legacy Code Removal**: Clean up old references
+### 🚧 In Progress (Sprint 4.4)
+- **RAG Learning System**: Pattern recognition and personalization
+- **ToolResultRenderer**: Enhanced client-side rendering
+- **Display Components**: Rich interactive components for each tool type
 
 ### 📋 Upcoming
-- **Orchestration Layer**: Intent classification and routing
-- **LangGraph Workflows**: Complex multi-step operations
-- **RAG Learning System**: Continuous personalization
-- **Gmail & Calendar Integration**: Real data connection
+- **Gmail & Calendar Integration**: Real API connections
 - **Voice Commands**: Natural language input
 - **Mobile App**: iOS/Android versions
+- **Team Features**: Shared schedules and collaboration
 
 ## Design Decisions
 
@@ -297,6 +309,50 @@ interface UserPreference {
 2. **Show Almost Nothing**: For user focus
 3. **Learn Silently**: No visible analytics
 4. **Adapt Continuously**: Every interaction improves the system
+
+## Key Architectural Innovations
+
+### 1. Proposal-Confirmation Pattern
+Every workflow follows a sophisticated multi-phase execution model:
+```typescript
+// Phase 1: Analysis - Gather context using atomic tools
+// Phase 2: Proposal - Generate optimal suggestions
+// Phase 3: Confirmation - User reviews and can modify
+// Phase 4: Execution - Apply approved changes atomically
+```
+This ensures user control while enabling powerful automation.
+
+### 2. Intelligent Tool Composition
+Multi-step workflows don't implement logic - they orchestrate:
+- Workflows are composers, not implementers
+- Each atomic tool is independently useful
+- Failure isolation between tools
+- Partial success handling
+
+### 3. Context-Aware Routing
+The orchestration layer considers multiple dimensions:
+- **Temporal Context**: Morning vs afternoon behavior
+- **State Context**: Empty schedule vs busy day
+- **Pressure Context**: Task backlog and email urgency
+- **Historical Context**: Past patterns and preferences
+
+### 4. Pure Data Architecture
+Complete separation between logic and presentation:
+- Tools return only domain data
+- No UI instructions in responses
+- Client decides rendering based on metadata
+- Type-safe contracts throughout
+
+### 5. Adaptive Scoring Algorithms
+Intelligent prioritization based on multiple factors:
+```typescript
+// Task Scoring
+score = priority(60%) + age(40%) + contextBonus
+// Email Scoring  
+score = urgency + importance + senderRank + age
+// Time Block Scoring
+score = utilization + continuity + energyMatch
+```
 
 ## Success Metrics
 

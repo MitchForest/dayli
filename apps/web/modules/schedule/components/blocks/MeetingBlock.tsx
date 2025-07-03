@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
-import { Video, MapPin, Users, ExternalLink, ChevronRight, Clock } from 'lucide-react';
+import { Video, MapPin, Users, ExternalLink, Clock } from 'lucide-react';
 import { CELL_HEIGHT, MIN_BLOCK_HEIGHT } from '../../constants/grid-constants';
 import {
   Dialog,
@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { BlockContextMenu } from './BlockContextMenu';
 
 interface MeetingBlockProps {
   id: string;
@@ -60,7 +61,7 @@ export function MeetingBlock({
           "hover:from-red-200 hover:to-red-300",
           "transition-all duration-200 cursor-pointer",
           "shadow-sm hover:shadow-md hover:shadow-red-300/20",
-          "overflow-hidden group",
+          "overflow-hidden group relative",
           className
         )}
         style={{
@@ -69,20 +70,27 @@ export function MeetingBlock({
         }}
         onClick={() => setShowDetails(true)}
       >
+        {/* Context menu button */}
+        <BlockContextMenu
+          id={id}
+          title={title}
+          type="meeting"
+          startTime={startTime}
+          endTime={endTime}
+          color="red"
+        />
+        
         <div className="p-2 h-full flex flex-col">
           {/* Header - Always shown */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-red-900">
-              {hasVideoCall ? (
-                <Video size={14} className="text-red-700" />
-              ) : hasLocation ? (
-                <MapPin size={14} className="text-red-700" />
-              ) : (
-                <Users size={14} className="text-red-700" />
-              )}
-              <span>{startTime} - {endTime}</span>
-            </div>
-            <ChevronRight size={14} className="text-red-600 group-hover:translate-x-0.5 transition-transform" />
+          <div className="flex items-center gap-1.5 text-xs font-medium text-red-900">
+            {hasVideoCall ? (
+              <Video size={14} className="text-red-700" />
+            ) : hasLocation ? (
+              <MapPin size={14} className="text-red-700" />
+            ) : (
+              <Users size={14} className="text-red-700" />
+            )}
+            <span>{startTime} - {endTime}</span>
           </div>
           
           {/* Title - Always shown */}

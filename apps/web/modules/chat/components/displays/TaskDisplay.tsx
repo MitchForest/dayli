@@ -208,10 +208,10 @@ const TaskList = memo(function TaskList({ data, onAction }: TaskListProps) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => onAction?.({ type: 'prioritize_tasks' })}
+          onClick={() => onAction?.({ type: 'view_task_scores' })}
         >
           <TrendingUp className="h-4 w-4 mr-1" />
-          Prioritize
+          View Scores
         </Button>
       </div>
     </div>

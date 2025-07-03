@@ -4,6 +4,7 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import { Ban, Clock } from 'lucide-react';
 import { CELL_HEIGHT, MIN_BLOCK_HEIGHT } from '../../constants/grid-constants';
+import { BlockContextMenu } from './BlockContextMenu';
 
 interface BlockedTimeBlockProps {
   id: string;
@@ -35,7 +36,7 @@ export function BlockedTimeBlock({
         "rounded-md border border-gray-400/30",
         "bg-gradient-to-br from-gray-200 to-gray-300",
         "transition-all duration-200",
-        "shadow-sm overflow-hidden",
+        "shadow-sm overflow-hidden group relative",
         className
       )}
       style={{
@@ -43,6 +44,16 @@ export function BlockedTimeBlock({
         height: `${baseHeight}px`
       }}
     >
+      {/* Context menu button */}
+      <BlockContextMenu
+        id={id}
+        title={title}
+        type="blocked"
+        startTime={startTime}
+        endTime={endTime}
+        color="gray"
+      />
+      
       <div className="p-2 h-full flex flex-col">
         {/* Header - Always shown */}
         <div className="flex items-center gap-1.5 text-xs font-medium text-gray-700">

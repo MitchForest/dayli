@@ -7,32 +7,15 @@ import {
   Zap, TrendingUp, Mail, Calendar, CheckCircle2, 
   AlertCircle, Clock, ArrowRight, Sparkles, BarChart3 
 } from 'lucide-react';
+import { format } from 'date-fns';
+import ProposalDisplay from './ProposalDisplay';
 import type { 
   ScheduleResponse,
+  WorkflowScheduleResponse,
   WorkflowFillWorkBlockResponse,
+  WorkflowFillEmailBlockResponse,
   BaseToolResponse
 } from '@/modules/ai/tools/types/responses';
-
-// Define the FillEmailBlockResponse type since it's not in responses.ts yet
-interface FillEmailBlockResponse extends BaseToolResponse {
-  blockId: string;
-  urgent: Array<{
-    id: string;
-    from: string;
-    subject: string;
-    reason: string;
-  }>;
-  batched: Array<{
-    sender: string;
-    count: number;
-    emails: Array<{
-      id: string;
-      subject: string;
-    }>;
-  }>;
-  archived: number;
-  totalToProcess: number;
-}
 
 interface WorkflowDisplayProps {
   toolName: string;
@@ -45,15 +28,20 @@ export const WorkflowDisplay = memo(function WorkflowDisplay({
   data, 
   onAction 
 }: WorkflowDisplayProps) {
-  // Handle different workflow tool responses
+  // Handle proposal phase for all workflows
+  if (data.phase === 'proposal' && data.requiresConfirmation) {
+    return <ProposalDisplay toolName={toolName} data={data} onAction={onAction} />;
+  }
+  
+  // Handle different workflow tool responses for completed phase
   if (toolName === 'workflow_schedule') {
-    return <ScheduleWorkflow data={data as ScheduleResponse} onAction={onAction} />;
+    return <ScheduleWorkflow data={data as WorkflowScheduleResponse} onAction={onAction} />;
   }
   if (toolName === 'workflow_fillWorkBlock') {
     return <FillWorkBlockWorkflow data={data as WorkflowFillWorkBlockResponse} onAction={onAction} />;
   }
   if (toolName === 'workflow_fillEmailBlock') {
-    return <FillEmailBlockWorkflow data={data as FillEmailBlockResponse} onAction={onAction} />;
+    return <FillEmailBlockWorkflow data={data as WorkflowFillEmailBlockResponse} onAction={onAction} />;
   }
   
   // Fallback for old workflows that are being removed
@@ -76,7 +64,7 @@ export const WorkflowDisplay = memo(function WorkflowDisplay({
 
 // Schedule workflow component
 interface ScheduleWorkflowProps {
-  data: ScheduleResponse;
+  data: WorkflowScheduleResponse;
   onAction?: (action: { type: string; payload?: any }) => void;
 }
 
@@ -84,7 +72,7 @@ const ScheduleWorkflow = memo(function ScheduleWorkflow({ data, onAction }: Sche
   // Handle error state
   if (!data.success) {
     return (
-      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
         <div className="flex items-center gap-2">
           <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
           <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to create schedule'}</p>
@@ -92,6 +80,9 @@ const ScheduleWorkflow = memo(function ScheduleWorkflow({ data, onAction }: Sche
       </Card>
     );
   }
+
+  // Check if this is completed phase
+  const isCompleted = data.phase === 'completed';
 
   return (
     <Card className="p-4">
@@ -101,7 +92,7 @@ const ScheduleWorkflow = memo(function ScheduleWorkflow({ data, onAction }: Sche
             <Calendar className="h-4 w-4 text-blue-600" />
           </div>
           <div className="flex-1">
-            <h4 className="font-medium">Schedule Created</h4>
+            <h4 className="font-medium">Schedule {isCompleted ? 'Created' : 'Ready'}</h4>
             <p className="text-sm text-muted-foreground mt-1">
               {data.summary || `Created ${data.blocks.length} blocks for ${data.date}`}
             </p>
@@ -129,45 +120,40 @@ const ScheduleWorkflow = memo(function ScheduleWorkflow({ data, onAction }: Sche
         )}
         
         {/* Show blocks */}
-        <div className="space-y-2">
-          <h5 className="text-sm font-medium">Your Schedule:</h5>
-          {data.blocks.map((block) => (
-            <div key={block.id} className="flex items-center justify-between p-2 bg-muted rounded-md">
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-xs">
-                  {block.type}
-                </Badge>
-                <span className="text-sm font-medium">{block.title}</span>
+        {data.blocks && data.blocks.length > 0 && (
+          <div className="space-y-2">
+            <h5 className="text-sm font-medium">Your Schedule for {data.date}:</h5>
+            {data.blocks.map((block, idx) => (
+              <div key={idx} className="flex items-center justify-between p-2 bg-muted rounded-md">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-xs">
+                    {block.type}
+                  </Badge>
+                  <span className="text-sm font-medium">{block.title}</span>
+                </div>
+                <span className="text-sm text-muted-foreground">
+                  {format(new Date(block.startTime), 'h:mm a')} - {format(new Date(block.endTime), 'h:mm a')}
+                </span>
               </div>
-              <span className="text-sm text-muted-foreground">
-                {block.startTime} - {block.endTime} ({block.duration} min)
-              </span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
         
-        {/* Actions */}
-        <div className="flex gap-2 pt-2 border-t">
-          <Button
-            size="sm"
-            onClick={() => onAction?.({ 
-              type: 'confirm_schedule', 
-              payload: { date: data.date } 
-            })}
-          >
-            Confirm Schedule
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onAction?.({ 
-              type: 'adjust_schedule', 
-              payload: { date: data.date } 
-            })}
-          >
-            Make Adjustments
-          </Button>
-        </div>
+        {/* Actions - only show for completed phase if adjustments are needed */}
+        {isCompleted && data.conflicts && data.conflicts.length > 0 && (
+          <div className="flex gap-2 pt-2 border-t">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onAction?.({ 
+                type: 'adjust_schedule', 
+                payload: { date: data.date } 
+              })}
+            >
+              Resolve Conflicts
+            </Button>
+          </div>
+        )}
       </div>
     </Card>
   );
@@ -183,7 +169,7 @@ const FillWorkBlockWorkflow = memo(function FillWorkBlockWorkflow({ data, onActi
   // Handle error state
   if (!data.success) {
     return (
-      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
         <div className="flex items-center gap-2">
           <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
           <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to fill work block'}</p>
@@ -192,106 +178,76 @@ const FillWorkBlockWorkflow = memo(function FillWorkBlockWorkflow({ data, onActi
     );
   }
 
-  if (!data.tasks || data.tasks.length === 0) {
+  // Handle completed phase
+  if (data.phase === 'completed') {
     return (
       <Card className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-full bg-yellow-500/10">
-            <AlertCircle className="h-4 w-4 text-yellow-600" />
+        <div className="space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-full bg-green-500/10">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-medium">Work Block Filled</h4>
+              <p className="text-sm text-muted-foreground mt-1">
+                {data.summary}
+              </p>
+            </div>
           </div>
-          <div>
-            <h4 className="font-medium">No Tasks Available</h4>
-            <p className="text-sm text-muted-foreground mt-1">
-              No tasks found to fill this work block
-            </p>
+          
+          {/* Show assigned tasks if available */}
+          {data.assigned && data.assigned.length > 0 && (
+            <div className="mt-3">
+              <p className="text-sm font-medium mb-2">Assigned tasks:</p>
+              <ul className="space-y-1">
+                {data.assigned.map((taskId: string, idx: number) => (
+                  <li key={idx} className="text-sm text-muted-foreground">
+                    • Task {taskId}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {/* Actions */}
+          <div className="flex gap-2 pt-2 border-t">
+            <Button
+              size="sm"
+              onClick={() => onAction?.({ 
+                type: 'view_block', 
+                payload: { blockId: data.blockId }
+              })}
+            >
+              View Block
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onAction?.({ 
+                type: 'adjust_tasks', 
+                payload: { blockId: data.blockId }
+              })}
+            >
+              Adjust Tasks
+            </Button>
           </div>
         </div>
       </Card>
     );
   }
   
+  // Fallback for unknown phase
   return (
     <Card className="p-4">
-      <div className="space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-full bg-green-500/10">
-            <TrendingUp className="h-4 w-4 text-green-600" />
-          </div>
-          <div className="flex-1">
-            <h4 className="font-medium">Work Block Filled</h4>
-            <p className="text-sm text-muted-foreground mt-1">
-              Selected {data.tasks.length} tasks ({data.totalMinutes} minutes)
-            </p>
-          </div>
+      <div className="flex items-start gap-3">
+        <div className="p-2 rounded-full bg-blue-500/10">
+          <TrendingUp className="h-4 w-4 text-blue-600" />
         </div>
-        
-        {/* Fit quality indicator */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Fit Quality:</span>
-          <Badge 
-            variant={data.fitQuality === 'perfect' ? 'default' : data.fitQuality === 'good' ? 'secondary' : 'outline'}
-            className="text-xs"
-          >
-            {data.fitQuality}
-          </Badge>
-        </div>
-        
-        {/* Selected tasks */}
-        <div className="space-y-2">
-          <h5 className="text-sm font-medium">Selected Tasks:</h5>
-          {data.tasks.map((task, idx) => (
-            <div key={task.id} className="flex items-start gap-3 p-2 bg-muted rounded-md">
-              <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-xs font-medium">
-                {idx + 1}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{task.title}</span>
-                  <Badge 
-                    variant={task.priority === 'high' ? 'destructive' : task.priority === 'medium' ? 'default' : 'secondary'} 
-                    className="text-xs"
-                  >
-                    {task.priority}
-                  </Badge>
-                  <Badge variant="outline" className="text-xs">
-                    Score: {task.score}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-4 mt-1">
-                  <span className="text-xs text-muted-foreground">
-                    <Clock className="inline h-3 w-3 mr-1" />
-                    {task.estimatedMinutes} minutes
-                  </span>
-                  {task.reason && (
-                    <span className="text-xs text-muted-foreground">{task.reason}</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-        
-        {/* Actions */}
-        <div className="flex gap-2 pt-2 border-t">
-          <Button
-            size="sm"
-            onClick={() => onAction?.({ 
-              type: 'confirm_tasks', 
-              payload: { blockId: data.blockId, taskIds: data.tasks.map(t => t.id) } 
-            })}
-          >
-            Confirm Tasks
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onAction?.({ 
-              type: 'select_different_tasks', 
-              payload: { blockId: data.blockId } 
-            })}
-          >
-            Select Different Tasks
-          </Button>
+        <div className="flex-1">
+          <h4 className="font-medium">Fill Work Block</h4>
+          <p className="text-sm text-muted-foreground mt-1">
+            {data.message || data.summary || 'Work block workflow in progress'}
+          </p>
         </div>
       </div>
     </Card>
@@ -300,7 +256,7 @@ const FillWorkBlockWorkflow = memo(function FillWorkBlockWorkflow({ data, onActi
 
 // Fill email block workflow component
 interface FillEmailBlockWorkflowProps {
-  data: FillEmailBlockResponse;
+  data: WorkflowFillEmailBlockResponse;
   onAction?: (action: { type: string; payload?: any }) => void;
 }
 
@@ -308,7 +264,7 @@ const FillEmailBlockWorkflow = memo(function FillEmailBlockWorkflow({ data, onAc
   // Handle error state
   if (!data.success) {
     return (
-      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
+      <Card className="p-4 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
         <div className="flex items-center gap-2">
           <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
           <p className="text-red-800 dark:text-red-200">{data.error || 'Failed to fill email block'}</p>
@@ -317,115 +273,84 @@ const FillEmailBlockWorkflow = memo(function FillEmailBlockWorkflow({ data, onAc
     );
   }
 
-  if (data.totalToProcess === 0) {
+  // Handle completed phase
+  if (data.phase === 'completed') {
     return (
       <Card className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-full bg-green-500/10">
-            <CheckCircle2 className="h-4 w-4 text-green-600" />
+        <div className="space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-full bg-purple-500/10">
+              <Mail className="h-4 w-4 text-purple-600" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-medium">Email Block Filled</h4>
+              <p className="text-sm text-muted-foreground mt-1">
+                {data.summary}
+              </p>
+            </div>
           </div>
-          <div>
-            <h4 className="font-medium">Inbox Clear</h4>
-            <p className="text-sm text-muted-foreground mt-1">
-              No emails need processing right now
-              {data.archived > 0 && ` (${data.archived} emails auto-archived)`}
-            </p>
+          
+          {/* Show processed/archived counts if available */}
+          {(data.processed !== undefined || data.archived !== undefined) && (
+            <div className="flex gap-4 text-sm">
+              {data.processed !== undefined && (
+                <div className="flex items-center gap-1">
+                  <Badge variant="outline">Processed</Badge>
+                  <span>{data.processed}</span>
+                </div>
+              )}
+              {data.archived !== undefined && (
+                <div className="flex items-center gap-1">
+                  <Badge variant="outline">Archived</Badge>
+                  <span>{data.archived}</span>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Actions */}
+          <div className="flex gap-2 pt-2 border-t">
+            <Button
+              size="sm"
+              onClick={() => onAction?.({ 
+                type: 'view_emails', 
+                payload: { blockId: data.blockId }
+              })}
+            >
+              View Emails
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onAction?.({ 
+                type: 'process_more', 
+                payload: { blockId: data.blockId }
+              })}
+            >
+              Process More
+            </Button>
           </div>
         </div>
       </Card>
     );
   }
   
+  // Fallback for unknown phase
   return (
     <Card className="p-4">
-      <div className="space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-full bg-purple-500/10">
-            <Mail className="h-4 w-4 text-purple-600" />
-          </div>
-          <div className="flex-1">
-            <h4 className="font-medium">Email Block Prepared</h4>
-            <p className="text-sm text-muted-foreground mt-1">
-              {data.totalToProcess} emails to process
-              {data.archived > 0 && ` (${data.archived} auto-archived)`}
-            </p>
-          </div>
+      <div className="flex items-start gap-3">
+        <div className="p-2 rounded-full bg-purple-500/10">
+          <Mail className="h-4 w-4 text-purple-600" />
         </div>
-        
-        {/* Urgent emails */}
-        {data.urgent && data.urgent.length > 0 && (
-          <div className="space-y-2">
-            <h5 className="text-sm font-medium flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-red-600" />
-              Urgent Emails ({data.urgent.length})
-            </h5>
-            {data.urgent.map((email) => (
-              <div key={email.id} className="p-2 bg-red-50 dark:bg-red-950 rounded-md">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{email.from}</p>
-                    <p className="text-sm text-muted-foreground">{email.subject}</p>
-                  </div>
-                  <Badge variant="destructive" className="text-xs ml-2">
-                    {email.reason}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        
-        {/* Batched emails */}
-        {data.batched && data.batched.length > 0 && (
-          <div className="space-y-2">
-            <h5 className="text-sm font-medium">Batched by Sender</h5>
-            {data.batched.map((batch, idx) => (
-              <div key={idx} className="p-2 bg-muted rounded-md">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium">{batch.sender}</span>
-                  <Badge variant="secondary" className="text-xs">
-                    {batch.count} emails
-                  </Badge>
-                </div>
-                <div className="space-y-1">
-                  {batch.emails.slice(0, 2).map((email) => (
-                    <p key={email.id} className="text-xs text-muted-foreground truncate">
-                      • {email.subject}
-                    </p>
-                  ))}
-                  {batch.emails.length > 2 && (
-                    <p className="text-xs text-muted-foreground">
-                      +{batch.emails.length - 2} more
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        
-        {/* Actions */}
-        <div className="flex gap-2 pt-2 border-t">
-          <Button
-            size="sm"
-            onClick={() => onAction?.({ 
-              type: 'start_email_processing', 
-              payload: { blockId: data.blockId } 
-            })}
-          >
-            Start Processing
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onAction?.({ type: 'view_all_emails' })}
-          >
-            View All Emails
-          </Button>
+        <div className="flex-1">
+          <h4 className="font-medium">Fill Email Block</h4>
+          <p className="text-sm text-muted-foreground mt-1">
+            {data.message || data.summary || 'Email block workflow in progress'}
+          </p>
         </div>
       </div>
     </Card>
   );
 });
 
-export default WorkflowDisplay;
+export default WorkflowDisplay; 

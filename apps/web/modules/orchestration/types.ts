@@ -23,7 +23,7 @@ export interface UserIntent {
     times?: string[];
     people?: string[];
     tasks?: string[];
-    duration?: number; // in minutes
+    duration?: number | null; // in minutes
   };
   
   // Suggested handler based on classification
@@ -103,6 +103,14 @@ export interface OrchestrationContext {
       reason: string;
       timestamp: Date;
     }>;
+  };
+  
+  // Current viewing context
+  viewingContext?: {
+    scheduleDate: Date;
+    scheduleDateStr: string;
+    isViewingToday: boolean;
+    viewDateSchedule: any[]; // Schedule blocks for the date being viewed
   };
 }
 

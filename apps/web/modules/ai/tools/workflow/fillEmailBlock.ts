@@ -1,157 +1,201 @@
 import { z } from "zod";
 import { createTool } from '../base/tool-factory';
 import { registerTool } from '../base/tool-registry';
-import { getCurrentUserId } from '../utils/helpers';
-import { ServiceFactory } from '@/services/factory/service.factory';
-import { type FillEmailBlockResponse } from '../types/responses';
-import { differenceInDays } from 'date-fns';
+import { type WorkflowFillEmailBlockResponse } from '../types/responses';
+
+// Import our atomic tools
+import { getBacklog } from '../email/getBacklog';
+import { batchCategorize } from '../email/batchCategorize';
+import { groupBySender } from '../email/groupBySender';
+import { archiveBatch } from '../email/archiveBatch';
+import { viewSchedule } from '../schedule/viewSchedule';
+import { toMilitaryTime } from '../../utils/time-parser';
+import { format } from 'date-fns';
 
 const parameters = z.object({
-  blockId: z.string().describe("ID of the email block to fill"),
-  blockDuration: z.number().describe("Minutes available in the block")
+  blockId: z.string().describe("ID or description of the email block to fill (e.g., '8:30', 'morning email block')"),
+  confirmation: z.object({
+    approved: z.boolean(),
+    proposalId: z.string(),
+    modifications: z.object({
+      toArchive: z.array(z.string()).optional(),
+      toProcess: z.array(z.string()).optional()
+    }).optional()
+  }).optional().describe("Confirmation of proposed email processing")
 });
 
+// Store proposals temporarily (in production, use proper storage)
+const proposalStore = new Map<string, any>();
+
 export const fillEmailBlock = registerTool(
-  createTool<typeof parameters, FillEmailBlockResponse>({
+  createTool<typeof parameters, WorkflowFillEmailBlockResponse>({
     name: 'workflow_fillEmailBlock',
-    description: "Determine which emails to process during an email block - identifies urgent emails and batches by sender",
+    description: "Multi-step workflow to intelligently process emails during email blocks",
     parameters,
     metadata: {
       category: 'workflow',
       displayName: 'Fill Email Block',
-      requiresConfirmation: false,
+      requiresConfirmation: true,
       supportsStreaming: true,
     },
-    execute: async ({ blockId, blockDuration }) => {
+    execute: async ({ blockId, confirmation }) => {
       try {
-        const userId = await getCurrentUserId();
-        
-        // In production, we'd query the emails table directly
-        // For now, simulate intelligent email triage
-        const emails = await getEmailsForTriage(userId);
-        
-        // Categorize emails
-        const categorizedEmails = emails.map(email => {
-          const category = categorizeEmail(email);
-          const score = calculateEmailScore(email, category);
-          return { ...email, category, score };
-        });
-        
-        // Sort by score (highest priority first)
-        categorizedEmails.sort((a, b) => b.score - a.score);
-        
-        // Build response categories
-        const needsReply: Array<{
-          id: string;
-          from: string;
-          subject: string;
-          reason: string;
-          actionType: 'quick_reply' | 'thoughtful_response';
-          daysInBacklog: number;
-        }> = [];
-        
-        const importantInfo: Array<{
-          id: string;
-          from: string;
-          subject: string;
-          reason: string;
-        }> = [];
-        
-        const suggestedArchive: Array<{
-          id: string;
-          from: string;
-          subject: string;
-          reason: string;
-        }> = [];
-        
-        const convertToTask: Array<{
-          id: string;
-          from: string;
-          subject: string;
-          suggestedTaskTitle: string;
-        }> = [];
-        
-        // Process emails based on category and available time
-        let estimatedMinutesUsed = 0;
-        
-        for (const email of categorizedEmails) {
-          // Skip if we're out of time
-          if (estimatedMinutesUsed >= blockDuration) break;
+        // PHASE 1: ANALYSIS & PROPOSAL (no confirmation provided)
+        if (!confirmation) {
+          console.log('[FillEmailBlock Workflow] Phase 1: Analyzing and generating proposals');
           
-          switch (email.category) {
-            case 'needs_reply':
-              if (needsReply.length < 10) { // Max 10 reply emails per block
-                const isQuickReply = email.subject.toLowerCase().includes('quick') || 
-                                   email.subject.toLowerCase().includes('yes/no') ||
-                                   email.subject.length < 50;
-                
-                needsReply.push({
-                  id: email.id,
-                  from: email.from,
-                  subject: email.subject,
-                  reason: email.daysInBacklog > 2 
-                    ? `Waiting ${email.daysInBacklog} days for reply`
-                    : email.urgency === 'urgent' 
-                      ? 'Urgent response needed'
-                      : 'Requires response',
-                  actionType: isQuickReply ? 'quick_reply' : 'thoughtful_response',
-                  daysInBacklog: email.daysInBacklog
-                });
-                estimatedMinutesUsed += isQuickReply ? 2 : 10;
-              }
-              break;
-              
-            case 'important_info':
-              if (importantInfo.length < 5) { // Max 5 FYI emails
-                importantInfo.push({
-                  id: email.id,
-                  from: email.from,
-                  subject: email.subject,
-                  reason: email.importance === 'high' 
-                    ? 'Important information'
-                    : 'FYI - may be relevant'
-                });
-                estimatedMinutesUsed += 2;
-              }
-              break;
-              
-            case 'potential_task':
-              if (convertToTask.length < 3) { // Max 3 task conversions
-                convertToTask.push({
-                  id: email.id,
-                  from: email.from,
-                  subject: email.subject,
-                  suggestedTaskTitle: extractTaskTitle(email)
-                });
-                estimatedMinutesUsed += 3;
-              }
-              break;
-              
-            case 'can_archive':
-              suggestedArchive.push({
-                id: email.id,
-                from: email.from,
-                subject: email.subject,
-                reason: email.isNewsletter 
-                  ? 'Newsletter/Promotional'
-                  : email.isNotification
-                    ? 'Automated notification'
-                    : 'No action required'
+          // Step 1: Get block details from schedule
+          const scheduleResult = await viewSchedule.execute({ date: new Date().toISOString().split('T')[0] });
+          if (!scheduleResult.success) {
+            throw new Error('Failed to get schedule');
+          }
+          
+          // Find the block by ID, time, or description
+          let block = null;
+          const searchLower = blockId.toLowerCase().trim();
+          
+          // First try exact ID match
+          block = scheduleResult.blocks.find((b: any) => b.id === blockId);
+          
+          // If not found, try to match by time
+          if (!block) {
+            const timeMatch = searchLower.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
+            if (timeMatch && timeMatch[1]) {
+              const searchTime = toMilitaryTime(timeMatch[1]);
+              block = scheduleResult.blocks.find((b: any) => {
+                const blockStart = format(new Date(b.startTime), 'HH:mm');
+                return blockStart === searchTime && b.type === 'email';
               });
-              break;
+            }
+          }
+          
+          // Try partial title match for email blocks
+          if (!block) {
+            block = scheduleResult.blocks.find((b: any) => 
+              b.type === 'email' && (
+                b.title.toLowerCase().includes(searchLower) ||
+                searchLower.includes(b.title.toLowerCase())
+              )
+            );
+          }
+          
+          // Try any email block if just "email" is mentioned
+          if (!block && searchLower.includes('email')) {
+            block = scheduleResult.blocks.find((b: any) => b.type === 'email');
+          }
+          
+          if (!block) {
+            throw new Error(`No email block matching "${blockId}" found`);
+          }
+          
+          const blockDuration = block.duration;
+          
+          // Step 2: Get email backlog using atomic tool
+          const backlogResult = await getBacklog.execute({
+            status: ['unread', 'backlog'],
+            limit: 100
+          });
+          if (!backlogResult.success) {
+            throw new Error('Failed to get email backlog');
+          }
+          
+          // Step 3: Batch categorize emails using atomic tool
+          const emailIds = backlogResult.emails.map((e: any) => e.id);
+          const categorizeResult = await batchCategorize.execute({ emailIds });
+          if (!categorizeResult.success) {
+            throw new Error('Failed to categorize emails');
+          }
+          
+          // Step 4: Group by sender for batch processing using atomic tool
+          const groupResult = await groupBySender.execute({
+            emailIds,
+            minGroupSize: 2
+          });
+          if (!groupResult.success) {
+            throw new Error('Failed to group emails');
+          }
+          
+          // Analyze categorized emails for proposals
+          const urgent = categorizeResult.categorized
+            .filter((e: any) => e.urgencyScore > 70 || e.daysInBacklog > 3)
+            .map((e: any) => ({
+              emailId: e.emailId,
+              category: e.category,
+              urgencyScore: e.urgencyScore
+            }));
+          
+          const toArchive = categorizeResult.categorized
+            .filter((e: any) => e.category === 'can_archive')
+            .map((e: any) => e.emailId);
+          
+          // Store proposal for later confirmation
+          const proposalId = crypto.randomUUID();
+          proposalStore.set(proposalId, {
+            blockId,
+            blockDuration,
+            emails: categorizeResult.categorized,
+            toArchive,
+            timestamp: new Date()
+          });
+          
+          // Return proposal for user review
+          return {
+            success: true,
+            phase: 'proposal',
+            requiresConfirmation: true,
+            proposalId,
+            blockId,
+            blockDuration,
+            proposals: {
+              urgent: urgent.slice(0, 5), // Top 5 urgent
+              batched: groupResult.groups.slice(0, 3), // Top 3 sender groups
+              toArchive
+            },
+            message: `Found ${urgent.length} urgent emails, ${groupResult.groups.length} sender batches, and ${toArchive.length} emails to archive. Process these?`,
+            summary: `Proposed processing for ${blockDuration}-minute email block`
+          };
+        }
+        
+        // PHASE 2: EXECUTION (user confirmed)
+        console.log('[FillEmailBlock Workflow] Phase 2: Executing approved email processing');
+        
+        // Get the stored proposal
+        const proposal = proposalStore.get(confirmation.proposalId);
+        if (!proposal) {
+          throw new Error('Proposal not found or expired');
+        }
+        
+        // Use modified lists if provided
+        const toArchive = confirmation.modifications?.toArchive || proposal.toArchive;
+        
+        let archived = 0;
+        
+        // Step 5: Archive emails if any using atomic tool
+        if (toArchive.length > 0) {
+          const archiveResult = await archiveBatch.execute({
+            emailIds: toArchive,
+            reason: 'Processed during email block'
+          });
+          if (archiveResult.success) {
+            archived = archiveResult.totalArchived;
           }
         }
         
-        // Group emails by sender for batch processing
-        const batchedBySender = groupEmailsBySender(needsReply);
+        // Clean up proposal
+        proposalStore.delete(confirmation.proposalId);
+        
+        // Calculate processed count (emails marked for processing, not archived)
+        const processed = proposal.emails.filter((e: any) => 
+          e.category !== 'can_archive' && !toArchive.includes(e.emailId)
+        ).length;
         
         return {
           success: true,
-          blockId,
-          urgent: needsReply.filter(e => e.daysInBacklog > 3 || e.reason.includes('Urgent')),
-          batched: batchedBySender,
-          archived: suggestedArchive.length,
-          totalToProcess: needsReply.length + importantInfo.length + convertToTask.length
+          phase: 'completed',
+          blockId: proposal.blockId,
+          processed,
+          archived,
+          summary: `Processed ${processed} emails and archived ${archived} during email block`
         };
         
       } catch (error) {
@@ -159,188 +203,11 @@ export const fillEmailBlock = registerTool(
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to fill email block',
+          phase: 'proposal' as const,
           blockId,
-          urgent: [],
-          batched: [],
-          archived: 0,
-          totalToProcess: 0
+          summary: 'Failed to manage email processing'
         };
       }
     },
   })
-);
-
-// Helper functions for email triage
-
-async function getEmailsForTriage(userId: string): Promise<any[]> {
-  // In production, this would query the emails table with status IN ('unread', 'backlog')
-  // For now, simulate with test data
-  const testEmails = [
-    {
-      id: '1',
-      from: 'boss@company.com',
-      subject: 'Urgent: Budget approval needed by EOD',
-      status: 'unread',
-      urgency: 'urgent',
-      importance: 'high',
-      daysInBacklog: 0,
-      receivedAt: new Date()
-    },
-    {
-      id: '2',
-      from: 'client@example.com',
-      subject: 'Re: Project timeline question',
-      status: 'backlog',
-      urgency: 'important',
-      importance: 'high',
-      daysInBacklog: 3,
-      receivedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
-    },
-    {
-      id: '3',
-      from: 'newsletter@techcompany.com',
-      subject: 'Your weekly tech digest',
-      status: 'unread',
-      urgency: 'low',
-      importance: 'low',
-      daysInBacklog: 0,
-      isNewsletter: true,
-      receivedAt: new Date()
-    },
-    {
-      id: '4',
-      from: 'teammate@company.com',
-      subject: 'Can you review this PR?',
-      status: 'unread',
-      urgency: 'normal',
-      importance: 'normal',
-      daysInBacklog: 1,
-      receivedAt: new Date(Date.now() - 24 * 60 * 60 * 1000)
-    },
-    {
-      id: '5',
-      from: 'service@github.com',
-      subject: 'Your CI build passed',
-      status: 'unread',
-      urgency: 'low',
-      importance: 'low',
-      daysInBacklog: 0,
-      isNotification: true,
-      receivedAt: new Date()
-    }
-  ];
-  
-  return testEmails;
-}
-
-function categorizeEmail(email: any): 'needs_reply' | 'important_info' | 'potential_task' | 'can_archive' {
-  const subjectLower = email.subject.toLowerCase();
-  const fromLower = email.from.toLowerCase();
-  
-  // Check if it's a newsletter or notification
-  if (email.isNewsletter || email.isNotification || 
-      fromLower.includes('noreply') || fromLower.includes('no-reply')) {
-    return 'can_archive';
-  }
-  
-  // Check if it needs a reply
-  if (subjectLower.includes('?') || 
-      subjectLower.includes('please') ||
-      subjectLower.includes('can you') ||
-      subjectLower.includes('re:') ||
-      email.status === 'backlog') {
-    return 'needs_reply';
-  }
-  
-  // Check if it's a potential task
-  if (subjectLower.includes('action required') ||
-      subjectLower.includes('todo') ||
-      subjectLower.includes('task') ||
-      subjectLower.includes('assignment')) {
-    return 'potential_task';
-  }
-  
-  // Default to important info
-  return 'important_info';
-}
-
-function calculateEmailScore(email: any, category: string): number {
-  let score = 0;
-  
-  // Base score by category
-  switch (category) {
-    case 'needs_reply':
-      score = 70;
-      break;
-    case 'important_info':
-      score = 50;
-      break;
-    case 'potential_task':
-      score = 60;
-      break;
-    case 'can_archive':
-      score = 10;
-      break;
-  }
-  
-  // Urgency modifier
-  if (email.urgency === 'urgent') score += 30;
-  else if (email.urgency === 'important') score += 20;
-  
-  // Age modifier - older emails get higher priority
-  score += Math.min(email.daysInBacklog * 10, 30);
-  
-  // VIP sender modifier
-  if (email.from.includes('boss') || email.from.includes('ceo') || email.from.includes('manager')) {
-    score += 20;
-  }
-  
-  return Math.min(score, 100);
-}
-
-function extractTaskTitle(email: any): string {
-  // Extract a task title from the email subject
-  const subject = email.subject;
-  
-  // Remove common prefixes
-  let taskTitle = subject
-    .replace(/^(Re:|Fwd:|FW:)\s*/gi, '')
-    .replace(/^(Action Required:|Todo:|Task:)\s*/gi, '');
-  
-  // Truncate if too long
-  if (taskTitle.length > 50) {
-    taskTitle = taskTitle.substring(0, 47) + '...';
-  }
-  
-  return taskTitle;
-}
-
-function groupEmailsBySender(emails: any[]): Array<{
-  sender: string;
-  count: number;
-  emails: Array<{ id: string; subject: string }>;
-}> {
-  const senderMap = new Map<string, any[]>();
-  
-  // Group emails by sender
-  emails.forEach(email => {
-    if (!senderMap.has(email.from)) {
-      senderMap.set(email.from, []);
-    }
-    senderMap.get(email.from)!.push({
-      id: email.id,
-      subject: email.subject
-    });
-  });
-  
-  // Convert to array and filter for batches
-  return Array.from(senderMap.entries())
-    .filter(([_, emails]) => emails.length >= 2)
-    .map(([sender, emails]) => ({
-      sender,
-      count: emails.length,
-      emails: emails.slice(0, 5) // Max 5 per batch
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5); // Max 5 batches
-} 
+); 

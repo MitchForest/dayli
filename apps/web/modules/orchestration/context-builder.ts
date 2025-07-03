@@ -5,6 +5,8 @@
  */
 
 import { ServiceFactory } from '@/services/factory/service.factory';
+import { useSimpleScheduleStore } from '@/modules/schedule/store/simpleScheduleStore';
+import { format } from 'date-fns';
 import type { OrchestrationContext } from './types';
 
 /**
@@ -12,7 +14,8 @@ import type { OrchestrationContext } from './types';
  */
 export async function buildOrchestrationContext(
   userId: string,
-  timezone: string = 'America/New_York'
+  timezone: string = 'America/New_York',
+  viewingDateOverride?: string
 ): Promise<OrchestrationContext> {
   const startTime = Date.now();
   
@@ -29,16 +32,31 @@ export async function buildOrchestrationContext(
     const taskService = factory.getTaskService();
     const preferenceService = factory.getPreferenceService();
     
+    // Get the current view date - use override if provided, otherwise from store
+    let viewingDate: Date;
+    let viewingDateStr: string;
+    
+    if (viewingDateOverride) {
+      viewingDate = new Date(viewingDateOverride);
+      viewingDateStr = viewingDateOverride;
+    } else {
+      const scheduleStore = useSimpleScheduleStore.getState();
+      viewingDate = scheduleStore.currentDate;
+      viewingDateStr = format(viewingDate, 'yyyy-MM-dd');
+    }
+    
     // Fetch all data in parallel for performance
     const currentTime = new Date();
     const dateStr = currentTime.toISOString().split('T')[0]; // YYYY-MM-DD
     
     const [
       todaySchedule,
+      viewDateSchedule,
       backlogTasks,
       preferences,
     ] = await Promise.all([
       scheduleService.getScheduleForDate(dateStr!),
+      viewingDateStr !== dateStr ? scheduleService.getScheduleForDate(viewingDateStr) : Promise.resolve([]),
       taskService.getTaskBacklog(),
       preferenceService.getUserPreferences(),
     ]);
@@ -93,6 +111,13 @@ export async function buildOrchestrationContext(
       taskState,
       emailState,
       userPatterns,
+      // Add viewing context
+      viewingContext: {
+        scheduleDate: viewingDate,
+        scheduleDateStr: viewingDateStr,
+        isViewingToday: viewingDateStr === dateStr,
+        viewDateSchedule: viewingDateStr !== dateStr ? viewDateSchedule : todaySchedule,
+      },
     };
     
     console.log('[Context Builder] Built context in', Date.now() - startTime, 'ms');

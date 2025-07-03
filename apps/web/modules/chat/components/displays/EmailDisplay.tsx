@@ -157,16 +157,16 @@ const EmailList = memo(function EmailList({ data, onAction }: EmailListProps) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => onAction?.({ type: 'triage_emails' })}
+          onClick={() => onAction?.({ type: 'categorize_emails' })}
         >
-          Triage Inbox
+          Categorize
         </Button>
         <Button
           variant="outline"
           size="sm"
-          onClick={() => onAction?.({ type: 'process_batch' })}
+          onClick={() => onAction?.({ type: 'group_by_sender' })}
         >
-          Process Batch
+          Group by Sender
         </Button>
       </div>
     </div>
@@ -271,7 +271,7 @@ const EmailContent = memo(function EmailContent({ data, onAction }: EmailContent
             variant="outline"
             size="sm"
             onClick={() => onAction?.({ 
-              type: 'convert_to_task', 
+              type: 'create_task_from_email', 
               payload: { emailId: email.id } 
             })}
           >

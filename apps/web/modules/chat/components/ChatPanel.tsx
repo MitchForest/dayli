@@ -7,6 +7,7 @@ import { ChatInput } from './ChatInput';
 import { SelectionToolbar, useTextSelection } from './SelectionToolbar';
 import { SuggestionButtons, useContextualSuggestions } from './SuggestionButtons';
 import { useScheduleStore } from '@/modules/schedule/store/scheduleStore';
+import { useSimpleScheduleStore } from '@/modules/schedule/store/simpleScheduleStore';
 import { format } from 'date-fns';
 import { isTauri } from '@/lib/utils';
 import { useAuth } from '@repo/auth/hooks';
@@ -18,6 +19,9 @@ export function ChatPanel() {
   const { supabase } = useAuth();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [showCommands, setShowCommands] = useState(false);
+  
+  // Get the current viewing date from the schedule store
+  const currentViewingDate = useSimpleScheduleStore(state => state.currentDate);
   
   // Text selection handling
   const { selectedText, clearSelection } = useTextSelection();
@@ -45,6 +49,9 @@ export function ChatPanel() {
   const chatState = useChat({
     api: '/api/chat',
     fetch: customFetch,
+    body: {
+      viewingDate: format(currentViewingDate, 'yyyy-MM-dd'),
+    },
     onError: (error) => {
       console.error('Chat error:', error);
     },
@@ -107,9 +114,35 @@ export function ChatPanel() {
   const handleSuggestionSelect = useCallback((suggestion: string) => {
     chatState.setInput(suggestion);
     setShowCommands(false);
-    // Submit immediately
-    chatState.handleSubmit(new Event('submit') as any);
+    
+    // Submit immediately - create a proper form event
+    setTimeout(() => {
+      const form = document.querySelector('form');
+      if (form) {
+        form.requestSubmit();
+      } else {
+        // Fallback to direct submit
+        chatState.handleSubmit(new Event('submit', { bubbles: true, cancelable: true }) as any);
+      }
+    }, 0);
   }, [chatState]);
+
+  // Handle modify proposal event (just set input, don't submit)
+  useEffect(() => {
+    const handleModifyProposal = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail?.text) {
+        chatState.setInput(customEvent.detail.text);
+        // Focus the input
+        if (inputRef.current) {
+          inputRef.current.focus();
+        }
+      }
+    };
+
+    window.addEventListener('modify_proposal', handleModifyProposal);
+    return () => window.removeEventListener('modify_proposal', handleModifyProposal);
+  }, [chatState, inputRef]);
 
   // Handle selection toolbar actions
   const handleCopy = useCallback(() => {
