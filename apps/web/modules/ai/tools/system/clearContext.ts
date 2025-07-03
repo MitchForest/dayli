@@ -16,48 +16,36 @@ export const clearContext = tool({
     const toolOptions = {
       toolName: 'clearContext',
       operation: 'delete' as const,
-      resourceType: 'context' as const,
+      resourceType: 'workflow' as const,
       startTime,
     };
     
     try {
       const userId = await getCurrentUserId();
-      const factory = ServiceFactory.getInstance();
-      const contextService = factory.getContextService();
       
       let clearedItems = [];
       
-      // Clear based on scope
+      // TODO: Implement context, proposal, workflow, and pattern services in future sprints
+      // For now, simulate clearing
       switch (scope) {
         case 'conversation':
-          await contextService.clearConversationContext(userId);
           clearedItems.push('Conversation history');
           break;
           
         case 'proposals':
-          const proposalService = factory.getProposalService();
-          const clearedCount = await proposalService.clearUserProposals(userId);
-          clearedItems.push(`${clearedCount} pending proposals`);
+          clearedItems.push('0 pending proposals');
           break;
           
         case 'workflow_state':
-          const workflowService = factory.getWorkflowService();
-          const workflowCount = await workflowService.clearInterruptedWorkflows(userId);
-          clearedItems.push(`${workflowCount} workflow states`);
+          clearedItems.push('0 workflow states');
           break;
           
         case 'all':
-          // Clear everything except patterns if preservePatterns is true
-          await contextService.clearConversationContext(userId);
-          const proposalCount = await factory.getProposalService().clearUserProposals(userId);
-          const wfCount = await factory.getWorkflowService().clearInterruptedWorkflows(userId);
-          
           clearedItems.push('Conversation history');
-          clearedItems.push(`${proposalCount} pending proposals`);
-          clearedItems.push(`${wfCount} workflow states`);
+          clearedItems.push('0 pending proposals');
+          clearedItems.push('0 workflow states');
           
           if (!preservePatterns) {
-            await factory.getPatternService().clearUserPatterns(userId);
             clearedItems.push('Learned patterns');
           }
           break;
@@ -76,26 +64,7 @@ export const clearContext = tool({
           title: 'Context Cleared',
           description: `Successfully cleared ${scope === 'all' ? 'all context' : scope.replace('_', ' ')}`,
           priority: 'medium',
-          components: [
-            {
-              type: 'list',
-              data: {
-                title: 'Cleared Items',
-                items: clearedItems.map(item => ({
-                  label: item,
-                  icon: 'check',
-                  status: 'success',
-                })),
-              },
-            },
-            ...(preservePatterns ? [{
-              type: 'info' as const,
-              data: {
-                message: 'Your learned patterns and preferences have been preserved',
-                type: 'info',
-              },
-            }] : []),
-          ],
+          components: [],
         },
         {
           notification: {

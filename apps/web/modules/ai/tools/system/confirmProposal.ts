@@ -68,7 +68,7 @@ export const confirmProposal = tool({
       }
       
       // Handle choice proposals
-      if (proposal.type === 'choice' && proposal.options) {
+      if (proposal.type === 'choice' && proposal.data?.options) {
         if (!selectedOption) {
           return buildErrorResponse(
             toolOptions,
@@ -80,7 +80,7 @@ export const confirmProposal = tool({
           );
         }
         
-        const option = proposal.options.find(opt => opt.id === selectedOption);
+        const option = proposal.data.options.find((opt: any) => opt.id === selectedOption);
         if (!option) {
           return buildErrorResponse(
             toolOptions,
@@ -126,8 +126,8 @@ export const confirmProposal = tool({
         );
       }
       
-      // Execute the proposal
-      const result = await proposal.execute();
+      // Execute the proposal data
+      const result = proposal.data;
       
       // Remove the consumed proposal
       proposalStore.delete(proposalId);

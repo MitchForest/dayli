@@ -199,182 +199,86 @@ When you're in a focus block:
 
 ### AI Implementation: A Multi-Layer Intelligence System
 
-Our AI architecture combines three powerful technologies to create an intelligent assistant that learns and adapts:
+Our AI architecture represents a sophisticated orchestration of multiple technologies working in harmony. The system combines intelligent routing, atomic tools, complex workflows, and continuous learning through RAG to deliver an AI executive assistant that truly understands and adapts to each user's unique working style.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                 Vercel AI SDK Layer                     │
-│  • Chat interface & streaming responses                 │
-│  • Tool orchestration (maxSteps: 5)                     │
-│  • Multi-step operations with progress                  │
-│  • Natural language understanding                       │
-│  • Automatic tool discovery via Registry                │
-└──────────────────────┬──────────────────────────────────┘
-                       │ Calls tools & workflows
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│              LangGraph Workflow Layer                   │
-│                                                         │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐      │
-│  │  Adaptive   │ │   Email     │ │    Task     │      │
-│  │ Scheduling  │ │   Triage    │ │Prioritization│     │
-│  └─────────────┘ └─────────────┘ └─────────────┘      │
-│                                                         │
-│  ┌─────────────┐ ┌─────────────┐                       │
-│  │  Calendar   │ │   Daily     │                       │
-│  │ Management  │ │   Review    │                       │
-│  └─────────────┘ └─────────────┘                       │
-│                                                         │
-│  • Complex state management via channels                │
-│  • Multi-node decision trees with conditional edges     │
-│  • Context-aware strategy selection                     │
-│  • Workflow persistence & resumability                  │
-└──────────────────────┬──────────────────────────────────┘
-                       │ Enhanced by RAG
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│          RAG (Retrieval-Augmented Generation)          │
-│                                                         │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐      │
-│  │   Pattern   │ │   Recent    │ │   Similar   │      │
-│  │    Layer    │ │   Decisions │ │ Situations  │      │
-│  └─────────────┘ └─────────────┘ └─────────────┘      │
-│                                                         │
-│  • Vector embeddings via OpenAI                         │
-│  • pgvector for similarity search                       │
-│  • Learns from every decision & rejection               │
-│  • Context injection into workflows                     │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                        User Input                            │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Orchestration Layer                         │
+│  • Intent Classification (GPT-4)                             │
+│  • RAG Context Injection                                     │
+│  • Confidence Scoring                                        │
+│  • Route Determination                                       │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+        ┌────────────┴────────────┬─────────────────┐
+        ▼                         ▼                 ▼
+┌───────────────┐       ┌───────────────┐   ┌───────────────┐
+│  AI SDK Tools │       │   LangGraph   │   │    Direct     │
+│   (Atomic)    │       │  (Workflows)  │   │  Response     │
+│               │       │               │   │               │
+│  25 Tools     │       │  4 Workflows  │   │ Conversation  │
+└───────────────┘       └───────────────┘   └───────────────┘
+        │                         │                 │
+        └─────────────┬───────────┴─────────────────┘
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│              UniversalToolResponse                           │
+│  • Structured Data                                           │
+│  • Rich UI Components                                        │
+│  • Suggestions & Actions                                     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### How Each Layer Works
+### The Orchestration Layer: Intelligent Routing
 
-#### 1. Vercel AI SDK - The Conversation Layer
-The AI SDK manages the chat interface and tool orchestration:
+The orchestration layer is the brain of our system, using GPT-4 to understand user intent and route requests appropriately:
 
 ```typescript
-// In our chat route
-const result = await streamText({
-  model: openai('gpt-4-turbo'),
-  messages,
-  tools: toolRegistry.getAll(), // Auto-discovered tools
-  maxSteps: 5, // Multi-step execution
-  onStepFinish: async ({ toolCalls, toolResults }) => {
-    // Stream progress updates to UI
-  }
-});
+interface UserIntent {
+  category: 'workflow' | 'tool' | 'conversation';
+  confidence: number; // 0-1 score
+  subcategory?: string;
+  entities: {
+    dates?: string[];
+    times?: string[];
+    people?: string[];
+    tasks?: string[];
+    emails?: string[];
+  };
+  suggestedHandler: {
+    type: 'workflow' | 'tool' | 'direct';
+    name?: string;
+    params?: Record<string, any>;
+  };
+  reasoning: string;
+}
 ```
 
-**Key Features:**
-- **Streaming Responses**: Real-time feedback as AI thinks
-- **Tool Chaining**: Can call multiple tools in sequence
-- **Progress Tracking**: Users see what's happening
-- **Error Recovery**: Graceful handling of failures
+**Routing Logic:**
+1. **High Complexity → Workflows** (confidence > 0.8)
+   - Multi-step operations like "Organize my entire day"
+   - Cross-domain requests requiring coordination
+   - Strategic planning and optimization
+   
+2. **Specific Actions → Tools** (confidence > 0.7)
+   - Single operations like "Move my 2pm meeting to 4pm"
+   - Clear parameters and direct modifications
+   
+3. **Ambiguous/Conversational → Direct Response** (confidence < 0.7)
+   - Questions, clarifications, general assistance
+   - "How should I prioritize my day?"
 
-#### 2. LangGraph - The Workflow Brain
-LangGraph handles complex, multi-step workflows with state management:
+### The Tool System: 25 Essential Operations
 
-```typescript
-// Example: Adaptive Scheduling Workflow
-const workflow = new StateGraph<SchedulingState>({
-  channels: {
-    userId: null,
-    currentSchedule: null,
-    unassignedTasks: null,
-    strategy: null, // 'full' | 'partial' | 'optimize' | 'task_only'
-    proposedChanges: [],
-    messages: []
-  }
-});
-
-// Nodes represent discrete steps
-workflow.addNode("fetchData", fetchDataNode);
-workflow.addNode("analyzeState", analyzeStateNode);
-workflow.addNode("determineStrategy", determineStrategyNode);
-workflow.addNode("executeStrategy", executeStrategyNode);
-
-// Conditional routing based on state
-workflow.addConditionalEdges(
-  "determineStrategy",
-  (state) => state.strategy,
-  {
-    full: "fullPlanningNode",
-    partial: "partialFillNode",
-    optimize: "optimizationNode",
-    task_only: "taskAssignmentNode"
-  }
-);
-```
-
-**Workflow Patterns:**
-- **State Channels**: Type-safe state management across nodes
-- **Conditional Edges**: Dynamic routing based on analysis
-- **Error Boundaries**: Each node can fail gracefully
-- **Persistence**: Workflows can be interrupted and resumed
-
-#### 3. RAG System - The Memory Layer
-Our RAG implementation gives the AI long-term memory and learning:
+All tools follow the AI SDK pattern and return `UniversalToolResponse` for consistent UI rendering:
 
 ```typescript
-// Storing context with embeddings
-await ragService.storeContext({
-  userId: user.id,
-  type: 'pattern', // or 'decision', 'preference', 'rejection'
-  content: 'User moved lunch from 12:00 to 11:30',
-  metadata: { 
-    reason: 'Earlier meeting',
-    confidence: 0.85 
-  },
-  embedding: await openai.embeddings.create({
-    model: "text-embedding-3-small",
-    input: content
-  })
-});
-
-// Retrieving relevant context
-const context = await ragService.getContext(userId, query, {
-  includePatterns: true,    // Long-term behaviors
-  includeRecent: true,      // Last 7 days
-  includeSimilar: true      // Vector similarity search
-});
-
-// Context enhances workflow decisions
-const enhancedState = {
-  ...workflowState,
-  ragContext: {
-    patterns: ["User prefers lunch at 11:30"],
-    recentDecisions: ["Moved meeting yesterday for focus time"],
-    similarSituations: ["Last time with back-to-back meetings..."]
-  }
-};
-```
-
-**Learning Mechanisms:**
-- **Pattern Extraction**: Identifies recurring behaviors
-- **Rejection Learning**: Remembers what NOT to do
-- **Preference Evolution**: Tracks changing preferences
-- **Similarity Search**: Finds relevant past situations
-
-### The Tool System
-
-Tools are the atomic units of functionality that both the AI SDK and workflows can use:
-
-```typescript
-// Tool Registry Pattern - Auto-discovery
-export const toolRegistry = new ToolRegistry();
-
-// Tools organized by category
-/modules/ai/tools/
-  ├── schedule/
-  │   ├── createTimeBlock.ts
-  │   ├── moveTimeBlock.ts
-  │   └── index.ts (exports all)
-  ├── email/
-  │   ├── readEmailContent.ts
-  │   └── processEmailToTask.ts
-  └── registry.ts
-
-// Standardized Tool Result format
+// Example tool implementation
 export const createTimeBlock = tool({
   description: "Create a new time block in the schedule",
   parameters: z.object({
@@ -384,131 +288,181 @@ export const createTimeBlock = tool({
     duration: z.number()
   }),
   execute: async (params) => {
-    try {
-      const block = await scheduleService.create(params);
-      return toolSuccess(block, {
-        type: 'schedule',
-        content: block
-      }, {
-        suggestions: ['Add tasks to this block', 'View schedule']
-      });
-    } catch (error) {
-      return toolError('BLOCK_CREATE_FAILED', error.message);
-    }
+    const block = await scheduleService.create(params);
+    return buildToolResponse(block, {
+      type: 'schedule',
+      suggestions: ['Add tasks to this block', 'View schedule']
+    });
   }
 });
 ```
 
-**Tool Patterns:**
-- **Standardized Results**: All tools return `ToolResult<T>`
-- **Display Hints**: Tools suggest how to show results
-- **Error Handling**: Consistent error format
-- **Auto-Registration**: No manual imports needed
+**Tool Categories:**
+- **Schedule Tools (5)**: viewSchedule, createTimeBlock, moveTimeBlock, deleteTimeBlock, fillWorkBlock
+- **Task Tools (4)**: createTask, updateTask, completeTask, viewTasks
+- **Email Tools (3)**: viewEmails, readEmail, processEmail
+- **Calendar Tools (2)**: scheduleMeeting, rescheduleMeeting
+- **Preference Tool (1)**: updatePreferences
+- **Workflow Tools (4)**: optimizeSchedule, triageEmails, prioritizeTasks, optimizeCalendar
+- **System Tools (6)**: confirmProposal, showWorkflowHistory, resumeWorkflow, provideFeedback, showPatterns, clearContext
 
-### How It All Connects
+### LangGraph Workflows: Complex Multi-Step Operations
 
-1. **User Input** → "Plan my day with focus on deep work"
+Workflows use LangGraph for sophisticated state management and decision trees:
 
-2. **AI SDK Layer**:
-   - Understands intent
-   - Selects `scheduleDay` tool
-   - Begins streaming response
+#### Adaptive Scheduling Workflow
+```typescript
+interface SchedulingState {
+  userId: string;
+  date: string;
+  currentSchedule: TimeBlock[];
+  tasks: TaskWithScore[];
+  emails: EmailWithUrgency[];
+  preferences: UserPreferences;
+  analysis: ScheduleAnalysis;
+  strategy: SchedulingStrategy;
+  proposedChanges: ScheduleChange[];
+  validationResult: ValidationResult;
+}
 
-3. **Tool Execution**:
-   - `scheduleDay` creates LangGraph workflow
-   - Workflow enhanced with RAG context
+// Workflow nodes
+const workflow = new StateGraph<SchedulingState>({
+  channels: { /* state definition */ }
+});
 
-4. **LangGraph Workflow**:
-   - **fetchData**: Gets current state
-   - **analyzeState**: Determines schedule fullness
-   - **RAG Enhancement**: "User prefers morning deep work"
-   - **determineStrategy**: Selects 'partial' strategy
-   - **executeStrategy**: Creates optimal blocks
-   - **validateSchedule**: Ensures no conflicts
+workflow.addNode("fetchScheduleData", fetchDataNode);
+workflow.addNode("analyzeScheduleState", analyzeStateNode);
+workflow.addNode("determineStrategy", strategyNode);
+workflow.addNode("executeStrategy", executeNode);
+workflow.addNode("validateChanges", validateNode);
 
-5. **Learning**:
-   - Stores decisions in RAG
-   - Updates patterns if recurring
-   - Learns from any rejections
+// Conditional routing based on analysis
+workflow.addConditionalEdges(
+  "determineStrategy",
+  (state) => state.strategy,
+  {
+    full: "fullPlanningNode",
+    optimize: "optimizationNode",
+    partial: "partialFillNode",
+    minimal: "minimalAdjustNode"
+  }
+);
+```
 
-6. **Response**:
-   - Streams natural language summary
-   - Shows proposed changes
-   - Awaits confirmation
+**All 4 Workflows:**
+1. **Adaptive Scheduling**: Intelligently plans or reorganizes daily schedules
+2. **Email Management**: 2D triage with importance × urgency analysis
+3. **Task Intelligence**: Context-aware scoring and prioritization
+4. **Calendar Optimization**: Meeting consolidation and conflict resolution
 
-### Why This Architecture?
+### RAG Integration: Continuous Learning
 
-**1. Separation of Concerns:**
-- AI SDK: Conversation and tool orchestration
-- LangGraph: Complex stateful logic
-- RAG: Memory and learning
-- Tools: Atomic operations
-
-**2. Scalability:**
-- New tools auto-discovered
-- Workflows independent and composable
-- RAG learns without code changes
-
-**3. Reliability:**
-- Each layer can fail independently
-- Workflows are resumable
-- State is always consistent
-
-**4. User Experience:**
-- Streaming for immediate feedback
-- Natural language throughout
-- Learning improves over time
-- No configuration needed
-
-### The Tools (What AI Can Do)
+Our RAG system provides personalization through three layers:
 
 ```typescript
-// Direct action tools (AI SDK)
-const tools = {
-  createTimeBlock,      // "Schedule deep work at 9am"
-  moveTimeBlock,        // "Move my meeting to 3pm"
-  deleteTimeBlock,      // "Cancel email time"
-  assignTaskToBlock,    // "Add code review to morning"
-  completeTask,         // "Mark refactor as done"
-  getSchedule,          // "What's my schedule?"
+// Three-layer context system
+interface RAGContext {
+  // Layer 1: Immediate Context (Real-time)
+  currentSchedule: TimeBlock[];
+  recentActions: Action[];
+  timeOfDay: string;
   
-  // Complex workflows (LangGraph)
-  scheduleDay,          // "Plan my day" → Full workflow
-  triageEmails,         // "Process emails" → 2D analysis
-  prioritizeTasks,      // "What should I work on?" → Smart task selection
-  optimizeSchedule,     // "Optimize my day" → Non-destructive improvements
-  dailyReview,          // "How did I do?" → Learn and prepare tomorrow
-  updatePreference,     // "I prefer lunch at 11:30"
+  // Layer 2: Historical Patterns (Embedded)
+  patterns: Pattern[]; // "User prefers meetings after 10am"
+  decisions: Decision[]; // Past scheduling choices
+  
+  // Layer 3: Extracted Insights (Learned)
+  insights: Insight[]; // "Takes breaks every 90 minutes"
+  constraints: Constraint[]; // "No meetings before 9am"
+}
+
+// Learning from rejections
+async function learnFromRejection(rejection: Rejection) {
+  const pattern = await extractPattern(rejection);
+  await ragService.storeContext({
+    userId: rejection.userId,
+    type: 'constraint',
+    content: pattern.description,
+    embedding: await generateEmbedding(pattern),
+    metadata: {
+      confidence: pattern.confidence,
+      source: 'user_rejection'
+    }
+  });
 }
 ```
 
-### Data Flow
+### UniversalToolResponse: Consistent UI Rendering
 
+All tools and workflows return this standardized format:
+
+```typescript
+interface UniversalToolResponse {
+  metadata: {
+    toolName: string;
+    operation: 'create' | 'read' | 'update' | 'delete' | 'execute';
+    resourceType: string;
+    timestamp: string;
+    executionTime: number;
+  };
+  
+  data: any; // Tool-specific data
+  
+  display: {
+    type: 'card' | 'list' | 'timeline' | 'grid' | 'form' | 'confirmation' | 'progress';
+    title: string;
+    description?: string;
+    priority: 'high' | 'medium' | 'low';
+    components: Component[]; // Rich UI components
+  };
+  
+  ui: {
+    notification?: Notification;
+    suggestions: string[];
+    actions: Action[];
+    confirmationRequired?: boolean;
+  };
+  
+  streaming?: StreamingSupport;
+  error?: ErrorInfo;
+}
 ```
-User Input → AI SDK → Tool Selection → Execute
-                ↓                         ↓
-            Streaming              Simple Tool or
-            Response              LangGraph Workflow
-                                         ↓
-                                   Complex Logic
-                                   (nodes, edges)
-                                         ↓
-                                   Database/APIs
-```
 
-### The Stack
+### System Intelligence Features
 
-- **Frontend**: Next.js 14 + TypeScript + Tailwind CSS
-- **Desktop**: Tauri (10MB native app)
-- **AI Orchestration**: 
-  - Vercel AI SDK (chat, streaming, tools)
-  - LangGraph (complex workflows)
-- **LLM**: OpenAI GPT-4 Turbo
-- **Vector DB**: Supabase + pgvector (for RAG)
-- **Database**: PostgreSQL with RLS
-- **Auth**: Supabase Auth (Google OAuth)
-- **APIs**: Gmail API, Google Calendar API
-- **Monorepo**: Turborepo for coordinated development
+**Adaptive Behaviors:**
+- **Time-of-Day Intelligence**: Morning for complex tasks, afternoon for collaboration
+- **Energy Management**: Tracks peak performance, suggests breaks, balances task types
+- **Context Switching Minimization**: Groups similar tasks, batches emails
+
+**Personalization Engine:**
+- **Explicit Feedback**: User confirmations/rejections
+- **Implicit Signals**: Task completion times, email patterns
+- **Pattern Recognition**: Recurring behaviors and preferences
+- **Outcome Tracking**: Success rates of suggestions
+
+**Continuous Improvement:**
+- A/B testing internal strategies
+- Weekly pattern analysis
+- Monthly preference updates
+- Cross-user learning (privacy-preserved)
+
+### Production Architecture
+
+**Performance Characteristics:**
+- Tool Execution: < 2 seconds (p95)
+- Workflow Completion: < 5 seconds (p95)
+- Intent Classification: < 300ms
+- RAG Context Retrieval: < 500ms
+- UI Update Latency: < 100ms
+
+**Scalability & Reliability:**
+- Stateless tools for horizontal scaling
+- Redis-backed workflow persistence
+- Vector DB with caching for embeddings
+- Automatic retries with exponential backoff
+- Circuit breakers prevent cascade failures
+- Graceful degradation to simpler operations
 
 ## Design Decisions That Matter
 

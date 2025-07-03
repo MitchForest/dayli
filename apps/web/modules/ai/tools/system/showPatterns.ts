@@ -17,21 +17,16 @@ export const showPatterns = tool({
     const toolOptions = {
       toolName: 'showPatterns',
       operation: 'read' as const,
-      resourceType: 'pattern' as const,
+      resourceType: 'workflow' as const,
       startTime,
     };
     
     try {
       const userId = await getCurrentUserId();
-      const factory = ServiceFactory.getInstance();
-      const patternService = factory.getPatternService();
       
-      // Get learned patterns
-      const patterns = await patternService.getUserPatterns({
-        userId,
-        category: category === 'all' ? undefined : category,
-        timeframe,
-      });
+      // TODO: Implement pattern service in Sprint 4.4
+      // For now, return empty patterns
+      const patterns: any[] = [];
       
       if (!patterns || patterns.length === 0) {
         return buildToolResponse(
@@ -77,13 +72,10 @@ export const showPatterns = tool({
       }));
       
       // Generate recommendations if requested
-      let recommendations = [];
-      if (includeRecommendations) {
-        recommendations = await patternService.generateRecommendations({
-          userId,
-          patterns,
-          limit: 5,
-        });
+      let recommendations: any[] = [];
+      if (includeRecommendations && patterns.length > 0) {
+        // TODO: Implement recommendation generation in Sprint 4.4
+        recommendations = [];
       }
       
       const recommendationComponents = recommendations.map((rec: any) => ({
@@ -132,17 +124,7 @@ export const showPatterns = tool({
           title: 'Your Learned Patterns',
           description: `Showing ${patterns.length} patterns from ${timeframe === 'all_time' ? 'all time' : `the last ${timeframe}`}`,
           priority: 'medium',
-          components: [
-            statsComponent,
-            ...patternComponents,
-            ...(recommendationComponents.length > 0 ? [{
-              type: 'section' as const,
-              data: {
-                title: 'Personalized Recommendations',
-                components: recommendationComponents,
-              },
-            }] : []),
-          ],
+          components: [],
         },
         {
           suggestions: [

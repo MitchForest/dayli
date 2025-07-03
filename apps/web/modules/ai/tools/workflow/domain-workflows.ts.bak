@@ -251,7 +251,6 @@ export const prioritizeTasks = tool({
         }
       );
       
-      /* Commented out - workflow not implemented yet
       const result = await workflow.invoke({
         userId,
         data: {
@@ -358,7 +357,6 @@ export const prioritizeTasks = tool({
           }] : [],
         }
       );
-      */
     } catch (error) {
       return buildErrorResponse(
         toolOptions,
@@ -399,7 +397,6 @@ export const optimizeCalendar = tool({
         }
       );
       
-      /* Commented out - workflow not implemented yet
       const result = await workflow.invoke({
         userId,
         startDate: date || format(new Date(), 'yyyy-MM-dd'),
@@ -547,7 +544,6 @@ export const optimizeCalendar = tool({
           }],
         }
       );
-      */
     } catch (error) {
       return buildErrorResponse(
         toolOptions,

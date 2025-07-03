@@ -5,6 +5,38 @@ import { type Task, type TaskSearchResult, type TaskGroup } from '../../schemas/
 import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
 import { ServiceFactory } from '@/services/factory/service.factory';
 
+// Calculate priority score for a task based on multiple factors
+function calculateTaskScore(task: any): number {
+  let score = 50; // Base score
+  
+  // Priority scoring
+  if (task.priority === 'high') score += 30;
+  else if (task.priority === 'medium') score += 15;
+  else if (task.priority === 'low') score += 5;
+  
+  // Days in backlog (urgency)
+  const daysInBacklog = task.days_in_backlog || 0;
+  if (daysInBacklog > 7) score += 20;
+  else if (daysInBacklog > 3) score += 10;
+  else if (daysInBacklog > 1) score += 5;
+  
+  // Source scoring (emails might be more urgent)
+  if (task.source === 'email') score += 10;
+  else if (task.source === 'calendar') score += 5;
+  
+  // Has due date
+  if (task.dueDate) {
+    const daysUntilDue = Math.floor((new Date(task.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    if (daysUntilDue <= 0) score += 40; // Overdue
+    else if (daysUntilDue <= 1) score += 30; // Due today/tomorrow
+    else if (daysUntilDue <= 3) score += 20; // Due this week
+    else if (daysUntilDue <= 7) score += 10;
+  }
+  
+  // Cap score at 100
+  return Math.min(score, 100);
+}
+
 export const viewTasks = tool({
   description: "View tasks with scoring and filters - understands natural language like 'pending', 'todo', 'unscheduled', 'done'",
   parameters: z.object({
@@ -50,10 +82,10 @@ export const viewTasks = tool({
       // Normalize the status parameter
       const normalizedStatus = statusMap[params.status.toLowerCase()] || params.status;
       
-      // Get tasks with scores in parallel
+      // Get tasks in parallel
       const [backlogTasks, scheduledTasks, completedTasks] = await Promise.all([
         normalizedStatus === 'backlog' || normalizedStatus === 'all' 
-          ? taskService.getTasksWithScores({ status: ['backlog'], userId: '' })
+          ? taskService.getTaskBacklog()
           : Promise.resolve([]),
         normalizedStatus === 'scheduled' || normalizedStatus === 'all'
           ? taskService.getTasksByStatus('scheduled')
@@ -63,8 +95,14 @@ export const viewTasks = tool({
           : Promise.resolve([])
       ]);
       
-      // Combine all tasks
-      let tasks = [...backlogTasks, ...scheduledTasks, ...completedTasks];
+      // Add scoring to tasks
+      const addScore = (task: any) => ({
+        ...task,
+        score: calculateTaskScore(task)
+      });
+      
+      // Combine all tasks with scores
+      let tasks = [...backlogTasks.map(addScore), ...scheduledTasks.map(addScore), ...completedTasks.map(addScore)];
       
       // Apply filters
       let filteredTasks = tasks;
@@ -93,7 +131,7 @@ export const viewTasks = tool({
       }
       
       // Sort by score for backlog items, by date for others
-      filteredTasks.sort((a, b) => {
+      filteredTasks.sort((a: any, b: any) => {
         if (a.status === 'backlog' && b.status === 'backlog') {
           return (b.score || 0) - (a.score || 0);
         }
@@ -172,16 +210,7 @@ export const viewTasks = tool({
               ? 'No tasks found matching your criteria'
               : `${formattedTasks.length} task${formattedTasks.length !== 1 ? 's' : ''} found`),
           priority: 'medium',
-          components: [
-            {
-              type: 'taskList',
-              data: {
-                tasks: formattedTasks,
-                showScore: params.showScores,
-                groupBy: 'status',
-              },
-            },
-          ],
+          components: [],
         },
         {
           suggestions: results.length === 0

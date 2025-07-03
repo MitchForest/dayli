@@ -85,64 +85,52 @@ export const useTaskActions = () => {
       throw taskError;
     }
 
-    // Add to time block
-    const { error: linkError } = await supabase
-      .from('time_block_tasks')
-      .insert({
-        time_block_id: blockId,
-        task_id: newTask.id,
-        position: 0,
-      });
+    // Update task with time block assignment
+    const { error: updateError } = await supabase
+      .from('tasks')
+      .update({ 
+        assigned_to_block_id: blockId,
+        status: 'scheduled'
+      })
+      .eq('id', newTask.id);
 
-    if (linkError) {
-      console.error('Error linking task to block:', linkError);
-      throw linkError;
+    if (updateError) {
+      console.error('Error assigning task to block:', updateError);
+      throw updateError;
     }
 
     return newTask;
   }, [supabase, user]);
 
   const removeTaskFromBlock = useCallback(async (blockId: string, taskId: string) => {
-    // Remove from time block
-    const { error: unlinkError } = await supabase
-      .from('time_block_tasks')
-      .delete()
-      .eq('time_block_id', blockId)
-      .eq('task_id', taskId);
-
-    if (unlinkError) {
-      console.error('Error unlinking task:', unlinkError);
-      throw unlinkError;
-    }
-
-    // Update task status back to backlog
+    // Update task to remove block assignment
     const { error: updateError } = await supabase
       .from('tasks')
-      .update({ status: 'backlog' })
+      .update({ 
+        assigned_to_block_id: null,
+        status: 'backlog' 
+      })
       .eq('id', taskId);
 
     if (updateError) {
-      console.error('Error updating task status:', updateError);
+      console.error('Error removing task from block:', updateError);
       throw updateError;
     }
   }, [supabase]);
 
   const loadTasksForBlock = useCallback(async (blockId: string): Promise<Task[]> => {
     const { data, error } = await supabase
-      .from('time_block_tasks')
-      .select(`
-        task_id,
-        tasks!inner (*)
-      `)
-      .eq('time_block_id', blockId)
-      .order('position');
+      .from('tasks')
+      .select('*')
+      .eq('assigned_to_block_id', blockId)
+      .order('created_at');
 
     if (error) {
       console.error('Error loading tasks:', error);
       return [];
     }
 
-    return data?.map(d => d.tasks).filter(Boolean) || [];
+    return data || [];
   }, [supabase]);
 
   return {

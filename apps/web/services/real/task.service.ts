@@ -158,10 +158,18 @@ export class RealTaskService implements TaskService {
 
   async addToBacklog(task: Omit<TaskBacklog, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<TaskBacklog> {
     const { data, error } = await this.supabase
-      .from('task_backlog')
+      .from('tasks')
       .insert({
         user_id: this.userId,
-        ...task
+        status: 'backlog',
+        title: task.title,
+        description: task.description,
+        priority: task.priority >= 80 ? 'high' : task.priority >= 50 ? 'medium' : 'low',
+        urgency: task.urgency,
+        estimated_minutes: task.estimatedMinutes,
+        source: task.source,
+        source_id: task.sourceId,
+        tags: task.tags,
       })
       .select()
       .single();
@@ -173,10 +181,10 @@ export class RealTaskService implements TaskService {
 
   async getBacklogTasks(includeDeferred = false): Promise<TaskBacklog[]> {
     let query = this.supabase
-      .from('task_backlog')
+      .from('tasks')
       .select()
       .eq('user_id', this.userId)
-      .order('priority', { ascending: false })
+      .eq('status', 'backlog')
       .order('urgency', { ascending: false });
 
     if (!includeDeferred) {
@@ -192,14 +200,15 @@ export class RealTaskService implements TaskService {
 
   async updateBacklogPriority(id: string, priority: number, urgency: number): Promise<void> {
     const { error } = await this.supabase
-      .from('task_backlog')
+      .from('tasks')
       .update({ 
-        priority,
+        priority: priority >= 80 ? 'high' : priority >= 50 ? 'medium' : 'low',
         urgency,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
-      .eq('user_id', this.userId);
+      .eq('user_id', this.userId)
+      .eq('status', 'backlog');
 
     if (error) throw new Error(`Failed to update backlog priority: ${error.message}`);
   }

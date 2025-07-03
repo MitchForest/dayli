@@ -432,7 +432,8 @@ async function handleMockData() {
       if (userTimeBlocks && userTimeBlocks.length > 0) {
         const timeBlockIds = userTimeBlocks.map(tb => tb.id);
         
-        await supabase.from('time_block_tasks').delete().in('time_block_id', timeBlockIds);
+        // Update tasks to remove block assignments
+        await supabase.from('tasks').update({ assigned_to_block_id: null }).in('assigned_to_block_id', timeBlockIds);
         await supabase.from('time_block_emails').delete().in('time_block_id', timeBlockIds);
       }
       
@@ -440,8 +441,7 @@ async function handleMockData() {
       await supabase.from('daily_schedules').delete().eq('user_id', userId);
       await supabase.from('tasks').delete().eq('user_id', userId);
       await supabase.from('emails').delete().eq('user_id', userId);
-      await supabase.from('task_backlog').delete().eq('user_id', userId);
-      await supabase.from('email_backlog').delete().eq('user_id', userId);
+      // Note: task_backlog and email_backlog are now views, data is in main tables
       
       console.log('✅ All mock data cleared successfully');
       return;
@@ -451,21 +451,32 @@ async function handleMockData() {
     console.log('📧 Generating emails...');
     const mockEmails = generateMockEmails(15);
     
-    const emails: EmailInsert[] = mockEmails.map(email => ({
-      user_id: userId,
-      gmail_id: `msg_${Math.random().toString(36).substring(7)}`,
-      from_email: email.from_email,
-      from_name: email.from_name,
-      subject: email.subject,
-      body_preview: email.body_preview,
-      full_body: email.full_body,
-      is_read: email.is_read,
-      received_at: email.received_at,
-      metadata: {
-        labelIds: email.is_read ? ['INBOX'] : ['INBOX', 'UNREAD'],
-        threadId: `thread_${Math.random().toString(36).substring(7)}`,
-      },
-    }));
+    const emails: EmailInsert[] = mockEmails.map((email, index) => {
+      // Vary importance and urgency for backlog
+      const urgency = index < 3 ? 'urgent' : index < 8 ? 'important' : 'normal';
+      const importance = index < 5 ? 'high' : index < 10 ? 'normal' : 'low';
+      const status = email.is_read ? 'read' : 'unread';
+      
+      return {
+        user_id: userId,
+        gmail_id: `msg_${Math.random().toString(36).substring(7)}`,
+        from_email: email.from_email,
+        from_name: email.from_name,
+        subject: email.subject,
+        body_preview: email.body_preview,
+        full_body: email.full_body,
+        is_read: email.is_read,
+        received_at: email.received_at,
+        status,
+        urgency,
+        importance,
+        days_in_backlog: Math.floor(Math.random() * 5),
+        metadata: {
+          labelIds: email.is_read ? ['INBOX'] : ['INBOX', 'UNREAD'],
+          threadId: `thread_${Math.random().toString(36).substring(7)}`,
+        },
+      };
+    });
     
     const { data: insertedEmails, error: emailError } = await supabase
       .from('emails')
@@ -477,46 +488,30 @@ async function handleMockData() {
     } else {
       console.log(`✅ Inserted ${emails.length} emails`);
       
-      // Create email backlog entries
-      if (insertedEmails) {
-        const emailBacklog: TablesInsert<'email_backlog'>[] = insertedEmails.map((email, index) => {
-          // Vary importance and urgency
-          const importance = index < 5 ? 'important' : index < 10 ? 'not_important' : 'archive';
-          const urgency = index < 3 ? 'urgent' : index < 8 ? 'can_wait' : 'no_response';
-          
-          return {
-            user_id: userId,
-            email_id: email.id,
-            subject: email.subject,
-            from_email: email.from_email,
-            importance,
-            urgency,
-            days_in_backlog: Math.floor(Math.random() * 5),
-            last_reviewed_at: new Date().toISOString(),
-            snippet: email.body_preview,
-          };
-        });
-        
-        const { error: backlogError } = await supabase
-          .from('email_backlog')
-          .insert(emailBacklog);
-          
-        if (backlogError) {
-          console.error('❌ Error inserting email backlog:', backlogError);
-        } else {
-          console.log(`✅ Created email backlog entries`);
-        }
-      }
+      // Email backlog data is now part of the emails table via status and urgency columns
+      console.log('✅ Email backlog data included in emails table');
     }
     
     // 5. Generate tasks (20-40 in backlog)
     console.log('📋 Generating tasks...');
     const mockTasks = generateMockTasks(userId, 30);
     
-    const tasks: TaskInsert[] = mockTasks.map(task => ({
-      ...task,
-      user_id: userId,
-    } as TaskInsert));
+    const tasks: TaskInsert[] = mockTasks.map((task, index) => {
+      // Add backlog-specific fields
+      const urgency = Math.max(0, 100 - (index * 3)); // Decreasing urgency
+      const status = index < 5 ? 'scheduled' : 'backlog'; // First 5 scheduled, rest in backlog
+      
+      return {
+        ...task,
+        user_id: userId,
+        status,
+        urgency,
+        tags: index < 10 ? ['important'] : index < 20 ? ['routine'] : ['low-priority'],
+        metadata: {
+          days_in_backlog: status === 'backlog' ? Math.floor(Math.random() * 10) : 0,
+        },
+      } as TaskInsert;
+    });
     
     const { data: insertedTasks, error: taskError } = await supabase
       .from('tasks')
@@ -528,32 +523,8 @@ async function handleMockData() {
     } else {
       console.log(`✅ Inserted ${tasks.length} tasks`);
       
-      // Create task backlog entries
-      if (insertedTasks) {
-        const taskBacklog: TablesInsert<'task_backlog'>[] = insertedTasks.map((task, index) => ({
-          user_id: userId,
-          title: task.title,
-          description: task.description,
-          priority: Math.max(0, 100 - (index * 3)), // Decreasing priority
-          urgency: Math.max(0, 80 - (index * 2)), // Decreasing urgency
-          source: task.source === 'manual' || task.source === 'email' || task.source === 'calendar' 
-            ? task.source 
-            : 'manual', // Ensure source is valid
-          source_id: task.id,
-          estimated_minutes: task.estimated_minutes,
-          tags: index < 10 ? ['important'] : index < 20 ? ['routine'] : ['low-priority'],
-        }));
-        
-        const { error: backlogError } = await supabase
-          .from('task_backlog')
-          .insert(taskBacklog);
-          
-        if (backlogError) {
-          console.error('❌ Error inserting task backlog:', backlogError);
-        } else {
-          console.log(`✅ Created task backlog entries`);
-        }
-      }
+      // Task backlog data is now part of the tasks table via status='backlog' and metadata columns
+      console.log('✅ Task backlog data included in tasks table');
     }
     
     // 6. Generate calendar events and schedules
@@ -1148,10 +1119,10 @@ async function handleMockData() {
           
           if (insertedBlocks && insertedBlocks.length > 0) {
             // Assign tasks intelligently based on block type
-            const taskAssignments: TablesInsert<'time_block_tasks'>[] = [];
             let taskIndex = 0;
+            let assignedCount = 0;
             
-            insertedBlocks.forEach((block) => {
+            for (const block of insertedBlocks) {
               // Focus blocks get 2-3 tasks, work blocks get 1-2
               const tasksPerBlock = block.type === 'work' 
                 ? Math.floor(Math.random() * 2) + 2 
@@ -1161,22 +1132,23 @@ async function handleMockData() {
                 // Skip if this would exceed reasonable task count
                 if (taskIndex >= insertedTasks.length) break;
                 
-                taskAssignments.push({
-                  time_block_id: block.id,
-                  task_id: insertedTasks[taskIndex]!.id,
-                });
+                const { error: assignError } = await supabase
+                  .from('tasks')
+                  .update({ 
+                    assigned_to_block_id: block.id,
+                    status: 'scheduled'
+                  })
+                  .eq('id', insertedTasks[taskIndex]!.id);
+                  
+                if (!assignError) {
+                  assignedCount++;
+                }
                 taskIndex++;
               }
-            });
+            }
             
-            if (taskAssignments.length > 0) {
-              const { error: assignError } = await supabase
-                .from('time_block_tasks')
-                .insert(taskAssignments);
-                
-              if (!assignError) {
-                console.log(`  ✓ Assigned ${taskAssignments.length} tasks to work blocks`);
-              }
+            if (assignedCount > 0) {
+              console.log(`  ✓ Assigned ${assignedCount} tasks to work blocks`);
             }
           }
         }

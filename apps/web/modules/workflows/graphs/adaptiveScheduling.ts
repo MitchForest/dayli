@@ -18,7 +18,7 @@ import {
 import { 
   createTimeBlock,
   moveTimeBlock,
-  assignTaskToBlock,
+  // assignTaskToBlock, // TODO: Implement in Sprint 4.3
   deleteTimeBlock
 } from '@/modules/ai/tools';
 

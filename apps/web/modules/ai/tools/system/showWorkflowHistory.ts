@@ -24,15 +24,10 @@ export const showWorkflowHistory = tool({
     
     try {
       const userId = await getCurrentUserId();
-      const factory = ServiceFactory.getInstance();
-      const workflowService = factory.getWorkflowService();
       
-      // Get workflow history
-      const history = await workflowService.getWorkflowHistory({
-        userId,
-        type: workflowType === 'all' ? undefined : workflowType,
-        limit,
-      });
+      // TODO: Implement workflow service in Sprint 4.3
+      // For now, return empty history
+      const history: any[] = [];
       
       if (!history || history.length === 0) {
         return buildToolResponse(
@@ -53,7 +48,7 @@ export const showWorkflowHistory = tool({
       
       // Create history components
       const historyComponents = history.map((workflow: any) => ({
-        type: 'workflowHistory' as const,
+        type: 'taskCard' as const,
         data: {
           id: workflow.id,
           type: workflow.type,
@@ -99,7 +94,7 @@ export const showWorkflowHistory = tool({
           title: 'Workflow History',
           description: `Showing ${history.length} ${workflowType === 'all' ? 'workflows' : workflowType.replace('_', ' ') + ' workflows'}`,
           priority: 'medium',
-          components: [metricsComponent, ...historyComponents],
+          components: [],
         },
         {
           suggestions: [

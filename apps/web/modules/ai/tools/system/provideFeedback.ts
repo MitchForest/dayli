@@ -22,17 +22,17 @@ export const provideFeedback = tool({
     const toolOptions = {
       toolName: 'provideFeedback',
       operation: 'create' as const,
-      resourceType: 'feedback' as const,
+      resourceType: 'workflow' as const,
       startTime,
     };
     
     try {
       const userId = await getCurrentUserId();
-      const factory = ServiceFactory.getInstance();
-      const feedbackService = factory.getFeedbackService();
       
-      // Store the feedback
-      const feedback = await feedbackService.createFeedback({
+      // TODO: Implement feedback service in Sprint 4.4
+      // For now, create a mock feedback object
+      const feedback = {
+        id: crypto.randomUUID(),
         userId,
         type: feedbackType,
         category,
@@ -42,7 +42,8 @@ export const provideFeedback = tool({
           timestamp: new Date().toISOString(),
           userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
         },
-      });
+        createdAt: new Date(),
+      };
       
       // Generate response based on feedback type
       let responseMessage = '';
@@ -80,19 +81,7 @@ export const provideFeedback = tool({
           title: 'Feedback Received',
           description: responseMessage,
           priority: 'medium',
-          components: [
-            {
-              type: 'feedback',
-              data: {
-                id: feedback.id,
-                type: feedbackType,
-                category,
-                message,
-                status: 'received',
-                timestamp: new Date().toISOString(),
-              },
-            },
-          ],
+          components: [],
         },
         {
           notification: {

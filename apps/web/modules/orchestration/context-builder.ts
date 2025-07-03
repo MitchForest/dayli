@@ -38,7 +38,7 @@ export async function buildOrchestrationContext(
       backlogTasks,
       preferences,
     ] = await Promise.all([
-      scheduleService.getScheduleForDate(dateStr || new Date().toISOString().split('T')[0]),
+      scheduleService.getScheduleForDate(dateStr!),
       taskService.getTaskBacklog(),
       preferenceService.getUserPreferences(),
     ]);
