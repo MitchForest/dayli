@@ -1,7 +1,6 @@
 import { Metadata } from "next";
 import { Geist } from "next/font/google";
-import { MarketingHeader } from "./components/MarketingHeader";
-import { MarketingFooter } from "./components/MarketingFooter";
+import { MarketingLayoutClient } from "./components/MarketingLayoutClient";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -61,9 +60,9 @@ export default function MarketingLayout({
 }) {
   return (
     <div className={`${geistSans.variable} font-sans`}>
-      <MarketingHeader />
-      <main>{children}</main>
-      <MarketingFooter />
+      <MarketingLayoutClient>
+        {children}
+      </MarketingLayoutClient>
     </div>
   );
 } 

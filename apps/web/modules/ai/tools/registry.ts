@@ -76,8 +76,12 @@ export class ToolRegistry {
         }
       });
       
-      // Register workflow tools from domain-workflows
-      const { optimizeSchedule, triageEmails, prioritizeTasks, optimizeCalendar } = await import('./workflow/domain-workflows');
+      // Register workflow tools
+      const { optimizeSchedule } = await import('./workflow/optimizeSchedule');
+      const { triageEmails } = await import('./workflow/triageEmails');
+      const { prioritizeTasks } = await import('./workflow/prioritizeTasks');
+      const { optimizeCalendar } = await import('./workflow/optimizeCalendar');
+      
       this.register('workflow_optimizeSchedule', optimizeSchedule as CoreTool<any, any>);
       this.register('workflow_triageEmails', triageEmails as CoreTool<any, any>);
       this.register('workflow_prioritizeTasks', prioritizeTasks as CoreTool<any, any>);

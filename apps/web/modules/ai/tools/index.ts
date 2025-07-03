@@ -24,7 +24,10 @@ export { rescheduleMeeting } from './calendar/rescheduleMeeting';
 export { updatePreferences } from './preference/updatePreferences';
 
 // Workflow tools (4)
-export { optimizeSchedule, triageEmails, prioritizeTasks, optimizeCalendar } from './workflow/domain-workflows';
+export { optimizeSchedule } from './workflow/optimizeSchedule';
+export { triageEmails } from './workflow/triageEmails';
+export { prioritizeTasks } from './workflow/prioritizeTasks';
+export { optimizeCalendar } from './workflow/optimizeCalendar';
 
 // System tools (6)
 export { confirmProposal } from './system/confirmProposal';

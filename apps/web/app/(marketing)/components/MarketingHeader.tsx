@@ -44,27 +44,25 @@ export function MarketingHeader() {
         "bg-background/80 backdrop-blur-md border-b"
       )}
     >
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo and Navigation grouped together */}
-          <div className="flex items-center gap-12">
-            <Link href="/" className="font-bold text-xl">
-              dayli
-            </Link>
-            
-            {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center gap-8">
-              {navItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="text-sm hover:text-primary transition-colors"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-          </div>
+          {/* Logo */}
+          <Link href="/" className="font-bold text-xl">
+            dayli
+          </Link>
+          
+          {/* Desktop Navigation - Centered */}
+          <nav className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-8">
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="text-sm hover:text-primary transition-colors"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
           
           <div className="flex items-center gap-4">
             {/* Theme Toggle */}
@@ -115,7 +113,7 @@ export function MarketingHeader() {
           exit={{ opacity: 0, y: -10 }}
           className="md:hidden bg-background border-b"
         >
-          <nav className="container mx-auto px-4 py-4 space-y-2">
+          <nav className="w-full max-w-7xl mx-auto px-4 py-4 space-y-2">
             {navItems.map((item) => (
               <Link
                 key={item.href}

@@ -4,9 +4,6 @@ import { createBrowserClient } from '@supabase/ssr';
 import type { Database } from '@repo/database/types';
 import { isTauri } from './utils';
 
-// Create a singleton instance
-let browserClient: ReturnType<typeof createBrowserClient<Database>> | null = null;
-
 // Custom storage for Tauri (desktop app)
 const customStorage = {
   getItem: (key: string) => {
@@ -27,23 +24,20 @@ const customStorage = {
   },
 };
 
-export function createClient() {
-  if (browserClient) return browserClient;
-
-  const isDesktop = isTauri();
+// Create client factory function
+function createSupabaseClient() {
+  const isDesktop = typeof window !== 'undefined' ? isTauri() : false;
   
-  // Create client with proper PKCE configuration
-  // Note: Browser client in @supabase/ssr automatically handles cookies for web
-  browserClient = createBrowserClient<Database>(
+  const client = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       auth: {
         persistSession: true,
-        storage: isDesktop ? customStorage : undefined, // Use localStorage for desktop only
+        storage: isDesktop ? customStorage : undefined,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        flowType: 'pkce', // Explicitly set PKCE flow
+        flowType: 'pkce',
       },
       realtime: {
         params: {
@@ -58,13 +52,24 @@ export function createClient() {
     }
   );
 
-  console.log('[Supabase Client] Initialized with:', {
+  console.log('[Supabase Client] Created new instance:', {
     isDesktop,
-    storageType: isDesktop ? 'localStorage' : 'cookies (auto-handled)',
+    storageType: isDesktop ? 'localStorage' : 'cookies',
     flowType: 'pkce'
   });
 
-  return browserClient;
+  return client;
+}
+
+// Singleton instance - created lazily
+let clientInstance: ReturnType<typeof createBrowserClient<Database>> | null = null;
+
+export function createClient() {
+  // In React 19, we need to ensure the singleton is created safely
+  if (!clientInstance) {
+    clientInstance = createSupabaseClient();
+  }
+  return clientInstance;
 }
 
 // This should ONLY be used in client components that cannot use the useAuth hook
@@ -78,7 +83,7 @@ export const createSupabaseBrowserClient = () => {
 
 // Function to reset the client (useful when auth is broken)
 export function resetClient() {
-  browserClient = null;
+  clientInstance = null;
   console.log('[Supabase Client] Client reset - will create new instance on next call');
 }
 
@@ -121,4 +126,9 @@ export async function debugAuthState() {
   } catch (e) {
     console.error('[Supabase Debug] Error:', e);
   }
+}
+
+// Add a global debug function for easy console access
+if (typeof window !== 'undefined') {
+  (window as Window & { debugAuth?: typeof debugAuthState }).debugAuth = debugAuthState;
 } 

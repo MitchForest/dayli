@@ -88,12 +88,21 @@ const blockColors = {
 function PreviewScreen({ step }: { step: typeof steps[0] }) {
   return (
     <div className="h-full flex flex-col">
-      <div className="mb-6">
-        <h3 className="text-xl font-semibold mb-1">{step.preview.title}</h3>
-        <p className="text-muted-foreground">{step.preview.subtitle}</p>
+      {/* Header with status indicator */}
+      <div className="bg-muted/50 border-b px-6 py-4 -m-8 mb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold">{step.preview.title}</h3>
+            <p className="text-sm text-muted-foreground">{step.preview.subtitle}</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            AI Active
+          </div>
+        </div>
       </div>
       
-      <div className="flex-1 space-y-3">
+      <div className="flex-1 space-y-3 px-2">
         {step.preview.blocks.map((block, index) => (
           <motion.div
             key={index}
@@ -101,24 +110,50 @@ function PreviewScreen({ step }: { step: typeof steps[0] }) {
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: index * 0.1 }}
             className={cn(
-              "p-4 rounded-lg border-2 transition-all",
+              "relative p-4 rounded-xl border-2 transition-all",
               blockColors[block.type as keyof typeof blockColors],
-              block.active && "ring-2 ring-primary ring-offset-2",
+              block.active && "ring-2 ring-primary ring-offset-2 shadow-lg scale-105",
               block.completed && "opacity-60"
             )}
           >
-            <div className="flex items-center justify-between">
-              <span className="font-medium">{block.label}</span>
-              {block.time && (
-                <span className="text-sm opacity-60">{block.time}</span>
-              )}
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{block.label}</span>
+                  {block.completed && (
+                    <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  )}
+                </div>
+                {block.time && (
+                  <span className="text-sm opacity-70 mt-1 block">{block.time}</span>
+                )}
+              </div>
             </div>
-            {block.completed && (
-              <CheckCircle className="h-4 w-4 mt-2" />
+            
+            {/* Active block indicator */}
+            {block.active && (
+              <motion.div
+                className="absolute inset-0 border-2 border-primary rounded-xl"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: [0.3, 0.6, 0.3] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              />
             )}
           </motion.div>
         ))}
       </div>
+      
+      {/* AI suggestion bubble for certain steps */}
+      {step.time === "8:46 AM" && (
+        <motion.div
+          initial={{ opacity: 0, y: 20, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ delay: 0.8, duration: 0.5 }}
+          className="mt-4 bg-primary text-primary-foreground rounded-2xl px-4 py-3 text-sm"
+        >
+          <p className="font-medium">💡 I&apos;ve analyzed your calendar and emails. Ready to optimize your day!</p>
+        </motion.div>
+      )}
     </div>
   );
 }
@@ -128,7 +163,7 @@ export function HowItWorks() {
   
   return (
     <section id="how-it-works" className="py-24">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -143,7 +178,7 @@ export function HowItWorks() {
           </p>
         </motion.div>
         
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
+        <div className="grid lg:grid-cols-2 gap-12 items-center max-w-6xl mx-auto">
           {/* Timeline */}
           <div className="space-y-8">
             {steps.map((step, index) => (

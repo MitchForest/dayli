@@ -6,40 +6,51 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { createClient } from "@/lib/supabase-client";
 import { ServiceFactory } from "@/services/factory/service.factory";
 import type { User } from "@supabase/supabase-js";
+import { SidebarProvider } from '@/components/ui/sidebar';
 
-export function Providers({ children }: { children: React.ReactNode }) {
-  // Create client only once
-  const supabaseClient = useMemo(() => createClient(), []);
+interface ProvidersProps {
+  children: React.ReactNode;
+  initialUser?: User | null;
+}
+
+export function Providers({ children, initialUser }: ProvidersProps) {
+  // Use useMemo to ensure client is created only once
+  const supabaseClient = useMemo(() => {
+    console.log('[Providers] Creating supabase client');
+    return createClient();
+  }, []);
   
   // Handle auth state changes to configure ServiceFactory
   const handleAuthStateChange = useCallback((user: User | null) => {
     const factory = ServiceFactory.getInstance();
     
-    if (user) {
+    if (user && supabaseClient) {
       console.log('[Providers] Configuring ServiceFactory for user:', user.id);
       factory.configure({
         userId: user.id,
-        supabaseClient
+        supabaseClient: supabaseClient
       });
     } else {
       console.log('[Providers] User logged out - ServiceFactory will need reconfiguration on next login');
-      // Don't clear the factory when logged out, just note it needs reconfiguration
+      // Note: ServiceFactory doesn't support clearing configuration yet
+      // This is handled by checking authentication in each service call
     }
   }, [supabaseClient]);
   
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
+    <AuthProvider 
+      supabaseClient={supabaseClient}
+      onAuthStateChange={handleAuthStateChange}
+      initialUser={initialUser}
     >
-      <AuthProvider 
-        supabaseClient={supabaseClient}
-        onAuthStateChange={handleAuthStateChange}
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem
+        disableTransitionOnChange
       >
         {children}
-      </AuthProvider>
-    </ThemeProvider>
+      </ThemeProvider>
+    </AuthProvider>
   );
 } 

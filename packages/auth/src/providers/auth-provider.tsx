@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getProfile } from '@repo/database/queries';
 import type { AuthContextType } from '../types';
@@ -16,138 +16,67 @@ export const AuthContext = createContext<AuthContextValue | undefined>(undefined
 interface AuthProviderProps {
   children: React.ReactNode;
   supabaseClient: SupabaseClient<Database>;
+  initialUser?: User | null;
   onAuthStateChange?: (user: User | null) => void;
 }
 
-export function AuthProvider({ children, supabaseClient, onAuthStateChange }: AuthProviderProps) {
-  const [user, setUser] = useState<User | null>(null);
+export function AuthProvider({ 
+  children, 
+  supabaseClient, 
+  initialUser = null,
+  onAuthStateChange 
+}: AuthProviderProps) {
+  // Initialize with server-provided user - NO CLIENT FETCHING
+  const [user, setUser] = useState<User | null>(initialUser);
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingStates, setLoadingStates] = useState({
-    session: true,
-    profile: false,
-  });
+  const loading = false; // Always false - we have initialUser from server
 
+  // Handle profile loading
+  const loadProfile = useCallback(async (userId: string) => {
+    try {
+      const userProfile = await getProfile(userId, supabaseClient);
+      setProfile(userProfile);
+      return userProfile;
+    } catch (error) {
+      console.error('[AuthProvider] Error loading profile:', error);
+      return null;
+    }
+  }, [supabaseClient]);
+
+  // Load initial profile if user exists
   useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        console.log('[AuthProvider] Initializing auth...');
-        
-        // Start loading session
-        setLoadingStates({ session: true, profile: false });
-        
-        const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
-        
-        if (sessionError) {
-          console.error('[AuthProvider] Session error:', sessionError);
-        }
-        
-        console.log('[AuthProvider] Session check:', {
-          hasSession: !!session,
-          userId: session?.user?.id,
-          email: session?.user?.email
-        });
-        
-        // Set user immediately after session check
-        setUser(session?.user ?? null);
-        setLoadingStates(prev => ({ ...prev, session: false }));
-        
-        // Notify parent component about auth state immediately
-        onAuthStateChange?.(session?.user ?? null);
-        
-        // If we have a user, fetch profile in parallel (non-blocking)
-        if (session?.user) {
-          setLoadingStates(prev => ({ ...prev, profile: true }));
-          
-          // Fetch profile asynchronously without blocking
-          getProfile(session.user.id, supabaseClient)
-            .then((currentProfile) => {
-              if (currentProfile) {
-                console.log('[AuthProvider] Profile loaded:', currentProfile.id);
-                setProfile(currentProfile);
-              } else {
-                console.log('[AuthProvider] No profile found for user');
-              }
-            })
-            .catch((error) => {
-              console.error('[AuthProvider] Error loading profile:', error);
-            })
-            .finally(() => {
-              setLoadingStates(prev => ({ ...prev, profile: false }));
-            });
-        }
-        
-        // Set main loading to false after session is checked (not waiting for profile)
-        setLoading(false);
-        
-      } catch (error) {
-        console.error('[AuthProvider] Error initializing auth:', error);
-        setLoading(false);
-        setLoadingStates({ session: false, profile: false });
+    if (initialUser) {
+      console.log('[AuthProvider] Loading profile for initial user:', initialUser.id);
+      loadProfile(initialUser.id);
+    }
+  }, [initialUser, loadProfile]);
+
+  // ONLY listen for auth state changes - NO INITIAL FETCH
+  useEffect(() => {
+    console.log('[AuthProvider] Setting up auth state listener');
+    
+    const {
+      data: { subscription },
+    } = supabaseClient.auth.onAuthStateChange(async (event, session) => {
+      console.log('[AuthProvider] Auth state changed:', event);
+
+      const newUser = session?.user ?? null;
+      setUser(newUser);
+
+      if (newUser) {
+        await loadProfile(newUser.id);
+      } else {
+        setProfile(null);
       }
-    };
 
-    initializeAuth();
-
-    // Set up auth state change listener
-    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('[AuthProvider] Auth state changed:', event, {
-          hasSession: !!session,
-          userId: session?.user?.id
-        });
-        
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          // Start profile loading
-          setLoadingStates(prev => ({ ...prev, profile: true }));
-          
-          // Handle profile asynchronously
-          try {
-            const existingProfile = await getProfile(session.user.id, supabaseClient);
-            if (existingProfile) {
-              setProfile(existingProfile);
-            } else {
-              // Create profile if it doesn't exist
-              const { data: newProfile, error } = await supabaseClient
-                .from('profiles')
-                .insert({
-                  id: session.user.id,
-                  email: session.user.email,
-                  full_name: session.user.user_metadata.full_name,
-                  avatar_url: session.user.user_metadata.avatar_url,
-                })
-                .select()
-                .single();
-
-              if (error) {
-                console.error('[AuthProvider] Error creating profile:', error);
-              } else {
-                setProfile(newProfile);
-              }
-            }
-          } catch (error) {
-            console.error('[AuthProvider] Error handling profile:', error);
-          } finally {
-            setLoadingStates(prev => ({ ...prev, profile: false }));
-          }
-        } else {
-          setProfile(null);
-          setLoadingStates({ session: false, profile: false });
-        }
-        
-        // Notify parent component about auth state change
-        onAuthStateChange?.(session?.user ?? null);
-        
-        setLoading(false);
-      }
-    );
+      onAuthStateChange?.(newUser);
+    });
 
     return () => {
+      console.log('[AuthProvider] Cleaning up auth state listener');
       subscription.unsubscribe();
     };
-  }, [supabaseClient, onAuthStateChange]);
+  }, [supabaseClient, onAuthStateChange, loadProfile]);
 
   const signInWithGoogle = async () => {
     try {
@@ -188,7 +117,6 @@ export function AuthProvider({ children, supabaseClient, onAuthStateChange }: Au
       // Clear local state
       setUser(null);
       setProfile(null);
-      setLoadingStates({ session: false, profile: false });
       
       console.log('[AuthProvider] User signed out successfully');
     } catch (error) {
@@ -201,7 +129,10 @@ export function AuthProvider({ children, supabaseClient, onAuthStateChange }: Au
     user,
     profile,
     loading,
-    loadingStates,
+    loadingStates: {
+      session: loading,
+      profile: false
+    },
     signInWithGoogle,
     signOut,
     supabase: supabaseClient,

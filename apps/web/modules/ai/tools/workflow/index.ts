@@ -1,2 +1,5 @@
 // Workflow tools (4)
-export { optimizeSchedule, triageEmails, prioritizeTasks, optimizeCalendar } from './domain-workflows'; 
+export { optimizeSchedule } from './optimizeSchedule';
+export { triageEmails } from './triageEmails';
+export { prioritizeTasks } from './prioritizeTasks';
+export { optimizeCalendar } from './optimizeCalendar'; 
