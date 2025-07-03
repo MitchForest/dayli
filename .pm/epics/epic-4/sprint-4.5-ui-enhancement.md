@@ -1,23 +1,36 @@
 # Sprint 4.5: UI Enhancement
 
-**Sprint Goal**: Create rich UI components for core entities (blocks, tasks, emails) in chat  
+**Sprint Goal**: Create rich display components for pure tool response data in chat  
 **Duration**: 3 days  
 **Status**: PLANNING
 
 ## Objectives
 
-1. Create rich entity components for chat display
-2. Add interactive capabilities to entities
-3. Implement real-time updates
-4. Polish animations and transitions
+1. Create rich display components for pure tool response data
+2. Build ToolResultRenderer to route tool results to appropriate displays
+3. Add interactive capabilities to entities  
+4. Implement real-time updates
+5. Polish animations and transitions
 
 ## Day 1: Core Entity Components
 
 ### TimeBlockCard Component
 ```typescript
-// Rich display for schedule blocks in chat
+// Rich display for schedule blocks from tool responses
 interface TimeBlockCardProps {
-  block: TimeBlock;
+  block: {
+    id: string;
+    type: 'work' | 'meeting' | 'email' | 'break' | 'blocked';
+    title: string;
+    startTime: Date;
+    endTime: Date;
+    description?: string;
+    tasks?: Array<{
+      id: string;
+      title: string;
+      completed: boolean;
+    }>;
+  };
   interactive?: boolean;
   onAction?: (action: string) => void;
 }
@@ -32,9 +45,19 @@ interface TimeBlockCardProps {
 
 ### TaskCard Component
 ```typescript
-// Rich display for tasks in chat
+// Rich display for tasks from TaskListResponse
 interface TaskCardProps {
-  task: Task;
+  task: {
+    id: string;
+    title: string;
+    priority: 'high' | 'medium' | 'low';
+    status: 'active' | 'completed' | 'backlog';
+    score?: number;
+    estimatedMinutes?: number;
+    daysInBacklog?: number;
+    description?: string;
+    dueDate?: Date;
+  };
   showBacklogInfo?: boolean;
   onAction?: (action: string) => void;
 }
@@ -45,13 +68,25 @@ interface TaskCardProps {
 - Estimated time with icon
 - Quick complete checkbox
 - Click to edit details
+- Score display for prioritization
 ```
 
 ### EmailPreview Component
 ```typescript
-// Rich display for emails in chat
+// Rich display for emails from EmailListResponse
 interface EmailPreviewProps {
-  email: Email;
+  email: {
+    id: string;
+    from: string;
+    fromEmail: string;
+    subject: string;
+    snippet: string;
+    receivedAt: Date;
+    isRead: boolean;
+    hasAttachments: boolean;
+    urgency?: 'urgent' | 'important' | 'normal';
+    status: string;
+  };
   showImportance?: boolean;
   onAction?: (action: string) => void;
 }
@@ -64,15 +99,54 @@ interface EmailPreviewProps {
 - Urgency badge if applicable
 ```
 
-## Day 2: Interactive Schedule Display
+## Day 2: Interactive Schedule Display & Tool Result Router
+
+### ToolResultRenderer Component
+```typescript
+// Main router that connects tool results to display components
+interface ToolResultRendererProps {
+  toolName: string;
+  result: any; // Pure data from tool
+  metadata?: any; // Tool metadata from factory
+  isStreaming?: boolean;
+  streamProgress?: number;
+  onAction?: (action: string) => void;
+}
+
+// Lazy-loaded display components mapped by category
+const displays = {
+  schedule: lazy(() => import('./displays/ScheduleDisplay')),
+  task: lazy(() => import('./displays/TaskListDisplay')),
+  email: lazy(() => import('./displays/EmailListDisplay')),
+  meeting: lazy(() => import('./displays/MeetingDisplay')),
+  workflow: lazy(() => import('./displays/WorkflowResultDisplay')),
+  confirmation: lazy(() => import('./displays/ConfirmationDisplay')),
+  preference: lazy(() => import('./displays/PreferenceDisplay')),
+  system: lazy(() => import('./displays/SystemDisplay')),
+};
+```
 
 ### ScheduleTimeline Component
 ```typescript
-// Visual timeline for full day schedule
+// Visual timeline for ScheduleViewResponse data
 interface ScheduleTimelineProps {
-  blocks: TimeBlock[];
+  data: {
+    date: string;
+    blocks: Array<{
+      id: string;
+      type: string;
+      title: string;
+      startTime: Date;
+      endTime: Date;
+      tasks?: Array<{ id: string; title: string; completed: boolean }>;
+    }>;
+    stats?: {
+      totalHours: number;
+      utilization: number;
+    };
+  };
   currentTime?: boolean;
-  onBlockClick?: (block: TimeBlock) => void;
+  onBlockClick?: (blockId: string) => void;
 }
 
 // Visual: Horizontal timeline with blocks
@@ -83,25 +157,29 @@ interface ScheduleTimelineProps {
 
 ### WorkflowProgress Component
 ```typescript
-// Shows real-time workflow execution
+// Shows real-time workflow execution with streaming
 interface WorkflowProgressProps {
-  workflowId: string;
-  stages: WorkflowStage[];
-  currentStage: string;
+  toolName: string;
   progress: number;
+  stage: string;
+  partialResult?: any;
 }
 
 // Visual: Progress bar with stage indicators
 // Updates via streaming response
 // Shows what's happening in real-time
+// Displays partial results as they come in
 ```
 
 ### ProposedChanges Component
 ```typescript
-// Before/after comparison for schedule changes
+// Before/after comparison for workflow results
 interface ProposedChangesProps {
-  current: TimeBlock[];
-  proposed: TimeBlock[];
+  changes: Array<{
+    type: 'create' | 'move' | 'delete' | 'modify';
+    description: string;
+    impact: string;
+  }>;
   onConfirm: () => void;
   onReject: () => void;
 }
@@ -110,6 +188,48 @@ interface ProposedChangesProps {
 // Highlights: Added, Removed, Modified
 // Clear Accept/Reject buttons
 ```
+
+## Display Components to Create
+
+### ScheduleDisplay
+- Renders ScheduleViewResponse data
+- Shows timeline of blocks with stats
+- Handles block interactions (click to edit, drag to move)
+
+### TaskListDisplay  
+- Renders TaskListResponse data
+- Shows task cards with scores and priorities
+- Quick complete checkboxes
+- Filter/sort capabilities
+
+### EmailListDisplay
+- Renders EmailListResponse data
+- Email preview cards with urgency indicators
+- Quick actions (reply, archive, convert to task)
+
+### WorkflowResultDisplay
+- Renders workflow execution results (OptimizeScheduleResponse, etc.)
+- Shows proposed changes with before/after
+- Confirmation/rejection buttons
+
+### ConfirmationDisplay
+- Renders confirmation requests from tools
+- Clear accept/reject UI
+- Shows what will be changed
+
+### MeetingDisplay
+- Renders ScheduleMeetingResponse/RescheduleMeetingResponse
+- Shows meeting details, attendees, location
+- Calendar integration actions
+
+### PreferenceDisplay
+- Renders UpdatePreferencesResponse
+- Shows before/after preference values
+- Confirmation of changes
+
+### SystemDisplay
+- Renders system tool responses (patterns, history, etc.)
+- Appropriate visualization for each type
 
 ## Day 3: Real-time Updates & Polish
 
@@ -132,6 +252,32 @@ useEffect(() => {
     
   return () => subscription.unsubscribe();
 }, [userId]);
+```
+
+### Streaming Support
+```typescript
+// ToolResultRenderer handles streaming
+if (isStreaming && streamProgress !== undefined && streamProgress < 100) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">
+          {result?.stage || 'Processing...'}
+        </span>
+        <span className="text-muted-foreground">{streamProgress}%</span>
+      </div>
+      <div className="w-full bg-secondary rounded-full h-2">
+        <div 
+          className="bg-primary h-2 rounded-full transition-all duration-300"
+          style={{ width: `${streamProgress}%` }}
+        />
+      </div>
+      {result?.partialResult && (
+        <StreamingPartialResult data={result.partialResult} />
+      )}
+    </div>
+  );
+}
 ```
 
 ### Animations & Transitions
@@ -170,25 +316,46 @@ useHotkeys('e', () => openEmailTriage());
 
 ## Implementation Details
 
-### Entity Recognition in Messages
+### Component Architecture
+- All display components receive pure data from tools
+- ToolResultRenderer handles routing based on tool metadata
+- Components are lazy-loaded for performance
+- Consistent action handling through onAction callbacks
+
+### Data Flow
+1. Tool returns pure data (e.g., ScheduleViewResponse)
+2. MessageList detects tool results in message.toolInvocations
+3. ToolResultRenderer receives result and tool metadata
+4. Appropriate display component is lazy-loaded and rendered
+5. User interactions trigger onAction callbacks
+
+### Tool Result Rendering in Messages
 ```typescript
-// Automatically detect and enhance entities in AI responses
-function enhanceMessage(content: string): ReactNode {
-  // Patterns to detect entities
-  const patterns = {
-    timeBlock: /\b(\d{1,2}:\d{2}\s*(?:AM|PM))\s*-\s*(\d{1,2}:\d{2}\s*(?:AM|PM)):\s*([^,\n]+)/gi,
-    task: /task:\s*"([^"]+)"/gi,
-    email: /email from\s+([^:,\n]+)/gi
-  };
+// MessageList renders tool results directly, no parsing needed
+const renderToolResults = (message: Message) => {
+  if (!message.toolInvocations || message.toolInvocations.length === 0) {
+    return null;
+  }
   
-  // Replace with rich components
-  return content.replace(patterns.timeBlock, (match, start, end, title) => (
-    <TimeBlockCard 
-      block={{ startTime: start, endTime: end, title }}
-      interactive={true}
-    />
-  ));
-}
+  return message.toolInvocations
+    .filter(inv => inv.state === 'result' || inv.state === 'partial-call')
+    .map((invocation, idx) => {
+      const isStreaming = invocation.state === 'partial-call';
+      const progress = invocation.progress || (isStreaming ? 50 : 100);
+      
+      return (
+        <ToolResultRenderer
+          key={`${message.id}-tool-${idx}`}
+          toolName={invocation.toolName}
+          result={invocation.result}
+          metadata={getToolMetadata(invocation.toolName)}
+          isStreaming={isStreaming}
+          streamProgress={progress}
+          onAction={handleToolAction}
+        />
+      );
+    });
+};
 ```
 
 ### Loading States
@@ -201,9 +368,13 @@ function enhanceMessage(content: string): ReactNode {
 
 ## Success Criteria
 
-- [ ] All entities have rich UI components
-- [ ] Interactive actions work smoothly
-- [ ] Real-time updates implemented
+- [ ] ToolResultRenderer correctly routes all 25 tool results
+- [ ] All display components render pure data correctly
+- [ ] Interactive actions work through onAction callbacks
+- [ ] Real-time updates implemented via Supabase subscriptions
+- [ ] Streaming progress shown for long operations
+- [ ] Lazy loading improves initial render performance
+- [ ] No parsing of AI-generated text needed
 - [ ] Animations are polished
 - [ ] Performance remains fast
 

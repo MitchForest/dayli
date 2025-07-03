@@ -1,670 +1,462 @@
-# AI System Reference - Epic 4 Architecture
-
-## Executive Summary
-
-dayli employs a sophisticated multi-layered AI architecture that intelligently routes requests through an orchestration layer to either atomic tools, complex workflows, or direct conversational responses. The system continuously learns from user interactions through RAG (Retrieval-Augmented Generation) to provide increasingly personalized and context-aware assistance.
+# AI System Reference Documentation
 
 ## System Architecture Overview
 
+The Dayli AI assistant operates through a sophisticated multi-layered architecture designed for extensibility, personalization, and efficient task execution.
+
+```mermaid
+graph TD
+    subgraph "User Interface"
+        A[Chat Interface] --> B[Message Handler]
+        B --> C[ToolResultRenderer]
+    end
+    
+    subgraph "Orchestration Layer"
+        B --> D[Orchestrator Service]
+        D --> E{Decision Engine}
+    end
+    
+    subgraph "Execution Layer"
+        E -->|Simple Task| F[Tool Execution]
+        E -->|Complex Task| G[Workflow Engine]
+        F --> H[Pure Data Response]
+        G --> H
+    end
+    
+    subgraph "Tool Response Structure"
+        H --> I[Pure Data Response]
+        I --> |"Domain-specific data"| J[Schedule/Task/Email Data]
+        I --> |"Success/Error status"| K[Response Metadata]
+        I --> |"No UI instructions"| L[Clean Data Contract]
+    end
+    
+    subgraph "Client-Side Rendering"
+        C --> M{Detect Tool Type}
+        M --> N[Schedule Display]
+        M --> O[Task Display]
+        M --> P[Email Display]
+        M --> Q[Workflow Display]
+    end
+    
+    subgraph "Learning & Context"
+        F --> R[RAG Context]
+        G --> R
+        R --> S[Embeddings DB]
+        R --> D
+    end
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        User Input                            │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  Orchestration Layer                         │
-│  • Intent Classification (GPT-4)                             │
-│  • RAG Context Injection                                     │
-│  • Confidence Scoring                                        │
-│  • Route Determination                                       │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-        ┌────────────┴────────────┬─────────────────┐
-        ▼                         ▼                 ▼
-┌───────────────┐       ┌───────────────┐   ┌───────────────┐
-│  AI SDK Tools │       │   LangGraph   │   │    Direct     │
-│   (Atomic)    │       │  (Workflows)  │   │  Response     │
-│               │       │               │   │               │
-│  25 Tools     │       │  4 Workflows  │   │ Conversation  │
-└───────────────┘       └───────────────┘   └───────────────┘
-        │                         │                 │
-        └─────────────┬───────────┴─────────────────┘
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│              UniversalToolResponse                           │
-│  • Structured Data                                           │
-│  • Rich UI Components                                        │
-│  • Suggestions & Actions                                     │
-└─────────────────────────────────────────────────────────────┘
-```
 
-## 1. Orchestration Layer
+## Core Components
 
-The orchestration layer is the brain of our system, using GPT-4 to understand user intent and route requests appropriately.
-
-### Intent Classification
+### 1. Orchestration Service
+The brain of the system that intelligently routes requests:
 
 ```typescript
-interface UserIntent {
-  category: 'workflow' | 'tool' | 'conversation';
-  confidence: number; // 0-1 score
-  subcategory?: string;
-  entities: {
-    dates?: string[];
-    times?: string[];
-    people?: string[];
-    tasks?: string[];
-    emails?: string[];
-  };
-  suggestedHandler: {
-    type: 'workflow' | 'tool' | 'direct';
-    name?: string;
-    params?: Record<string, any>;
-  };
-  reasoning: string;
+class OrchestrationService {
+  async processMessage(message: string, context: Context) {
+    // Analyze intent and complexity
+    const analysis = await this.analyzeRequest(message, context);
+    
+    if (analysis.requiresWorkflow) {
+      return this.executeWorkflow(analysis.workflowType, analysis.params);
+    } else {
+      return this.executeTool(analysis.toolName, analysis.params);
+    }
+  }
 }
 ```
 
-### Routing Logic
+**Key Responsibilities:**
+- Intent classification (tool vs workflow)
+- Context building from RAG
+- Parameter extraction
+- Response coordination
 
-1. **High Complexity → Workflows** (confidence > 0.8)
-   - Multi-step operations
-   - Cross-domain requests
-   - Strategic planning
-   - Example: "Organize my entire day including emails and tasks"
+### 2. Tool System
 
-2. **Specific Actions → Tools** (confidence > 0.7)
-   - Single operations
-   - Clear parameters
-   - Direct modifications
-   - Example: "Move my 2pm meeting to 4pm"
+Tools are atomic operations that return pure domain data without any UI formatting instructions:
 
-3. **Ambiguous/Conversational → Direct Response** (confidence < 0.7)
-   - Questions
-   - Clarifications
-   - General assistance
-   - Example: "How should I prioritize my day?"
-
-### RAG Context Injection
-
-Before classification, the orchestrator enriches the request with:
-- **Past Decisions**: Similar actions the user has taken
-- **User Patterns**: Learned preferences and behaviors
-- **Constraints**: Rules learned from rejections
-- **Time Context**: Current time, day of week, user's schedule state
-
-## 2. Tools Inventory (25 Total)
-
-All tools follow the AI SDK pattern and return `UniversalToolResponse` for consistent UI rendering.
-
-### Schedule Tools (5)
-
-#### `viewSchedule`
-- **Purpose**: Display schedule for any date
-- **Parameters**: `date?` (defaults to today)
-- **Returns**: Time blocks with statistics
-- **UI**: Schedule timeline with interactive blocks
-
-#### `createTimeBlock`
-- **Purpose**: Add new time blocks to schedule
-- **Parameters**: `type`, `title`, `startTime`, `endTime`, `date?`
-- **Returns**: Created block with conflict warnings
-- **Features**: Supports up to 4 overlapping blocks
-
-#### `moveTimeBlock`
-- **Purpose**: Reschedule existing blocks
-- **Parameters**: `blockId`, `newStartTime`, `newEndTime?`
-- **Returns**: Updated block with new time
-- **Validation**: Conflict checking
-
-#### `deleteTimeBlock`
-- **Purpose**: Remove blocks from schedule
-- **Parameters**: `blockId`, `confirm?`
-- **Returns**: Confirmation or deletion result
-- **Safety**: Requires confirmation for blocks with tasks
-
-#### `fillWorkBlock`
-- **Purpose**: Intelligently fill work blocks with tasks
-- **Parameters**: `blockId`, `strategy` (best_fit|priority|quick_wins)
-- **Returns**: Block with assigned tasks
-- **Intelligence**: Considers task duration, priority, and energy levels
-
-### Task Tools (4)
-
-#### `createTask`
-- **Purpose**: Create new tasks with smart defaults
-- **Parameters**: `title`, `estimatedMinutes?`, `priority?`, `description?`
-- **Returns**: Created task with auto-scheduling for high priority
-- **Features**: Auto-assigns to work blocks if high priority
-
-#### `updateTask`
-- **Purpose**: Modify existing tasks
-- **Parameters**: `taskId`, `updates` (any task field)
-- **Returns**: Updated task
-- **Triggers**: Re-scheduling if priority changes
-
-#### `completeTask`
-- **Purpose**: Mark tasks as done
-- **Parameters**: `taskId`
-- **Returns**: Completed task with stats
-- **Side Effects**: Updates block utilization
-
-#### `viewTasks`
-- **Purpose**: List and search tasks with scoring
-- **Parameters**: `filter?`, `sort?`, `includeCompleted?`
-- **Returns**: Scored task list with insights
-- **Intelligence**: Multi-factor scoring (priority, urgency, age)
-
-### Email Tools (3)
-
-#### `viewEmails`
-- **Purpose**: List emails with smart filtering
-- **Parameters**: `status?`, `urgency?`, `limit?`
-- **Returns**: Email list with importance indicators
-- **Features**: Backlog aging, urgency detection
-
-#### `readEmail`
-- **Purpose**: Full email content with analysis
-- **Parameters**: `emailId`
-- **Returns**: Email body, attachments, extracted action items
-- **AI**: Automatic action item extraction
-
-#### `processEmail`
-- **Purpose**: Multi-action email handler
-- **Parameters**: `emailId`, `action` (draft|send|convert_to_task|archive)
-- **Returns**: Action result (draft, task, confirmation)
-- **Intelligence**: AI-powered response generation
-
-### Calendar Tools (2)
-
-#### `scheduleMeeting`
-- **Purpose**: Smart meeting scheduling
-- **Parameters**: `title`, `attendees`, `duration`, `preferredTimes?`
-- **Returns**: Scheduled meeting with optional prep block
-- **Features**: Conflict detection, prep time automation
-
-#### `rescheduleMeeting`
-- **Purpose**: Move meetings with conflict resolution
-- **Parameters**: `eventId`, `newTime`, `notifyAttendees?`
-- **Returns**: Updated meeting or conflict options
-- **Intelligence**: Suggests alternative times on conflicts
-
-### Preference Tool (1)
-
-#### `updatePreferences`
-- **Purpose**: Modify user preferences
-- **Parameters**: `key`, `value`
-- **Returns**: Updated preference with confirmation
-- **Affects**: All scheduling and workflow decisions
-
-### Workflow Tools (4)
-
-#### `optimizeSchedule`
-- **Purpose**: Run adaptive scheduling workflow
-- **Type**: LangGraph workflow wrapper
-- **Returns**: Proposed schedule changes for confirmation
-
-#### `triageEmails`
-- **Purpose**: Run email management workflow
-- **Type**: LangGraph workflow wrapper
-- **Returns**: Prioritized email actions
-
-#### `prioritizeTasks`
-- **Purpose**: Run task intelligence workflow
-- **Type**: LangGraph workflow wrapper
-- **Returns**: Optimized task order and assignments
-
-#### `optimizeCalendar`
-- **Purpose**: Run calendar optimization workflow
-- **Type**: LangGraph workflow wrapper
-- **Returns**: Meeting consolidation suggestions
-
-### System Tools (6)
-
-#### `confirmProposal`
-- **Purpose**: Execute stored workflow proposals
-- **Parameters**: `proposalId`
-- **Returns**: Execution result
-- **Safety**: Proposals expire after 5 minutes
-
-#### `showWorkflowHistory`
-- **Purpose**: Display past workflow executions
-- **Parameters**: `type?`, `limit?`
-- **Returns**: Workflow history with outcomes
-- **Use Case**: Debugging, pattern analysis
-
-#### `resumeWorkflow`
-- **Purpose**: Continue interrupted workflows
-- **Parameters**: `workflowId`
-- **Returns**: Resumed workflow result
-- **Feature**: State persistence up to 24 hours
-
-#### `provideFeedback`
-- **Purpose**: Capture user feedback for learning
-- **Parameters**: `type`, `feedback`, `context?`
-- **Returns**: Confirmation
-- **Impact**: Improves future decisions
-
-#### `showPatterns`
-- **Purpose**: Display learned user patterns
-- **Parameters**: `category?`
-- **Returns**: Insights and patterns
-- **Intelligence**: Shows personalization in action
-
-#### `clearContext`
-- **Purpose**: Reset conversation state
-- **Parameters**: `scope?` (conversation|all)
-- **Returns**: Confirmation
-- **Use Case**: Fresh start, privacy
-
-## 3. Workflow Architecture
-
-Workflows use LangGraph for complex multi-step operations with state management.
-
-### Adaptive Scheduling Workflow
-
-**Purpose**: Intelligently plan or reorganize daily schedules
-
-**Nodes**:
-1. **fetchScheduleData** 
-   - Parallel fetch: schedule, tasks, emails, preferences
-   - Generates initial insights
-   
-2. **analyzeScheduleState**
-   - Gap detection
-   - Inefficiency identification
-   - Workload analysis
-   
-3. **determineStrategy**
-   - `full`: Empty schedule → complete day planning
-   - `optimize`: Busy schedule → reorganization
-   - `partial`: Some gaps → targeted filling
-   - `minimal`: Nearly full → minor adjustments
-   
-4. **executeStrategy**
-   - Creates proposed changes
-   - Assigns tasks to blocks
-   - Schedules email time
-   - Protects breaks
-   
-5. **validateChanges**
-   - Conflict checking
-   - Preference validation
-   - Change summary generation
-
-**State Shape**:
 ```typescript
-interface SchedulingState {
-  userId: string;
+// Tool Factory Pattern
+export function createTool<TParams, TResponse extends BaseToolResponse>({
+  name: string,
+  description: string,
+  parameters: ZodSchema,
+  metadata: ToolMetadata,
+  execute: (params: TParams) => Promise<TResponse>
+}) {
+  // Consistent error handling, logging, and response structure
+}
+
+// Base Response Interface
+interface BaseToolResponse {
+  success: boolean;
+  error?: string;
+  timestamp?: Date;
+}
+
+// Example Tool Response - Pure Data Only
+interface ScheduleViewResponse extends BaseToolResponse {
+  success: boolean;
   date: string;
-  currentSchedule: TimeBlock[];
-  tasks: TaskWithScore[];
-  emails: EmailWithUrgency[];
-  preferences: UserPreferences;
-  analysis: ScheduleAnalysis;
-  strategy: SchedulingStrategy;
-  proposedChanges: ScheduleChange[];
-  validationResult: ValidationResult;
+  blocks: TimeBlock[];
+  stats: ScheduleStats;
+  // No UI instructions - just data
 }
+
+// Tool Implementation Example
+export const viewSchedule = registerTool(
+  createTool<typeof parameters, ScheduleViewResponse>({
+    name: 'schedule_viewSchedule',
+    description: 'View schedule for a specific date',
+    parameters: z.object({
+      date: z.string().optional()
+    }),
+    metadata: {
+      category: 'schedule',
+      displayName: 'View Schedule',
+      requiresConfirmation: false,
+      supportsStreaming: false,
+    },
+    execute: async ({ date }) => {
+      // Return only domain data
+      return {
+        success: true,
+        date: targetDate,
+        blocks: scheduleBlocks,
+        stats: calculateStats(blocks)
+      };
+    }
+  })
+);
 ```
 
-### Email Management Workflow
+**Tool Categories:**
+- **Schedule** (5 tools): View, create, move, delete, fill time blocks
+- **Task** (4 tools): View, create, update, complete tasks  
+- **Email** (3 tools): View, read, process emails
+- **Calendar** (2 tools): Schedule, reschedule meetings
+- **Preference** (1 tool): Update user preferences
+- **System** (6 tools): Confirmations, history, feedback, patterns
+- **Workflow** (4 tools): Complex multi-step operations
 
-**Purpose**: Triage and process email backlog efficiently
+### 3. Workflow Engine (LangGraph)
 
-**Nodes**:
-1. **fetchEmailData**
-   - Get unread/starred emails
-   - Fetch user email patterns
-   - Load response templates
-   
-2. **analyzeEmails**
-   - Urgency scoring
-   - Sender importance
-   - Action item extraction
-   - Category classification
-   
-3. **createBatches**
-   - Group by sender
-   - Group by topic
-   - Group by action type
-   - Optimize processing order
-   
-4. **generateActions**
-   - Draft responses
-   - Create tasks
-   - Schedule follow-ups
-   - Archive suggestions
-   
-5. **validateActions**
-   - Check task capacity
-   - Verify time availability
-   - Generate summary
-
-### Task Intelligence Workflow
-
-**Purpose**: Optimize task list and execution order
-
-**Nodes**:
-1. **fetchTaskData**
-   - Load all active tasks
-   - Get completion history
-   - Fetch current schedule
-   
-2. **analyzeTaskPatterns**
-   - Completion velocity
-   - Time-of-day performance
-   - Task type preferences
-   - Procrastination patterns
-   
-3. **scoreAndRank**
-   - Multi-factor scoring
-   - Deadline consideration
-   - Energy alignment
-   - Dependency mapping
-   
-4. **createExecutionPlan**
-   - Optimal task order
-   - Time block assignments
-   - Batch similar tasks
-   - Break recommendations
-   
-5. **validatePlan**
-   - Feasibility check
-   - Workload balance
-   - Buffer time verification
-
-### Calendar Optimization Workflow
-
-**Purpose**: Optimize meeting schedule and reduce overhead
-
-**Nodes**:
-1. **fetchCalendarData**
-   - Get all meetings
-   - Load attendee patterns
-   - Check room availability
-   
-2. **analyzeMeetingPatterns**
-   - Back-to-back detection
-   - Meeting heavy days
-   - Recurring efficiency
-   - Travel time needs
-   
-3. **identifyOptimizations**
-   - Consolidation opportunities
-   - Better time slots
-   - Virtual alternatives
-   - Elimination candidates
-   
-4. **generateProposals**
-   - Rescheduling options
-   - Combination suggestions
-   - Cancellation recommendations
-   - Agenda optimizations
-   
-5. **validateProposals**
-   - Attendee availability
-   - Priority preservation
-   - Change impact assessment
-
-## 4. RAG Integration
-
-Our RAG system provides continuous learning and personalization through three layers:
-
-### Three-Layer Context System
-
-#### Layer 1: Immediate Context (Real-time)
-- Current schedule state
-- Recent tool calls
-- Active conversation
-- Time of day/week
-
-#### Layer 2: Historical Patterns (Embedded)
-- Past scheduling decisions
-- Task completion patterns
-- Email response styles
-- Meeting preferences
-
-#### Layer 3: Extracted Insights (Learned)
-- "User prefers meetings after 10am"
-- "Batches similar tasks on Fridays"
-- "Responds to urgent emails within 2 hours"
-- "Takes breaks every 90 minutes"
-
-### Embedding Pipeline
+Workflows handle complex, multi-step operations with state management:
 
 ```typescript
-interface EmbeddedDecision {
-  id: string;
-  userId: string;
-  timestamp: Date;
-  decision: string;
-  context: string;
-  outcome: 'accepted' | 'rejected' | 'modified';
-  embedding: number[]; // 1536-dimensional vector
-  metadata: {
-    toolsUsed: string[];
-    entities: string[];
-    timeOfDay: string;
-    dayOfWeek: string;
-  };
-}
+// Workflow Definition
+const emailTriageWorkflow = new StateGraph({
+  // State definition
+  channels: {
+    emails: { value: [] },
+    decisions: { value: [] },
+    errors: { value: [] }
+  }
+})
+  .addNode("fetch_emails", fetchEmailsNode)
+  .addNode("analyze_urgency", analyzeUrgencyNode)
+  .addNode("extract_actions", extractActionsNode)
+  .addNode("generate_proposals", generateProposalsNode)
+  .addNode("await_confirmation", awaitConfirmationNode)
+  .addNode("execute_actions", executeActionsNode)
+  .addNode("update_context", updateContextNode)
+  .addEdge("fetch_emails", "analyze_urgency")
+  .addEdge("analyze_urgency", "extract_actions")
+  .addEdge("extract_actions", "generate_proposals")
+  .addEdge("generate_proposals", "await_confirmation")
+  .addConditionalEdges("await_confirmation", {
+    approved: "execute_actions",
+    rejected: END,
+    modified: "generate_proposals"
+  })
+  .addEdge("execute_actions", "update_context")
+  .addEdge("update_context", END);
 ```
 
-### Learning from Rejections
+**Available Workflows:**
 
-When users reject proposals, the system:
-1. Embeds the rejection with reason
-2. Extracts constraint pattern
-3. Updates user preference model
-4. Influences future decisions
+1. **Email Triage Workflow** (`workflow_triageEmails`)
+   - **Nodes**: 
+     - `fetch_emails`: Retrieve unread emails from Gmail
+     - `analyze_urgency`: Score emails based on sender, subject, content
+     - `extract_actions`: Identify required actions (reply, task, calendar)
+     - `generate_proposals`: Create action proposals for each email
+     - `await_confirmation`: Present proposals to user for approval
+     - `execute_actions`: Execute approved actions (create tasks, draft replies)
+     - `update_context`: Store decisions for future learning
+   - **Handles**: Batch email processing with intelligent action extraction
+   - **Returns**: Email decisions, created tasks, draft responses
 
-Example:
-- **Rejected**: "Schedule meeting at 8am"
-- **Reason**: "Too early"
-- **Learned**: "No meetings before 9am"
-- **Applied**: Future meeting suggestions start at 9am+
+2. **Schedule Optimization Workflow** (`workflow_optimizeSchedule`)
+   - **Nodes**:
+     - `fetch_schedule`: Get current schedule for target date
+     - `analyze_patterns`: Identify gaps, conflicts, and inefficiencies
+     - `identify_conflicts`: Find overlapping blocks and time conflicts
+     - `generate_optimizations`: Create optimization proposals (move, merge, split)
+     - `await_confirmation`: User reviews proposed changes
+     - `apply_changes`: Execute approved schedule modifications
+     - `update_calendar`: Sync changes with external calendar
+   - **Handles**: Full day schedule optimization with conflict resolution
+   - **Returns**: Original schedule, optimized schedule, change list, metrics
 
-### Pattern Extraction
+3. **Daily Planning Workflow** (`workflow_dailyPlanning`)
+   - **Nodes**:
+     - `gather_context`: Collect user preferences, energy levels, priorities
+     - `fetch_tasks`: Get unscheduled tasks from backlog
+     - `analyze_priorities`: Score and rank tasks by urgency/importance
+     - `generate_schedule`: Create optimal time block assignments
+     - `await_confirmation`: User approves proposed schedule
+     - `create_blocks`: Create time blocks with assigned tasks
+     - `send_notifications`: Notify user of created schedule
+   - **Handles**: Morning planning routine with task scheduling
+   - **Returns**: Created blocks, assigned tasks, planning metrics
 
-The system identifies patterns through:
-- **Frequency Analysis**: Repeated behaviors
-- **Temporal Patterns**: Time-based preferences
-- **Contextual Patterns**: Situation-specific behaviors
-- **Outcome Analysis**: Success/failure rates
+4. **Calendar Optimization Workflow** (`workflow_optimizeCalendar`)
+   - **Nodes**:
+     - `fetch_meetings`: Get meetings for date range
+     - `analyze_conflicts`: Identify scheduling conflicts and issues
+     - `find_alternatives`: Search for better time slots
+     - `generate_proposals`: Create rescheduling proposals
+     - `await_confirmation`: User approves meeting changes
+     - `reschedule_meetings`: Execute calendar updates
+     - `notify_attendees`: Send notifications to affected attendees
+   - **Handles**: Meeting conflict resolution and optimization
+   - **Returns**: Meeting changes, conflict resolutions, optimization metrics
 
-## 5. UniversalToolResponse Structure
+### 4. RAG Context System
 
-All tools and workflows return this standardized format for consistent UI rendering:
+Three-layer context building for personalized responses:
 
 ```typescript
-interface UniversalToolResponse {
-  // Metadata
-  metadata: {
-    toolName: string;
-    operation: 'create' | 'read' | 'update' | 'delete' | 'execute';
-    resourceType: 'schedule' | 'task' | 'email' | 'meeting' | 'preference' | 'workflow';
-    timestamp: string;
-    executionTime: number;
-  };
-  
-  // Core Data
-  data: any; // Tool-specific data
-  
-  // UI Instructions
-  display: {
-    type: 'card' | 'list' | 'timeline' | 'grid' | 'form' | 'confirmation' | 'progress';
-    title: string;
-    description?: string;
-    priority: 'high' | 'medium' | 'low';
-    components: Component[]; // Rich UI components
-  };
-  
-  // Behavior Hints
-  ui: {
-    notification?: {
-      show: boolean;
-      type: 'success' | 'info' | 'warning' | 'error';
-      message: string;
-      duration: number;
+class RAGContextProvider {
+  async buildContext(query: string, userId: string) {
+    // Layer 1: Recent tool executions (pure data)
+    const recentTools = await this.getRecentToolResults(userId, 7);
+    
+    // Layer 2: Workflow patterns
+    const patterns = await this.getWorkflowPatterns(userId);
+    
+    // Layer 3: User preferences
+    const preferences = await this.getUserPreferences(userId);
+    
+    return {
+      immediate: recentTools.slice(0, 5),
+      patterns: patterns,
+      preferences: preferences
     };
-    suggestions: string[]; // Next action suggestions
-    actions: Action[]; // Buttons/quick actions
-    confirmationRequired?: boolean;
-    confirmationId?: string;
-  };
+  }
   
-  // Streaming Support
-  streaming?: {
-    supported: boolean;
-    progress?: number;
-    stage?: string;
-    partialData?: any;
-  };
+  // Embed pure tool results for learning
+  async embedToolResult(toolName: string, result: BaseToolResponse) {
+    const embedding = await generateEmbedding({
+      tool: toolName,
+      data: result,
+      timestamp: new Date()
+    });
+    await this.store(embedding);
+  }
+}
+```
+
+### 5. Client-Side Rendering
+
+The UI intelligently renders tool results based on their type:
+
+```typescript
+// ToolResultRenderer routes to appropriate display
+export function ToolResultRenderer({ toolName, result, metadata }) {
+  // Use metadata or name to determine display type
+  const displayType = metadata?.category || detectTypeFromName(toolName);
   
-  // Error Handling
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-    recoverable: boolean;
-    suggestedActions: string[];
-  };
+  // Lazy load appropriate display component
+  const Display = displays[displayType];
+  return <Display data={result} />;
+}
+
+// Specialized displays for each data type
+const displays = {
+  schedule: ScheduleDisplay,    // Timeline view
+  task: TaskListDisplay,        // Task cards
+  email: EmailListDisplay,      // Email previews
+  meeting: MeetingDisplay,      // Calendar event
+  workflow: WorkflowDisplay,    // Multi-step results
+  confirmation: ConfirmDialog   // Action confirmation
+};
+```
+
+## Data Flow Example
+
+Let's trace a request through the system:
+
+1. **User**: "Optimize my schedule for tomorrow"
+
+2. **Orchestrator Analysis**:
+   ```typescript
+   {
+     intent: "schedule_optimization",
+     complexity: "high",
+     requiresWorkflow: true,
+     workflowType: "optimizeSchedule",
+     params: { date: "2024-01-20" }
+   }
+   ```
+
+3. **Workflow Execution**:
+   - fetch_schedule → Returns pure schedule data
+   - analyze_patterns → Identifies gaps and conflicts
+   - generate_optimizations → Creates proposals
+   - await_confirmation → User reviews changes
+   - apply_changes → Updates schedule
+   - update_calendar → Syncs with calendar
+
+4. **Pure Data Response**:
+   ```typescript
+   {
+     success: true,
+     date: "2024-01-20",
+     originalSchedule: [...],
+     optimizedSchedule: [...],
+     changes: [
+       { type: "move", description: "...", impact: "..." }
+     ],
+     metrics: {
+       focusTimeGained: 90,
+       utilizationImproved: 15
+     }
+   }
+   ```
+
+5. **Client Rendering**:
+   - ToolResultRenderer detects "workflow" type
+   - Loads WorkflowDisplay component
+   - Shows before/after comparison
+   - Provides action buttons
+
+## Tool Categories Deep Dive
+
+### Schedule Tools
+Manage time blocks and daily schedules:
+- `viewSchedule`: Returns blocks, stats, utilization
+- `createTimeBlock`: Returns new block, conflicts
+- `moveTimeBlock`: Returns updated block, previous time
+- `deleteTimeBlock`: Returns deleted ID and title
+- `fillWorkBlock`: Returns block ID, assigned tasks
+
+### Task Tools
+Handle task management and prioritization:
+- `viewTasks`: Returns tasks with scores, filters, stats
+- `createTask`: Returns task, auto-schedule flag
+- `updateTask`: Returns task, changed fields
+- `completeTask`: Returns ID, title, time spent
+
+### Email Tools
+Process and manage emails:
+- `viewEmails`: Returns emails with urgency scores
+- `readEmail`: Returns full content, action items
+- `processEmail`: Returns action-specific results
+
+### System Tools
+Provide system-level functionality:
+- `confirmProposal`: Handle workflow confirmations
+- `showWorkflowHistory`: Display past executions
+- `resumeWorkflow`: Continue paused workflows
+- `provideFeedback`: Collect user feedback
+- `showPatterns`: Display usage patterns
+- `clearContext`: Reset conversation context
+
+## Streaming Support
+
+Long-running operations support progress streaming:
+
+```typescript
+// Streaming tool definition
+export const optimizeSchedule = createStreamingTool({
+  stages: [
+    { name: "Fetching data", weight: 20, execute: fetchData },
+    { name: "Analyzing", weight: 30, execute: analyze },
+    { name: "Optimizing", weight: 30, execute: optimize },
+    { name: "Validating", weight: 20, execute: validate }
+  ],
+  finalizeResult: (context) => ({
+    success: true,
+    ...context.validated
+  })
+});
+
+// Client shows progress
+<ProgressBar stage="Analyzing" progress={30} />
+```
+
+## Error Handling
+
+Consistent error handling across all tools:
+
+```typescript
+// All tools return consistent error structure
+interface ErrorResponse extends BaseToolResponse {
+  success: false;
+  error: string;
+  errorCode?: string;
+  retryable?: boolean;
+}
+
+// Client handles errors gracefully
+if (!result.success) {
+  return <ErrorDisplay error={result.error} />;
 }
 ```
 
-## 6. Component Types
+## Performance Optimizations
 
-Rich UI components returned in responses:
+1. **Lazy Loading**: Display components loaded on demand
+2. **Streaming**: Progress updates for long operations
+3. **Caching**: Recent tool results cached in RAG
+4. **Parallel Execution**: Tools can run in parallel
+5. **Pure Data**: No LLM formatting overhead
 
-### scheduleBlock
+## Migration from UniversalToolResponse
+
+The system has migrated from the complex `UniversalToolResponse` format to pure data returns:
+
+**Before (UniversalToolResponse):**
 ```typescript
 {
-  type: 'scheduleBlock',
-  data: {
-    id: string;
-    type: 'work' | 'meeting' | 'email' | 'break' | 'blocked';
-    title: string;
-    startTime: string; // "9:00 AM"
-    endTime: string;   // "10:30 AM"
-    description?: string;
-    tasks?: Array<{
-      id: string;
-      title: string;
-      estimatedMinutes: number;
-      completed: boolean;
-    }>;
-  }
+  metadata: { toolName, operation, resourceType, ... },
+  data: { /* domain data */ },
+  display: { type, title, components: [...] },
+  ui: { suggestions: [...], actions: [...] },
+  streaming: { ... }
 }
 ```
 
-### taskCard
+**After (Pure Data):**
 ```typescript
 {
-  type: 'taskCard',
-  data: {
-    id: string;
-    title: string;
-    priority: 'high' | 'medium' | 'low';
-    estimatedMinutes: number;
-    status: 'backlog' | 'scheduled' | 'in_progress' | 'completed';
-    description?: string;
-    dueDate?: string;
-    tags?: string[];
-    score?: number; // 0-100
-  }
+  success: boolean,
+  error?: string,
+  // Domain-specific data only
+  blocks?: TimeBlock[],
+  tasks?: Task[],
+  emails?: Email[],
+  // No UI instructions
 }
 ```
 
-### emailPreview
-```typescript
-{
-  type: 'emailPreview',
-  data: {
-    id: string;
-    from: string;
-    fromEmail: string;
-    subject: string;
-    preview: string;
-    receivedAt: string;
-    isRead: boolean;
-    hasAttachments: boolean;
-    urgency?: 'urgent' | 'important' | 'normal';
-  }
-}
-```
+**Benefits:**
+- Simpler tool implementations
+- No AI formatting overhead
+- Predictable UI rendering
+- Better type safety
+- Easier testing
 
-## 7. System Intelligence Features
+## Future Extensibility
 
-### Adaptive Behaviors
-
-1. **Time-of-Day Intelligence**
-   - Morning: Complex, creative tasks
-   - Afternoon: Collaborative work, meetings
-   - Evening: Quick wins, administrative tasks
-
-2. **Energy Management**
-   - Tracks peak performance times
-   - Suggests breaks before fatigue
-   - Balances high/low energy tasks
-
-3. **Context Switching Minimization**
-   - Groups similar tasks
-   - Batches email processing
-   - Consolidates meeting blocks
-
-### Personalization Engine
-
-The system learns and adapts through:
-- **Explicit Feedback**: User confirmations/rejections
-- **Implicit Signals**: Task completion times, email response patterns
-- **Pattern Recognition**: Recurring behaviors and preferences
-- **Outcome Tracking**: Success rates of suggestions
-
-### Continuous Improvement
-
-1. **A/B Testing Internal Strategies**
-   - Tests different scheduling algorithms
-   - Measures user satisfaction
-   - Automatically adopts better approaches
-
-2. **Feedback Loop Processing**
-   - Weekly pattern analysis
-   - Monthly preference updates
-   - Quarterly strategy evolution
-
-3. **Cross-User Learning** (Privacy-Preserved)
-   - Anonymized pattern sharing
-   - Industry-specific optimizations
-   - Role-based suggestions
-
-## 8. Production Architecture
-
-### Performance Characteristics
-
-- **Tool Execution**: < 2 seconds (p95)
-- **Workflow Completion**: < 5 seconds (p95)
-- **Intent Classification**: < 300ms
-- **RAG Context Retrieval**: < 500ms
-- **UI Update Latency**: < 100ms
-
-### Scalability Design
-
-- **Stateless Tools**: Horizontal scaling
-- **Workflow State**: Redis-backed persistence
-- **Embeddings**: Vector DB with caching
-- **Service Layer**: Connection pooling, retry logic
-
-### Reliability Features
-
-- **Automatic Retries**: Exponential backoff
-- **Circuit Breakers**: Prevent cascade failures
-- **Graceful Degradation**: Fallback to simpler operations
-- **State Recovery**: Resume interrupted workflows
-
-## Conclusion
-
-dayli's AI system represents a sophisticated orchestration of multiple AI technologies working in harmony. By combining intelligent routing, atomic tools, complex workflows, and continuous learning through RAG, we deliver an AI executive assistant that truly understands and adapts to each user's unique working style.
+The architecture supports easy addition of:
+- New tools (via tool factory)
+- New workflows (via LangGraph)
+- New display types (via display components)
+- New data sources (via service interfaces)
+- Enhanced learning (via RAG extensions)
 
 The system's strength lies not in any single component, but in how these pieces work together - the orchestrator's intelligence in routing, the tools' focused efficiency, the workflows' handling of complexity, and RAG's continuous personalization create an assistant that becomes more valuable with every interaction. 

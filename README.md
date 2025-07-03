@@ -227,10 +227,18 @@ Our AI architecture represents a sophisticated orchestration of multiple technol
         └─────────────┬───────────┴─────────────────┘
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              UniversalToolResponse                           │
-│  • Structured Data                                           │
-│  • Rich UI Components                                        │
-│  • Suggestions & Actions                                     │
+│                 Pure Data Response                           │
+│  • Domain-specific data (blocks, tasks, emails)             │
+│  • Success/error status                                      │
+│  • No UI instructions                                        │
+└─────────────────────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Client-Side Rendering                           │
+│  • ToolResultRenderer detects type                          │
+│  • Loads appropriate display component                       │
+│  • Interactive UI without AI formatting                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -275,26 +283,36 @@ interface UserIntent {
 
 ### The Tool System: 25 Essential Operations
 
-All tools follow the AI SDK pattern and return `UniversalToolResponse` for consistent UI rendering:
+All tools use the tool factory pattern and return pure domain data without UI instructions:
 
 ```typescript
-// Example tool implementation
-export const createTimeBlock = tool({
-  description: "Create a new time block in the schedule",
-  parameters: z.object({
-    type: z.enum(['focus', 'email', 'meeting', 'break']),
-    title: z.string(),
-    startTime: z.string(),
-    duration: z.number()
-  }),
-  execute: async (params) => {
-    const block = await scheduleService.create(params);
-    return buildToolResponse(block, {
-      type: 'schedule',
-      suggestions: ['Add tasks to this block', 'View schedule']
-    });
-  }
-});
+// Example tool implementation with pure data return
+export const createTimeBlock = registerTool(
+  createTool<typeof parameters, CreateTimeBlockResponse>({
+    name: 'schedule_createTimeBlock',
+    description: "Create a new time block in the schedule",
+    parameters: z.object({
+      type: z.enum(['focus', 'email', 'meeting', 'break']),
+      title: z.string(),
+      startTime: z.string(),
+      duration: z.number()
+    }),
+    metadata: {
+      category: 'schedule',
+      displayName: 'Create Time Block',
+      requiresConfirmation: false,
+    },
+    execute: async (params) => {
+      const block = await scheduleService.create(params);
+      // Return only domain data
+      return {
+        success: true,
+        block: block,
+        conflicts: checkConflicts(block)
+      };
+    }
+  })
+);
 ```
 
 **Tool Categories:**
@@ -423,41 +441,34 @@ Every workflow can be interrupted and resumed:
 // Failed workflows can be retried with modified parameters
 ```
 
-### UniversalToolResponse: Consistent UI Rendering
+### Pure Data Architecture: Clean Separation of Concerns
 
-All tools and workflows return this standardized format:
+Tools return pure domain data without UI formatting instructions:
 
 ```typescript
-interface UniversalToolResponse {
-  metadata: {
-    toolName: string;
-    operation: 'create' | 'read' | 'update' | 'delete' | 'execute';
-    resourceType: string;
-    timestamp: string;
-    executionTime: number;
-  };
-  
-  data: any; // Tool-specific data
-  
-  display: {
-    type: 'card' | 'list' | 'timeline' | 'grid' | 'form' | 'confirmation' | 'progress';
-    title: string;
-    description?: string;
-    priority: 'high' | 'medium' | 'low';
-    components: Component[]; // Rich UI components
-  };
-  
-  ui: {
-    notification?: Notification;
-    suggestions: string[];
-    actions: Action[];
-    confirmationRequired?: boolean;
-  };
-  
-  streaming?: StreamingSupport;
-  error?: ErrorInfo;
+// Tool returns only data
+interface ScheduleViewResponse extends BaseToolResponse {
+  success: boolean;
+  date: string;
+  blocks: TimeBlock[];
+  stats: ScheduleStats;
+  // No UI instructions - just data
 }
+
+// Client renders based on tool type
+<ToolResultRenderer 
+  toolName="schedule_viewSchedule"
+  result={scheduleData}
+  onAction={handleAction}
+/>
 ```
+
+**Benefits:**
+- **Simpler Tools**: Focus on business logic, not UI
+- **Predictable Rendering**: UI decisions made client-side
+- **Better Performance**: No AI formatting overhead
+- **Type Safety**: Clear data contracts for each tool
+- **Easier Testing**: Pure functions with predictable outputs
 
 ### System Intelligence Features
 
@@ -502,7 +513,7 @@ interface UniversalToolResponse {
 3. **Routing Decision** → High complexity → Adaptive Scheduling Workflow
 4. **Workflow Execution** → 5 nodes process state with conditional routing
 5. **RAG Enhancement** → "User prefers morning deep work" influences decisions
-6. **Response Generation** → UniversalToolResponse with rich UI components
+6. **Response Generation** → Pure data response → Client-side rendering
 7. **Learning** → Stores decisions for future personalization
 
 For complete technical details on all workflows, see the [AI System Reference](.pm/epics/epic-4/AI-SYSTEM-REFERENCE.md).
@@ -567,8 +578,8 @@ The system's strength lies in how these pieces work together:
 - **Workflow Layer**: Complex multi-step processes
 - **RAG Layer**: Continuous personalization
 
-### Standardized Response Format
-All operations return `UniversalToolResponse` for consistent UI rendering, enabling rich components and interactive features without tight coupling between AI and UI layers.
+### Pure Data Response Pattern
+All operations return pure domain data for clean separation of concerns. The client-side ToolResultRenderer handles all UI decisions based on tool metadata, enabling rich interactive features without coupling AI logic to UI presentation.
 
 ## Current Implementation Status
 

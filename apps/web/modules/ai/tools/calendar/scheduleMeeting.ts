@@ -1,32 +1,30 @@
-import { tool } from 'ai';
 import { z } from 'zod';
-import { type UniversalToolResponse } from '../../schemas/universal.schema';
-import { type CalendarEvent } from '../../schemas/calendar.schema';
-import { buildToolResponse, buildErrorResponse, formatTime12Hour, formatDate } from '../../utils/tool-helpers';
+import { createTool } from '../base/tool-factory';
+import { registerTool } from '../base/tool-registry';
+import { type ScheduleMeetingResponse } from '../types/responses';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format, addMinutes } from 'date-fns';
 import { parseFlexibleTime } from '../../utils/time-parser';
 
-export const scheduleMeeting = tool({
-  description: "Schedule a new meeting with smart time finding",
-  parameters: z.object({
-    title: z.string(),
-    attendees: z.array(z.string()).describe("Email addresses"),
-    duration: z.number().default(30).describe("Duration in minutes"),
-    description: z.string().optional(),
-    preferredTimes: z.array(z.string()).optional().describe("Preferred time slots"),
-    needsPrepTime: z.boolean().default(false),
-  }),
-  execute: async (params): Promise<UniversalToolResponse> => {
-    const startTime = Date.now();
-    const toolOptions = {
-      toolName: 'scheduleMeeting',
-      operation: 'create' as const,
-      resourceType: 'meeting' as const,
-      startTime,
-    };
-    
-    try {
+export const scheduleMeeting = registerTool(
+  createTool<typeof parameters, ScheduleMeetingResponse>({
+    name: 'calendar_scheduleMeeting',
+    description: "Schedule a new meeting with smart time finding",
+    parameters: z.object({
+      title: z.string(),
+      attendees: z.array(z.string()).describe("Email addresses"),
+      duration: z.number().default(30).describe("Duration in minutes"),
+      description: z.string().optional(),
+      preferredTimes: z.array(z.string()).optional().describe("Preferred time slots"),
+      needsPrepTime: z.boolean().default(false),
+    }),
+    metadata: {
+      category: 'calendar',
+      displayName: 'Schedule Meeting',
+      requiresConfirmation: false,
+      supportsStreaming: false,
+    },
+    execute: async (params) => {
       const calendarService = ServiceFactory.getInstance().getCalendarService();
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       
@@ -51,14 +49,12 @@ export const scheduleMeeting = tool({
       );
       
       if (hasConflict) {
-        return buildErrorResponse(
-          toolOptions,
-          new Error('The selected time has conflicts'),
-          {
-            title: 'Time conflict detected',
-            description: 'The selected time has conflicts. Please choose a different time.',
-          }
-        );
+        return {
+          success: false,
+          error: 'The selected time has conflicts. Please choose a different time.',
+          meeting: null,
+          conflicts: [], // In a real implementation, we'd return the conflicting events
+        };
       }
       
       // Create the meeting
@@ -91,108 +87,38 @@ export const scheduleMeeting = tool({
         }
       }
       
-      const calendarEvent: CalendarEvent = {
-        id: meeting.id,
-        title: meeting.summary || params.title,
-        description: meeting.description,
-        startTime: meetingStart.toISOString(),
-        endTime: meetingEnd.toISOString(),
-        attendees: params.attendees.map(email => ({ 
-          email, 
-          responseStatus: 'needsAction',
-          isOrganizer: false,
-          isOptional: false,
-        })),
-        location: meeting.location,
-        isAllDay: false,
-        status: 'confirmed',
-        visibility: 'public',
+      console.log(`[Tool: scheduleMeeting] Created meeting ${meeting.id} for ${params.title}`);
+      
+      // Return pure data
+      return {
+        success: true,
+        meeting: {
+          id: meeting.id,
+          title: meeting.summary || params.title,
+          description: meeting.description,
+          startTime: meetingStart.toISOString(),
+          endTime: meetingEnd.toISOString(),
+          attendees: params.attendees.map(email => ({ 
+            email, 
+            responseStatus: 'needsAction' as const,
+          })),
+          location: meeting.location,
+          prepTimeAdded: !!prepBlockId,
+        },
+        conflicts: [],
       };
       
-      return buildToolResponse(
-        toolOptions,
-        {
-          event: calendarEvent,
-          prepTimeAdded: !!prepBlockId,
-          prepBlockId,
-        },
-        {
-          type: 'card',
-          title: 'Meeting Scheduled',
-          description: `"${params.title}" scheduled for ${formatDate(meetingStart)} at ${formatTime12Hour(meetingStart)}`,
-          priority: 'high',
-          components: [
-            {
-              type: 'meetingCard',
-              data: {
-                id: meeting.id,
-                title: params.title,
-                startTime: formatTime12Hour(meetingStart),
-                endTime: formatTime12Hour(meetingEnd),
-                date: formatDate(meetingStart),
-                attendees: params.attendees.map(email => ({ 
-                  email, 
-                  name: email.split('@')[0] || 'Attendee' 
-                })),
-                location: meeting.location,
-                hasConflicts: false,
-              },
-            },
-          ],
-        },
-        {
-          notification: {
-            show: true,
-            type: 'success',
-            message: `Meeting scheduled${params.needsPrepTime ? ' with prep time' : ''}`,
-            duration: 3000,
-          },
-          suggestions: [
-            'View calendar',
-            'Add another meeting',
-            'Send meeting agenda',
-          ],
-          actions: [
-            {
-              id: 'view-calendar',
-              label: 'View Calendar',
-              icon: 'calendar',
-              variant: 'primary',
-              action: {
-                type: 'message',
-                message: 'Show my calendar',
-              },
-            },
-            {
-              id: 'send-agenda',
-              label: 'Send Agenda',
-              icon: 'mail',
-              variant: 'secondary',
-              action: {
-                type: 'tool',
-                tool: 'draftEmailResponse',
-                params: {
-                  to: params.attendees,
-                  subject: `Agenda for: ${params.title}`,
-                  keyPoints: [`Meeting scheduled for ${formatDate(meetingStart)} at ${formatTime12Hour(meetingStart)}`],
-                },
-              },
-            },
-          ],
-        }
-      );
-      
-    } catch (error) {
-      return buildErrorResponse(
-        toolOptions,
-        error,
-        {
-          title: 'Failed to schedule meeting',
-          description: error instanceof Error ? error.message : 'Unknown error occurred',
-        }
-      );
-    }
-  },
+    },
+  })
+);
+
+const parameters = z.object({
+  title: z.string(),
+  attendees: z.array(z.string()).describe("Email addresses"),
+  duration: z.number().default(30).describe("Duration in minutes"),
+  description: z.string().optional(),
+  preferredTimes: z.array(z.string()).optional().describe("Preferred time slots"),
+  needsPrepTime: z.boolean().default(false),
 });
 
 // Helper to parse natural language date/time

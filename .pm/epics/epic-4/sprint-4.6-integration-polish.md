@@ -9,10 +9,11 @@
 1. Write comprehensive E2E/integration tests for ALL 25 tools
 2. Write comprehensive tests for ALL 4 workflows
 3. Test all AI and RAG components thoroughly
-4. Audit entire codebase for cleanup opportunities
-5. Create refactoring plan (with approval before execution)
-6. Fix all discovered issues
-7. Ensure zero technical debt for MVP launch
+4. Test all display components from Sprint 4.5
+5. Audit entire codebase for cleanup opportunities
+6. Create refactoring plan (with approval before execution)
+7. Fix all discovered issues
+8. Ensure zero technical debt for MVP launch
 
 ## Day 1: Comprehensive Tool Testing
 
@@ -22,7 +23,7 @@
 // apps/web/tests/tools/setup.ts
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { createClient } from '@supabase/supabase-js';
-import { toolRegistry } from '@/modules/ai/tools/registry';
+import { ToolRegistry } from '@/modules/ai/tools/base/tool-registry';
 
 export async function setupTestEnvironment() {
   // Create test database client
@@ -37,8 +38,8 @@ export async function setupTestEnvironment() {
     supabaseClient: supabase
   });
   
-  // Register all tools
-  await toolRegistry.autoRegister();
+  // Get tool registry instance
+  const toolRegistry = ToolRegistry.getInstance();
   
   // Seed test data
   await seedTestData(supabase);
@@ -54,7 +55,7 @@ Each tool must have:
 2. **Error handling test** - Verify proper error responses
 3. **Edge case test** - Boundary conditions
 4. **Integration test** - With real services
-5. **AI response test** - Verify UniversalToolResponse format
+5. **Pure data test** - Verify response matches type definition
 
 ### Schedule Tools (5 tests each = 25 total)
 
@@ -63,37 +64,49 @@ Each tool must have:
 describe('viewSchedule Tool', () => {
   it('should return schedule for today when no date provided', async () => {
     const result = await viewSchedule.execute({});
-    expect(result.metadata.toolName).toBe('viewSchedule');
-    expect(result.data).toHaveProperty('blocks');
-    expect(result.display.type).toBe('schedule');
+    expect(result.success).toBe(true);
+    expect(result.date).toBeDefined();
+    expect(result.blocks).toBeArray();
+    expect(result.stats).toHaveProperty('totalHours');
+    expect(result.stats).toHaveProperty('utilization');
   });
   
   it('should handle invalid date format', async () => {
     const result = await viewSchedule.execute({ date: 'invalid' });
-    expect(result.error).toBeDefined();
-    expect(result.error.code).toBe('INVALID_DATE');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Invalid date format');
   });
   
   it('should return empty schedule for future date', async () => {
     const result = await viewSchedule.execute({ date: '2025-12-31' });
-    expect(result.data.blocks).toHaveLength(0);
-    expect(result.ui.suggestions).toContain('Create a time block');
+    expect(result.success).toBe(true);
+    expect(result.blocks).toHaveLength(0);
+    expect(result.stats.totalHours).toBe(0);
   });
   
   it('should include task details in work blocks', async () => {
     // Seed work block with tasks
     await seedWorkBlockWithTasks();
     const result = await viewSchedule.execute({});
-    const workBlock = result.data.blocks.find(b => b.type === 'work');
-    expect(workBlock.tasks).toBeDefined();
-    expect(workBlock.tasks.length).toBeGreaterThan(0);
+    const workBlock = result.blocks.find(b => b.type === 'work');
+    expect(workBlock?.tasks).toBeDefined();
+    expect(workBlock?.tasks?.length).toBeGreaterThan(0);
   });
   
-  it('should calculate correct statistics', async () => {
-    await seedMixedSchedule();
+  it('should match ScheduleViewResponse type', async () => {
     const result = await viewSchedule.execute({});
-    expect(result.data.stats.totalHours).toBeCloseTo(8, 1);
-    expect(result.data.stats.focusHours).toBeGreaterThan(0);
+    // Verify structure matches type definition
+    expect(result).toMatchObject({
+      success: expect.any(Boolean),
+      date: expect.any(String),
+      blocks: expect.any(Array),
+      stats: {
+        totalHours: expect.any(Number),
+        focusHours: expect.any(Number),
+        meetingHours: expect.any(Number),
+        utilization: expect.any(Number)
+      }
+    });
   });
 });
 ```
@@ -105,9 +118,10 @@ describe('viewSchedule Tool', () => {
 describe('createTask Tool', () => {
   it('should create task with default values', async () => {
     const result = await createTask.execute({ title: 'Test Task' });
-    expect(result.data.title).toBe('Test Task');
-    expect(result.data.estimatedMinutes).toBe(30);
-    expect(result.data.priority).toBe('medium');
+    expect(result.success).toBe(true);
+    expect(result.task.title).toBe('Test Task');
+    expect(result.task.estimatedMinutes).toBe(30);
+    expect(result.task.priority).toBe('medium');
   });
   
   it('should auto-schedule high priority tasks', async () => {
@@ -117,8 +131,9 @@ describe('createTask Tool', () => {
       title: 'Urgent Task',
       priority: 'high' 
     });
-    expect(result.data.assignedToBlockId).toBeDefined();
-    expect(result.ui.notification.message).toContain('scheduled');
+    expect(result.success).toBe(true);
+    expect(result.task.priority).toBe('high');
+    // Note: Auto-scheduling is a side effect, not part of response
   });
   
   it('should handle database errors gracefully', async () => {
@@ -127,19 +142,28 @@ describe('createTask Tool', () => {
       new Error('Database connection failed')
     );
     const result = await createTask.execute({ title: 'Test' });
-    expect(result.error.recoverable).toBe(true);
-    expect(result.error.suggestedActions).toContain('Retry the operation');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Database connection failed');
   });
   
   it('should validate required fields', async () => {
     const result = await createTask.execute({ title: '' });
-    expect(result.error.code).toBe('VALIDATION_ERROR');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Title is required');
   });
   
-  it('should include proper UI suggestions', async () => {
+  it('should match CreateTaskResponse type', async () => {
     const result = await createTask.execute({ title: 'Test Task' });
-    expect(result.ui.suggestions).toContain('Create another task');
-    expect(result.ui.actions).toHaveLength(2);
+    expect(result).toMatchObject({
+      success: true,
+      task: {
+        id: expect.any(String),
+        title: expect.any(String),
+        priority: expect.any(String),
+        estimatedMinutes: expect.any(Number),
+        status: expect.any(String)
+      }
+    });
   });
 });
 ```
@@ -155,19 +179,23 @@ describe('processEmail Tool', () => {
       emailId,
       action: 'convert_to_task'
     });
-    expect(result.data.task).toBeDefined();
-    expect(result.data.emailArchived).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.emailId).toBe(emailId);
+    expect(result.action).toBe('convert_to_task');
+    expect(result.result.taskId).toBeDefined();
+    expect(result.result.taskTitle).toBeDefined();
   });
   
   it('should draft email response', async () => {
     const emailId = await seedTestEmail();
     const result = await processEmail.execute({
       emailId,
-      action: 'draft_response',
+      action: 'draft',
       responsePoints: ['Will review', 'Send update Friday']
     });
-    expect(result.data.draft).toBeDefined();
-    expect(result.data.draft.body).toContain('review');
+    expect(result.success).toBe(true);
+    expect(result.result.draftId).toBeDefined();
+    expect(result.result.draftContent).toContain('review');
   });
   
   it('should handle missing email gracefully', async () => {
@@ -175,27 +203,96 @@ describe('processEmail Tool', () => {
       emailId: 'non-existent',
       action: 'convert_to_task'
     });
-    expect(result.error.code).toBe('EMAIL_NOT_FOUND');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Email not found');
   });
   
   it('should send email immediately when requested', async () => {
     const emailId = await seedTestEmail();
     const result = await processEmail.execute({
       emailId,
-      action: 'send_response',
-      responsePoints: ['Acknowledged'],
-      sendImmediately: true
+      action: 'send',
+      responsePoints: ['Acknowledged']
     });
-    expect(result.data.sent).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.action).toBe('send');
   });
   
-  it('should extract action items correctly', async () => {
-    const emailId = await seedActionEmail();
+  it('should match ProcessEmailResponse type', async () => {
+    const emailId = await seedTestEmail();
     const result = await processEmail.execute({
       emailId,
-      action: 'convert_to_task'
+      action: 'archive'
     });
-    expect(result.data.task.title).toContain('Review Q4 report');
+    expect(result).toMatchObject({
+      success: true,
+      emailId: expect.any(String),
+      action: expect.any(String),
+      result: expect.any(Object)
+    });
+  });
+});
+```
+
+### Tool Factory Testing
+
+```typescript
+// apps/web/tests/tools/base/tool-factory.test.ts
+describe('Tool Factory', () => {
+  it('should create tools with consistent structure', () => {
+    const tool = createTool({
+      name: 'test_tool',
+      description: 'Test',
+      parameters: z.object({ test: z.string() }),
+      metadata: { category: 'test', displayName: 'Test Tool' },
+      execute: async () => ({ success: true })
+    });
+    
+    expect(tool.__name).toBe('test_tool');
+    expect(tool.__metadata.category).toBe('test');
+    expect(tool.__metadata.displayName).toBe('Test Tool');
+  });
+  
+  it('should handle errors consistently', async () => {
+    const tool = createTool({
+      name: 'error_tool',
+      description: 'Error test',
+      parameters: z.object({}),
+      metadata: { category: 'test' },
+      execute: async () => { throw new Error('Test error'); }
+    });
+    
+    const result = await tool.execute({});
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Test error');
+    expect(result.timestamp).toBeDefined();
+  });
+  
+  it('should support streaming tools', async () => {
+    const streamingTool = createStreamingTool({
+      name: 'stream_test',
+      description: 'Streaming test',
+      parameters: z.object({}),
+      metadata: { category: 'test', supportsStreaming: true },
+      stages: [
+        {
+          name: 'Stage 1',
+          weight: 50,
+          execute: async () => ({ data: 'stage1' })
+        },
+        {
+          name: 'Stage 2',
+          weight: 50,
+          execute: async () => ({ data: 'stage2' })
+        }
+      ],
+      finalizeResult: (context) => ({
+        success: true,
+        result: context
+      })
+    });
+    
+    expect(streamingTool.__metadata.supportsStreaming).toBe(true);
   });
 });
 ```
@@ -207,7 +304,7 @@ describe('processEmail Tool', () => {
 
 **Total: 125 comprehensive tool tests**
 
-## Day 2: Workflow & AI/RAG Testing
+## Day 2: Workflow, AI/RAG & Display Component Testing
 
 ### Morning: Workflow Testing
 
@@ -227,26 +324,23 @@ describe('Adaptive Scheduling Workflow', () => {
       strategy: 'full'
     });
     
-    // Verify all workflow stages
-    expect(result.data.stages).toEqual([
-      'fetchScheduleData',
-      'analyzeScheduleState', 
-      'determineStrategy',
-      'executeStrategy',
-      'validateChanges'
-    ]);
-    
-    // Verify proposed changes
-    expect(result.data.proposedChanges).toHaveLength(5);
-    expect(result.metadata.confirmationRequired).toBe(true);
+    // Verify pure data response
+    expect(result.success).toBe(true);
+    expect(result.date).toBe('2024-01-15');
+    expect(result.changes).toBeArray();
+    expect(result.changes.length).toBeGreaterThan(0);
+    expect(result.metrics).toBeDefined();
   });
   
   it('should handle empty schedule', async () => {
     await clearSchedule();
     const result = await optimizeSchedule.execute({});
-    expect(result.data.strategy).toBe('full');
-    expect(result.data.proposedChanges).toContainEqual(
-      expect.objectContaining({ type: 'add', title: 'Morning Deep Work' })
+    expect(result.success).toBe(true);
+    expect(result.changes).toContainEqual(
+      expect.objectContaining({ 
+        type: 'create', 
+        description: expect.stringContaining('work block')
+      })
     );
   });
   
@@ -256,8 +350,10 @@ describe('Adaptive Scheduling Workflow', () => {
       lunchTime: '13:00'
     });
     const result = await optimizeSchedule.execute({});
-    const firstBlock = result.data.proposedChanges[0];
-    expect(firstBlock.startTime).toBe('10:00 AM');
+    expect(result.success).toBe(true);
+    // Verify changes respect preferences
+    const createChanges = result.changes.filter(c => c.type === 'create');
+    expect(createChanges[0].description).toContain('10:00');
   });
   
   it('should handle workflow interruption and resume', async () => {
@@ -269,20 +365,103 @@ describe('Adaptive Scheduling Workflow', () => {
     const resumed = await resumeWorkflow.execute({
       workflowId: interruptedState.id
     });
-    expect(resumed.data.completed).toBe(true);
+    expect(resumed.success).toBe(true);
+    expect(resumed.resumed).toBe(true);
   });
   
   it('should stream progress updates', async () => {
     const updates: any[] = [];
-    const result = await optimizeSchedule.execute(
-      { streamProgress: true },
-      { onProgress: (update) => updates.push(update) }
-    );
     
-    expect(updates).toContainEqual(
-      expect.objectContaining({ stage: 'fetchScheduleData' })
-    );
+    // Execute with streaming
+    for await (const update of optimizeSchedule.executeStream({})) {
+      updates.push(update);
+    }
+    
     expect(updates.length).toBeGreaterThan(3);
+    expect(updates[updates.length - 1].progress).toBe(100);
+  });
+});
+```
+
+### Display Component Testing
+
+Test all display components from Sprint 4.5:
+
+```typescript
+// apps/web/tests/components/displays/ScheduleDisplay.test.tsx
+import { render } from '@testing-library/react';
+import { ScheduleDisplay } from '@/modules/chat/components/displays/ScheduleDisplay';
+
+describe('ScheduleDisplay Component', () => {
+  it('should render schedule blocks correctly', () => {
+    const mockData = {
+      date: '2024-01-15',
+      blocks: [
+        { 
+          id: '1', 
+          type: 'work' as const, 
+          title: 'Deep Work', 
+          startTime: new Date('2024-01-15T09:00:00'),
+          endTime: new Date('2024-01-15T11:00:00')
+        }
+      ],
+      stats: { 
+        totalHours: 8, 
+        focusHours: 4,
+        meetingHours: 2,
+        utilization: 80 
+      }
+    };
+    
+    const { getByText } = render(<ScheduleDisplay data={mockData} />);
+    expect(getByText('Deep Work')).toBeInTheDocument();
+    expect(getByText('8 hours')).toBeInTheDocument();
+    expect(getByText('80% utilized')).toBeInTheDocument();
+  });
+  
+  it('should handle empty schedule', () => {
+    const mockData = {
+      date: '2024-01-15',
+      blocks: [],
+      stats: { totalHours: 0, focusHours: 0, meetingHours: 0, utilization: 0 }
+    };
+    
+    const { getByText } = render(<ScheduleDisplay data={mockData} />);
+    expect(getByText(/No blocks scheduled/)).toBeInTheDocument();
+  });
+});
+
+// Test ToolResultRenderer routing
+describe('ToolResultRenderer', () => {
+  it('should route schedule tools to ScheduleDisplay', () => {
+    const result = { 
+      success: true,
+      date: '2024-01-15', 
+      blocks: [],
+      stats: { totalHours: 0, focusHours: 0, meetingHours: 0, utilization: 0 }
+    };
+    
+    const { container } = render(
+      <ToolResultRenderer 
+        toolName="schedule_viewSchedule"
+        result={result}
+        metadata={{ category: 'schedule' }}
+      />
+    );
+    expect(container.querySelector('[data-testid="schedule-display"]')).toBeInTheDocument();
+  });
+  
+  it('should handle streaming state', () => {
+    const { getByText } = render(
+      <ToolResultRenderer 
+        toolName="workflow_optimizeSchedule"
+        result={{ stage: 'Analyzing schedule' }}
+        isStreaming={true}
+        streamProgress={45}
+      />
+    );
+    expect(getByText('Analyzing schedule')).toBeInTheDocument();
+    expect(getByText('45%')).toBeInTheDocument();
   });
 });
 ```
@@ -297,7 +476,7 @@ describe('AI Orchestration Layer', () => {
       'Move my 2pm meeting to 4pm'
     );
     expect(intent.category).toBe('tool');
-    expect(intent.suggestedHandler.name).toBe('moveTimeBlock');
+    expect(intent.suggestedHandler.name).toBe('schedule_moveTimeBlock');
   });
   
   it('should route to workflow for complex requests', async () => {
@@ -305,7 +484,7 @@ describe('AI Orchestration Layer', () => {
       'Organize my entire day including emails and tasks'
     );
     expect(intent.category).toBe('workflow');
-    expect(intent.suggestedHandler.name).toBe('optimizeSchedule');
+    expect(intent.suggestedHandler.name).toBe('workflow_optimizeSchedule');
   });
   
   it('should handle ambiguous requests', async () => {
@@ -319,36 +498,53 @@ describe('AI Orchestration Layer', () => {
 
 // apps/web/tests/ai/rag.test.ts
 describe('RAG Context Provider', () => {
-  it('should retrieve relevant past decisions', async () => {
-    // Seed embeddings
-    await seedDecisionHistory();
+  it('should embed tool execution results', async () => {
+    const toolResult = {
+      toolName: 'schedule_createTimeBlock',
+      category: 'schedule',
+      params: { type: 'work', title: 'Morning Focus' },
+      result: {
+        success: true,
+        block: { 
+          id: '123', 
+          type: 'work', 
+          title: 'Morning Focus',
+          startTime: new Date(),
+          endTime: new Date()
+        }
+      },
+      userId: 'test-user-id'
+    };
     
-    const context = await ragProvider.getRelevantContext(
-      'Schedule a meeting with Sarah',
-      'test-user-id'
-    );
+    await embeddingService.embedToolResult(toolResult);
     
-    expect(context.pastDecisions).toContainEqual(
-      expect.objectContaining({ 
-        decision: 'Scheduled Sarah meetings at 2pm' 
-      })
+    const similar = await embeddingService.searchSimilar(
+      'create work block',
+      'schedule',
+      10
     );
+    expect(similar[0].toolName).toBe('schedule_createTimeBlock');
   });
   
   it('should learn from rejections', async () => {
     // Simulate rejection
-    await ragProvider.embedRejection({
-      proposedAction: 'Schedule meeting at 9am',
-      reason: 'Too early for meetings',
-      userId: 'test-user-id'
+    await embeddingService.embedRejection({
+      toolName: 'schedule_createTimeBlock',
+      proposedParams: { startTime: '09:00', type: 'meeting' },
+      rejectedResult: { 
+        success: true, 
+        block: { startTime: new Date('2024-01-15T09:00:00') } 
+      },
+      reason: 'Too early for meetings'
     });
     
     // Verify learning
     const context = await ragProvider.getRelevantContext(
       'Schedule morning meeting',
-      'test-user-id'
+      'test-user-id',
+      'schedule_createTimeBlock'
     );
-    expect(context.constraints).toContain('User prefers no meetings before 10am');
+    expect(context.rejections.length).toBeGreaterThan(0);
   });
   
   it('should extract patterns correctly', async () => {
@@ -357,8 +553,8 @@ describe('RAG Context Provider', () => {
     
     expect(patterns).toContainEqual(
       expect.objectContaining({
-        type: 'scheduling',
-        pattern: 'Prefers back-to-back meetings on Tuesdays'
+        category: 'schedule',
+        pattern: expect.stringContaining('work blocks in morning')
       })
     );
   });
@@ -376,21 +572,28 @@ describe('AI Chat Integration', () => {
     );
     
     // Verify both tools were called
-    expect(response.toolCalls).toHaveLength(2);
-    expect(response.toolCalls[0].toolName).toBe('createTask');
-    expect(response.toolCalls[1].toolName).toBe('fillWorkBlock');
+    expect(response.toolInvocations).toHaveLength(2);
+    expect(response.toolInvocations[0].toolName).toBe('task_createTask');
+    expect(response.toolInvocations[1].toolName).toBe('schedule_fillWorkBlock');
+    
+    // Verify pure data results
+    expect(response.toolInvocations[0].result.success).toBe(true);
+    expect(response.toolInvocations[0].result.task).toBeDefined();
   });
   
-  it('should display rich UI components', async () => {
+  it('should display tool results with appropriate components', async () => {
     const response = await sendChatMessage('Show my schedule');
-    const display = response.structuredData.responses[0].display;
     
-    expect(display.type).toBe('schedule');
-    expect(display.components).toHaveLength(
-      expect.arrayContaining([
-        expect.objectContaining({ type: 'scheduleBlock' })
-      ])
-    );
+    // Check that tool was called
+    expect(response.toolInvocations[0].toolName).toBe('schedule_viewSchedule');
+    
+    // Verify pure data result
+    const result = response.toolInvocations[0].result;
+    expect(result.success).toBe(true);
+    expect(result.blocks).toBeArray();
+    
+    // UI rendering is handled by ToolResultRenderer
+    // Component testing verifies the display
   });
   
   it('should handle errors gracefully', async () => {
@@ -398,7 +601,9 @@ describe('AI Chat Integration', () => {
     mockServiceFailure('scheduleService');
     
     const response = await sendChatMessage('Show my schedule');
-    expect(response.structuredData.responses[0].error).toBeDefined();
+    const result = response.toolInvocations[0].result;
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
     expect(response.content).toContain('having trouble accessing your schedule');
   });
 });
@@ -414,6 +619,11 @@ The executor must perform a thorough audit and document findings:
 # Codebase Audit Report
 
 ## 1. Deprecated/Orphaned Files
+- [ ] Remove UniversalToolResponse schema
+- [ ] Remove buildToolResponse helper functions
+- [ ] Remove StructuredMessage component (if replaced by display components)
+- [ ] Remove old UI formatting utilities
+- [ ] Find unused AI components
 - [ ] Identify all unused imports
 - [ ] Find components not referenced anywhere
 - [ ] Locate old migration files
@@ -444,6 +654,15 @@ The executor must perform a thorough audit and document findings:
 - [ ] Similar functions across files
 - [ ] Repeated patterns
 - [ ] Copy-pasted code blocks
+
+## 6. New Architecture Compliance
+- [ ] All 25 tools return pure data
+- [ ] No UI instructions in tool responses
+- [ ] Tool factory pattern used consistently
+- [ ] Display components handle all rendering
+- [ ] ToolResultRenderer properly configured
+- [ ] Tool metadata includes category and display hints
+- [ ] All tools registered with ToolRegistry
 ```
 
 ### Afternoon: Refactoring Plan (Requires Approval)
@@ -460,28 +679,31 @@ Based on audit findings, create detailed refactoring plan:
    - Solution: Extract shared types to separate file
 
 2. **Delete orphaned files (list all)**
-   - `/old-components/*` (15 files)
-   - `/utils/deprecated.ts`
+   - `/modules/ai/schemas/universal.schema.ts` (replaced by pure data)
+   - `/modules/ai/utils/tool-helpers.ts` (buildToolResponse deprecated)
+   - `/modules/ai/components/StructuredMessage.tsx` (if replaced)
    - Impact: Reduces bundle by ~50KB
 
 ## Priority 2: Architecture Improvements
-1. **Consolidate duplicate auth logic**
-   - Current: Auth checks in 5 different places
-   - Proposed: Single auth hook
-   - Files affected: [list]
+1. **Complete tool migration to pure data**
+   - Remaining tools: Calendar (2), Preference (1), Workflow (4), System (6)
+   - Effort: 4 hours
+   - Impact: Consistent architecture
 
-2. **Extract business logic from UI components**
-   - Components with logic: [list]
-   - Proposed service structure: [diagram]
+2. **Implement all display components**
+   - Components needed: WorkflowResultDisplay, SystemDisplay, etc.
+   - Effort: 6 hours
+   - Impact: Complete UI rendering system
 
 ## Priority 3: Performance
-1. **Implement React.memo for heavy components**
-   - Components: ScheduleView, TaskList
+1. **Implement React.memo for display components**
+   - Components: ScheduleDisplay, TaskListDisplay, EmailListDisplay
    - Expected improvement: 30% fewer re-renders
 
-2. **Add lazy loading for routes**
-   - Current: All routes loaded upfront
-   - Proposed: Lazy load settings, analytics
+2. **Optimize lazy loading**
+   - Current: Basic lazy loading
+   - Proposed: Preload on hover, priority loading
+   - Impact: 200ms faster interaction
 
 ## Rollback Plan
 - Each refactor in separate commit
@@ -515,6 +737,17 @@ describe('Post-Refactoring Validation', () => {
     const typeCheck = await runTypeCheck();
     expect(typeCheck.errors).toHaveLength(0);
   });
+  
+  it('should have all tools returning pure data', async () => {
+    const tools = ToolRegistry.getInstance().getAll();
+    
+    for (const [name, tool] of Object.entries(tools)) {
+      const result = await tool.execute({});
+      expect(result).toHaveProperty('success');
+      expect(result).not.toHaveProperty('display');
+      expect(result).not.toHaveProperty('ui');
+    }
+  });
 });
 ```
 
@@ -524,7 +757,8 @@ describe('Post-Refactoring Validation', () => {
 - [ ] 100% of tools have 5+ tests each (125 total)
 - [ ] 100% of workflows have comprehensive tests
 - [ ] AI orchestration fully tested
-- [ ] RAG components fully tested
+- [ ] RAG components fully tested with new architecture
+- [ ] All display components tested
 - [ ] Integration tests cover all user journeys
 - [ ] Zero failing tests
 
@@ -538,9 +772,11 @@ describe('Post-Refactoring Validation', () => {
 ### Performance
 - [ ] All tools execute < 2 seconds
 - [ ] Workflows complete < 5 seconds
-- [ ] Bundle size < 500KB
+- [ ] Bundle size < 500KB (with lazy-loaded displays)
 - [ ] First paint < 1 second
 - [ ] No memory leaks
+- [ ] Display components render < 100ms
+- [ ] Tool result routing < 50ms
 
 ### Architecture
 - [ ] No circular dependencies
@@ -548,6 +784,10 @@ describe('Post-Refactoring Validation', () => {
 - [ ] All business logic in services
 - [ ] UI components are pure
 - [ ] Proper error boundaries
+- [ ] All tools return pure data (no UI formatting)
+- [ ] ToolResultRenderer handles all routing
+- [ ] Display components lazy-loaded
+- [ ] Tool metadata properly configured
 
 ### Documentation
 - [ ] Every tool documented
@@ -561,6 +801,7 @@ describe('Post-Refactoring Validation', () => {
 1. **Test Suite**
    - 125+ tool tests
    - 20+ workflow tests
+   - 30+ display component tests
    - 50+ integration tests
    - Performance benchmarks
 
@@ -568,6 +809,7 @@ describe('Post-Refactoring Validation', () => {
    - Complete findings document
    - Prioritized issues list
    - Impact assessment
+   - Architecture compliance report
 
 3. **Refactoring Plan**
    - Detailed proposal

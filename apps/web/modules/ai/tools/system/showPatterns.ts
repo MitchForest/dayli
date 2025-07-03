@@ -1,27 +1,26 @@
-import { tool } from 'ai';
 import { z } from 'zod';
-import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
+import { createTool } from '../base/tool-factory';
+import { registerTool } from '../base/tool-registry';
+import { type ShowPatternsResponse } from '../types/responses';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { getCurrentUserId } from '../utils/helpers';
-import { type UniversalToolResponse } from '../../schemas/universal.schema';
 
-export const showPatterns = tool({
-  description: 'Display learned patterns and insights about user behavior and preferences',
-  parameters: z.object({
-    category: z.enum(['all', 'scheduling', 'tasks', 'email', 'productivity']).default('all'),
-    timeframe: z.enum(['week', 'month', 'all_time']).default('month'),
-    includeRecommendations: z.boolean().default(true),
-  }),
-  execute: async ({ category, timeframe, includeRecommendations }): Promise<UniversalToolResponse> => {
-    const startTime = Date.now();
-    const toolOptions = {
-      toolName: 'showPatterns',
-      operation: 'read' as const,
-      resourceType: 'workflow' as const,
-      startTime,
-    };
-    
-    try {
+export const showPatterns = registerTool(
+  createTool<typeof parameters, ShowPatternsResponse>({
+    name: 'system_showPatterns',
+    description: 'Display learned patterns and insights about user behavior and preferences',
+    parameters: z.object({
+      category: z.enum(['all', 'scheduling', 'tasks', 'email', 'productivity']).default('all'),
+      timeframe: z.enum(['week', 'month', 'all_time']).default('month'),
+      includeRecommendations: z.boolean().default(true),
+    }),
+    metadata: {
+      category: 'system',
+      displayName: 'Show Patterns',
+      requiresConfirmation: false,
+      supportsStreaming: false,
+    },
+    execute: async ({ category, timeframe, includeRecommendations }) => {
       const userId = await getCurrentUserId();
       
       // TODO: Implement pattern service in Sprint 4.4
@@ -29,21 +28,15 @@ export const showPatterns = tool({
       const patterns: any[] = [];
       
       if (!patterns || patterns.length === 0) {
-        return buildToolResponse(
-          toolOptions,
-          {
-            message: 'No patterns detected yet. Keep using the system to build personalized insights.',
-            category,
-            timeframe,
+        return {
+          success: true,
+          patterns: [],
+          stats: {
+            total: 0,
+            strongPatterns: 0,
+            avgConfidence: 0,
           },
-          {
-            type: 'card',
-            title: 'Building Your Patterns',
-            description: 'I\'m still learning about your preferences. The more you use the system, the better I can help!',
-            priority: 'low',
-            components: [],
-          }
-        );
+        };
       }
       
       // Group patterns by category
@@ -93,59 +86,32 @@ export const showPatterns = tool({
       const avgConfidence = patterns.reduce((sum: number, p: any) => sum + p.confidence, 0) / patterns.length;
       const strongPatterns = patterns.filter((p: any) => p.confidence > 0.8).length;
       
-      const statsComponent = {
-        type: 'metrics' as const,
-        data: {
-          title: 'Pattern Statistics',
-          metrics: [
-            { label: 'Total Patterns', value: patterns.length.toString(), trend: 'up' },
-            { label: 'Strong Patterns', value: strongPatterns.toString(), trend: 'up' },
-            { label: 'Avg Confidence', value: `${Math.round(avgConfidence * 100)}%`, trend: avgConfidence > 0.7 ? 'up' : 'neutral' },
-            { label: 'Categories', value: Object.keys(groupedPatterns).length.toString(), trend: 'neutral' },
-          ],
+      console.log(`[Tool: showPatterns] Found ${patterns.length} patterns for ${category}`);
+      
+      // Return pure data
+      return {
+        success: true,
+        patterns: patterns.map((p: any) => ({
+          id: p.id,
+          type: p.type,
+          category: p.category || 'general',
+          description: p.description,
+          confidence: p.confidence,
+          frequency: p.frequency,
+          lastSeen: p.lastSeen,
+        })),
+        stats: {
+          total: patterns.length,
+          strongPatterns,
+          avgConfidence,
         },
       };
-      
-      return buildToolResponse(
-        toolOptions,
-        {
-          patterns,
-          groupedPatterns,
-          recommendations,
-          statistics: {
-            total: patterns.length,
-            strongPatterns,
-            avgConfidence,
-            categories: Object.keys(groupedPatterns),
-          },
-        },
-        {
-          type: 'list',
-          title: 'Your Learned Patterns',
-          description: `Showing ${patterns.length} patterns from ${timeframe === 'all_time' ? 'all time' : `the last ${timeframe}`}`,
-          priority: 'medium',
-          components: [],
-        },
-        {
-          suggestions: [
-            'Apply recommendations',
-            'Update preferences based on patterns',
-            'View specific category patterns',
-          ],
-          actions: recommendations.length > 0 ? [{
-            id: 'apply-recommendations',
-            label: 'Apply Top Recommendation',
-            icon: 'sparkles',
-            variant: 'primary',
-            action: recommendations[0].suggestedAction,
-          }] : [],
-        }
-      );
-    } catch (error) {
-      return buildErrorResponse(toolOptions, error, {
-        title: 'Failed to retrieve patterns',
-        description: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  },
+    },
+  })
+);
+
+const parameters = z.object({
+  category: z.enum(['all', 'scheduling', 'tasks', 'email', 'productivity']).default('all'),
+  timeframe: z.enum(['week', 'month', 'all_time']).default('month'),
+  includeRecommendations: z.boolean().default(true),
 });

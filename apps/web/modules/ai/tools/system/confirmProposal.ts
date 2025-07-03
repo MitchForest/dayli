@@ -1,38 +1,35 @@
-import { tool } from 'ai';
 import { z } from 'zod';
-import { type UniversalToolResponse } from '../../schemas/universal.schema';
-import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
+import { createTool } from '../base/tool-factory';
+import { registerTool } from '../base/tool-registry';
+import { type ConfirmProposalResponse } from '../types/responses';
 import { proposalStore } from '../../utils/proposal-store';
 
-export const confirmProposal = tool({
-  description: 'Execute a stored proposal after user confirmation',
-  parameters: z.object({
-    proposalId: z.string().describe('The ID of the proposal to execute'),
-    userConfirmed: z.boolean().describe('Whether the user has confirmed the action'),
-    selectedOption: z.string().optional().describe('For choice proposals, the selected option ID'),
-  }),
-  execute: async ({ proposalId, userConfirmed, selectedOption }): Promise<UniversalToolResponse> => {
-    const startTime = Date.now();
-    const toolOptions = {
-      toolName: 'confirmProposal',
-      operation: 'execute' as const,
-      resourceType: 'workflow' as const,
-      startTime,
-    };
-    
-    try {
+export const confirmProposal = registerTool(
+  createTool<typeof parameters, ConfirmProposalResponse>({
+    name: 'system_confirmProposal',
+    description: 'Execute a stored proposal after user confirmation',
+    parameters: z.object({
+      proposalId: z.string().describe('The ID of the proposal to execute'),
+      userConfirmed: z.boolean().describe('Whether the user has confirmed the action'),
+      selectedOption: z.string().optional().describe('For choice proposals, the selected option ID'),
+    }),
+    metadata: {
+      category: 'system',
+      displayName: 'Confirm Proposal',
+      requiresConfirmation: false,
+      supportsStreaming: false,
+    },
+    execute: async ({ proposalId, userConfirmed, selectedOption }) => {
       // Get the proposal
       const proposal = proposalStore.get(proposalId);
       
       if (!proposal) {
-        return buildErrorResponse(
-          toolOptions,
-          new Error('Proposal not found or expired'),
-          {
-            title: 'Proposal Not Found',
-            description: 'The proposal has expired or does not exist.',
-          }
-        );
+        return {
+          success: false,
+          error: 'Proposal not found or expired',
+          status: 'not_found' as const,
+          proposalId,
+        };
       }
       
       // Check if user confirmed
@@ -40,56 +37,38 @@ export const confirmProposal = tool({
         // Remove the proposal since it was rejected
         proposalStore.delete(proposalId);
         
-        return buildToolResponse(
-          toolOptions,
-          {
-            proposalId,
-            status: 'rejected',
-            proposal,
+        console.log(`[Tool: confirmProposal] Proposal ${proposalId} rejected`);
+        
+        return {
+          success: true,
+          status: 'rejected' as const,
+          proposalId,
+          proposal: {
+            type: proposal.type,
+            description: proposal.description,
           },
-          {
-            type: 'card',
-            title: 'Proposal Rejected',
-            description: 'The proposed changes were not applied.',
-            priority: 'medium',
-            components: [],
-          },
-          {
-            notification: {
-              show: true,
-              type: 'info',
-              message: 'Proposal cancelled',
-              duration: 3000,
-            },
-            suggestions: ['Try a different approach', 'Modify the request'],
-            actions: [],
-          }
-        );
+        };
       }
       
       // Handle choice proposals
       if (proposal.type === 'choice' && proposal.data?.options) {
         if (!selectedOption) {
-          return buildErrorResponse(
-            toolOptions,
-            new Error('Choice proposal requires a selected option'),
-            {
-              title: 'Option Required',
-              description: 'Please select one of the available options.',
-            }
-          );
+          return {
+            success: false,
+            error: 'Choice proposal requires a selected option',
+            status: 'rejected' as const,
+            proposalId,
+          };
         }
         
         const option = proposal.data.options.find((opt: any) => opt.id === selectedOption);
         if (!option) {
-          return buildErrorResponse(
-            toolOptions,
-            new Error('Invalid option selected'),
-            {
-              title: 'Invalid Option',
-              description: 'The selected option is not valid for this proposal.',
-            }
-          );
+          return {
+            success: false,
+            error: 'Invalid option selected',
+            status: 'rejected' as const,
+            proposalId,
+          };
         }
         
         // Execute the selected option
@@ -98,32 +77,18 @@ export const confirmProposal = tool({
         // Remove the consumed proposal
         proposalStore.delete(proposalId);
         
-        return buildToolResponse(
-          toolOptions,
-          {
-            proposalId,
-            status: 'executed',
-            selectedOption: option.id,
-            result,
+        console.log(`[Tool: confirmProposal] Executed choice ${selectedOption} for proposal ${proposalId}`);
+        
+        return {
+          success: true,
+          status: 'executed' as const,
+          proposalId,
+          proposal: {
+            type: proposal.type,
+            description: proposal.description,
           },
-          {
-            type: 'card',
-            title: 'Option Executed',
-            description: `${option.label} has been applied successfully.`,
-            priority: 'high',
-            components: [],
-          },
-          {
-            notification: {
-              show: true,
-              type: 'success',
-              message: `${option.label} completed`,
-              duration: 4000,
-            },
-            suggestions: [],
-            actions: [],
-          }
-        );
+          selectedOption: option.id,
+        };
       }
       
       // Execute the proposal data
@@ -132,46 +97,24 @@ export const confirmProposal = tool({
       // Remove the consumed proposal
       proposalStore.delete(proposalId);
       
-      return buildToolResponse(
-        toolOptions,
-        {
-          proposalId,
-          status: 'executed',
-          result,
+      console.log(`[Tool: confirmProposal] Executed proposal ${proposalId}`);
+      
+      return {
+        success: true,
+        status: 'executed' as const,
+        proposalId,
+        proposal: {
+          type: proposal.type,
+          description: proposal.description,
         },
-        {
-          type: 'card',
-          title: 'Proposal Executed',
-          description: proposal.description || 'The proposed changes have been applied successfully.',
-          priority: 'high',
-          components: [],
-        },
-        {
-          notification: {
-            show: true,
-            type: 'success',
-            message: 'Changes applied successfully',
-            duration: 4000,
-          },
-          suggestions: ['View the changes', 'Continue with next task'],
-          actions: [],
-        }
-      );
+      };
       
-    } catch (error) {
-      console.error('[AI Tools] Error in confirmProposal:', error);
-      
-      // Remove the proposal on error
-      proposalStore.delete(proposalId);
-      
-      return buildErrorResponse(
-        toolOptions,
-        error,
-        {
-          title: 'Execution Failed',
-          description: error instanceof Error ? error.message : 'Failed to execute the proposal',
-        }
-      );
-    }
-  },
+    },
+  })
+);
+
+const parameters = z.object({
+  proposalId: z.string().describe('The ID of the proposal to execute'),
+  userConfirmed: z.boolean().describe('Whether the user has confirmed the action'),
+  selectedOption: z.string().optional().describe('For choice proposals, the selected option ID'),
 });

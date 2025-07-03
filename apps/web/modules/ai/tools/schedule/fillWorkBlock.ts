@@ -1,9 +1,9 @@
-import { tool } from 'ai';
 import { z } from 'zod';
-import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
+import { createTool } from '../base/tool-factory';
+import { registerTool } from '../base/tool-registry';
+import { type FillWorkBlockResponse } from '../types/responses';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { getCurrentUserId } from '../utils/helpers';
-import { type UniversalToolResponse } from '../../schemas/universal.schema';
 
 // Simple task scoring function
 function calculateTaskScore(task: any): number {
@@ -20,23 +20,22 @@ function calculateTaskScore(task: any): number {
   return score;
 }
 
-export const fillWorkBlock = tool({
-  description: 'Intelligently fill a work block with high-priority tasks from backlog',
-  parameters: z.object({
-    blockId: z.string().describe('ID of the work block to fill'),
-    strategy: z.enum(['priority', 'quick_wins', 'energy_match']).default('priority'),
-    maxTasks: z.number().default(5),
-  }),
-  execute: async ({ blockId, strategy, maxTasks }): Promise<UniversalToolResponse> => {
-    const startTime = Date.now();
-    const toolOptions = {
-      toolName: 'fillWorkBlock',
-      operation: 'update' as const,
-      resourceType: 'schedule' as const,
-      startTime,
-    };
-    
-    try {
+export const fillWorkBlock = registerTool(
+  createTool<typeof parameters, FillWorkBlockResponse>({
+    name: 'schedule_fillWorkBlock',
+    description: 'Intelligently fill a work block with high-priority tasks from backlog',
+    parameters: z.object({
+      blockId: z.string().describe('ID of the work block to fill'),
+      strategy: z.enum(['priority', 'quick_wins', 'energy_match']).default('priority'),
+      maxTasks: z.number().default(5),
+    }),
+    metadata: {
+      category: 'schedule',
+      displayName: 'Fill Work Block',
+      requiresConfirmation: false,
+      supportsStreaming: false,
+    },
+    execute: async ({ blockId, strategy, maxTasks }) => {
       const userId = await getCurrentUserId();
       const factory = ServiceFactory.getInstance();
       const scheduleService = factory.getScheduleService();
@@ -45,7 +44,14 @@ export const fillWorkBlock = tool({
       // Get the block details
       const block = await scheduleService.getTimeBlock(blockId);
       if (!block || block.type !== 'work') {
-        throw new Error('Invalid work block');
+        return {
+          success: false,
+          error: 'Invalid work block',
+          blockId,
+          assignedTasks: [],
+          utilization: 0,
+          remainingMinutes: 0,
+        };
       }
       
       // Calculate available time
@@ -63,7 +69,7 @@ export const fillWorkBlock = tool({
       }));
       
       // Apply strategy
-      let selectedTasks = [];
+      let selectedTasks: any[] = [];
       let remainingMinutes = blockDuration;
       
       switch (strategy) {
@@ -108,11 +114,6 @@ export const fillWorkBlock = tool({
         }
       }
       
-      // Assign tasks to block
-      // Since updateTimeBlock doesn't support assigned_tasks, we'll skip this for now
-      // TODO: Add proper task assignment method in a future sprint
-      const assignedTaskIds = selectedTasks.map(t => t.id);
-      
       // Update task status
       for (const task of selectedTasks) {
         await taskService.updateTask(task.id, {
@@ -120,60 +121,31 @@ export const fillWorkBlock = tool({
         });
       }
       
-      // Build response
+      // Calculate utilization
       const utilization = Math.round(((blockDuration - remainingMinutes) / blockDuration) * 100);
       
-      return buildToolResponse(
-        toolOptions,
-        {
-          blockId,
-          assignedTasks: selectedTasks,
-          utilization,
-          remainingMinutes,
-        },
-        {
-          type: 'card',
-          title: `Filled ${block.title}`,
-          description: `Added ${selectedTasks.length} tasks (${utilization}% utilization)`,
-          priority: 'high',
-          components: [
-            {
-              type: 'scheduleBlock',
-              data: {
-                id: block.id,
-                title: block.title || 'Work Block',
-                type: block.type,
-                startTime: block.startTime.toISOString(),
-                endTime: block.endTime.toISOString(),
-                tasks: selectedTasks.map(t => ({
-                  id: t.id,
-                  title: t.title,
-                  estimatedMinutes: t.estimatedMinutes || 30,
-                  completed: false,
-                })),
-              },
-            },
-          ],
-        },
-        {
-          notification: {
-            show: true,
-            type: 'success',
-            message: `Added ${selectedTasks.length} tasks to your work block`,
-            duration: 3000,
-          },
-          suggestions: [
-            remainingMinutes > 30 ? 'Add more tasks' : null,
-            'Start working on tasks',
-            'Adjust task order',
-          ].filter(Boolean) as string[],
-        }
-      );
-    } catch (error) {
-      return buildErrorResponse(toolOptions, error, {
-        title: 'Failed to fill work block',
-        description: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  },
+      console.log(`[Tool: fillWorkBlock] Filled block ${blockId} with ${selectedTasks.length} tasks (${utilization}% utilization)`);
+      
+      // Return pure data
+      return {
+        success: true,
+        blockId,
+        assignedTasks: selectedTasks.map(t => ({
+          id: t.id,
+          title: t.title,
+          estimatedMinutes: t.estimatedMinutes || 30,
+          priority: t.priority,
+          score: t.score,
+        })),
+        utilization,
+        remainingMinutes,
+      };
+    },
+  })
+);
+
+const parameters = z.object({
+  blockId: z.string().describe('ID of the work block to fill'),
+  strategy: z.enum(['priority', 'quick_wins', 'energy_match']).default('priority'),
+  maxTasks: z.number().default(5),
 });

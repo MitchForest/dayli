@@ -1,8 +1,7 @@
-import { tool } from 'ai';
 import { z } from 'zod';
-import { type UniversalToolResponse } from '../../schemas/universal.schema';
-import { type EmailList, type Email } from '../../schemas/email.schema';
-import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
+import { createTool } from '../base/tool-factory';
+import { registerTool } from '../base/tool-registry';
+import { type EmailListResponse } from '../types/responses';
 import { ServiceFactory } from '@/services/factory/service.factory';
 
 // Helper to parse email address
@@ -32,24 +31,41 @@ function determineUrgency(subject: string, from: string): 'urgent' | 'important'
   return 'normal';
 }
 
-export const viewEmails = tool({
-  description: "View emails with urgency indicators and smart filtering",
-  parameters: z.object({
-    maxResults: z.number().optional().default(20).describe("Maximum number of emails to return"),
-    query: z.string().optional().describe("Search query (e.g., 'from:sarah', 'subject:report')"),
-    status: z.enum(['unread', 'backlog', 'all']).optional().default('unread'),
-    urgency: z.enum(['urgent', 'important', 'normal', 'all']).optional().default('all'),
-  }),
-  execute: async ({ maxResults, query, status, urgency }): Promise<UniversalToolResponse> => {
-    const startTime = Date.now();
-    const toolOptions = {
-      toolName: 'viewEmails',
-      operation: 'read' as const,
-      resourceType: 'email' as const,
-      startTime,
-    };
-    
-    try {
+// Helper to calculate urgency score
+function calculateUrgencyScore(email: any): number {
+  let score = 50; // Base score
+  
+  // Urgency level
+  if (email.urgency === 'urgent') score += 40;
+  else if (email.urgency === 'important') score += 20;
+  
+  // Unread emails get priority
+  if (!email.isRead) score += 10;
+  
+  // Time-based scoring (older unread emails might be more urgent)
+  const hoursOld = (Date.now() - new Date(email.receivedAt).getTime()) / (1000 * 60 * 60);
+  if (!email.isRead && hoursOld > 24) score += 10;
+  
+  return Math.min(score, 100);
+}
+
+export const viewEmails = registerTool(
+  createTool<typeof parameters, EmailListResponse>({
+    name: 'email_viewEmails',
+    description: "View emails with urgency indicators and smart filtering",
+    parameters: z.object({
+      maxResults: z.number().optional().default(20).describe("Maximum number of emails to return"),
+      query: z.string().optional().describe("Search query (e.g., 'from:sarah', 'subject:report')"),
+      status: z.enum(['unread', 'backlog', 'all']).optional().default('unread'),
+      urgency: z.enum(['urgent', 'important', 'normal', 'all']).optional().default('all'),
+    }),
+    metadata: {
+      category: 'email',
+      displayName: 'View Emails',
+      requiresConfirmation: false,
+      supportsStreaming: false,
+    },
+    execute: async ({ maxResults, query, status, urgency }) => {
       const gmailService = ServiceFactory.getInstance().getGmailService();
       
       // List messages with optional query
@@ -59,26 +75,15 @@ export const viewEmails = tool({
       });
       
       if (!result.messages || result.messages.length === 0) {
-        const emailList: EmailList = {
+        return {
+          success: true,
           emails: [],
-          totalCount: 0,
-          unreadCount: 0,
-        };
-        
-        return buildToolResponse(
-          toolOptions,
-          emailList,
-          {
-            type: 'list',
-            title: 'Email Inbox',
-            description: query ? `No emails found matching "${query}"` : 'No emails found',
-            priority: 'low',
-            components: [],
+          stats: {
+            total: 0,
+            unread: 0,
+            urgent: 0,
           },
-          {
-            suggestions: ['Check spam folder', 'Try a different search', 'Refresh inbox'],
-          }
-        );
+        };
       }
       
       // Fetch details for each message
@@ -111,7 +116,7 @@ export const viewEmails = tool({
               }
             }
             
-            const email: Email = {
+            return {
               id: fullMessage.id,
               threadId: fullMessage.threadId || fullMessage.id,
               from: fromParsed,
@@ -123,9 +128,8 @@ export const viewEmails = tool({
               isRead: fullMessage.labelIds?.includes('UNREAD') === false,
               labels: fullMessage.labelIds || [],
               urgency,
+              score: 0, // Will calculate later
             };
-            
-            return email;
           } catch (error) {
             console.error(`Failed to fetch email ${msg.id}:`, error);
             return null;
@@ -133,80 +137,65 @@ export const viewEmails = tool({
         })
       );
       
-      // Filter out nulls
-      const validEmails = emailDetails.filter((email): email is Email => email !== null);
-      const unreadCount = validEmails.filter(e => !e.isRead).length;
+      // Filter out nulls and calculate scores
+      const validEmails = emailDetails
+        .filter((email): email is any => email !== null)
+        .map(email => ({
+          ...email,
+          score: calculateUrgencyScore(email),
+        }));
       
-      const emailList: EmailList = {
-        emails: validEmails,
-        totalCount: result.resultSizeEstimate || validEmails.length,
-        unreadCount,
+      // Apply filters
+      let filteredEmails = validEmails;
+      
+      // Status filter
+      if (status === 'unread') {
+        filteredEmails = filteredEmails.filter(e => !e.isRead);
+      } else if (status === 'backlog') {
+        filteredEmails = filteredEmails.filter(e => !e.isRead && e.urgency === 'normal');
+      }
+      
+      // Urgency filter
+      if (urgency !== 'all') {
+        filteredEmails = filteredEmails.filter(e => e.urgency === urgency);
+      }
+      
+      // Sort by score descending
+      filteredEmails.sort((a, b) => b.score - a.score);
+      
+      // Calculate stats
+      const unreadCount = filteredEmails.filter(e => !e.isRead).length;
+      const urgentCount = filteredEmails.filter(e => e.urgency === 'urgent').length;
+      
+      console.log(`[Tool: viewEmails] Found ${filteredEmails.length} emails`);
+      
+      // Return pure data
+      return {
+        success: true,
+        emails: filteredEmails.map(email => ({
+          id: email.id,
+          from: email.from,
+          subject: email.subject,
+          preview: email.bodyPreview,
+          receivedAt: email.receivedAt,
+          isRead: email.isRead,
+          urgency: email.urgency,
+          score: email.score,
+        })),
+        stats: {
+          total: filteredEmails.length,
+          unread: unreadCount,
+          urgent: urgentCount,
+        },
       };
       
-      return buildToolResponse(
-        toolOptions,
-        emailList,
-        {
-          type: 'list',
-          title: 'Email Inbox',
-          description: query 
-            ? `Found ${validEmails.length} email${validEmails.length !== 1 ? 's' : ''} matching "${query}"`
-            : `${validEmails.length} recent email${validEmails.length !== 1 ? 's' : ''} (${unreadCount} unread)`,
-          priority: unreadCount > 0 ? 'high' : 'medium',
-          components: validEmails.slice(0, 5).map(email => ({
-            type: 'emailPreview' as const,
-            data: {
-              id: email.id,
-              from: email.from.name,
-              fromEmail: email.from.email,
-              subject: email.subject,
-              preview: email.bodyPreview,
-              receivedAt: email.receivedAt,
-              isRead: email.isRead,
-              hasAttachments: email.attachments?.length ? true : false,
-              urgency: email.urgency,
-            },
-          })),
-        },
-        {
-          suggestions: validEmails.length > 0
-            ? ['Read an email', 'Draft a response', 'Archive old emails']
-            : ['Check spam folder', 'Try a different search'],
-          actions: validEmails.length > 0 ? [
-            {
-              id: 'read-first',
-              label: 'Read First Email',
-              icon: 'mail',
-              variant: 'primary',
-              action: {
-                type: 'tool',
-                tool: 'readEmailContent',
-                params: { emailId: validEmails[0]?.id || '' },
-              },
-            },
-            {
-              id: 'process-to-tasks',
-              label: 'Process to Tasks',
-              icon: 'tasks',
-              variant: 'secondary',
-              action: {
-                type: 'message',
-                message: 'Convert important emails to tasks',
-              },
-            },
-          ] : [],
-        }
-      );
-      
-    } catch (error) {
-      return buildErrorResponse(
-        toolOptions,
-        error,
-        {
-          title: 'Failed to list emails',
-          description: error instanceof Error ? error.message : 'Unknown error occurred',
-        }
-      );
-    }
-  },
+    },
+  })
+);
+
+const parameters = z.object({
+  maxResults: z.number().optional().default(20).describe("Maximum number of emails to return"),
+  query: z.string().optional().describe("Search query (e.g., 'from:sarah', 'subject:report')"),
+  status: z.enum(['unread', 'backlog', 'all']).optional().default('unread'),
+  urgency: z.enum(['urgent', 'important', 'normal', 'all']).optional().default('all'),
 });

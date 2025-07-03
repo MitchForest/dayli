@@ -1,8 +1,7 @@
-import { tool } from 'ai';
 import { z } from 'zod';
-import { type UniversalToolResponse } from '../../schemas/universal.schema';
-import { type Task, type TaskSearchResult, type TaskGroup } from '../../schemas/task.schema';
-import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
+import { createTool } from '../base/tool-factory';
+import { registerTool } from '../base/tool-registry';
+import { type TaskListResponse } from '../types/responses';
 import { ServiceFactory } from '@/services/factory/service.factory';
 
 // Calculate priority score for a task based on multiple factors
@@ -37,26 +36,25 @@ function calculateTaskScore(task: any): number {
   return Math.min(score, 100);
 }
 
-export const viewTasks = tool({
-  description: "View tasks with scoring and filters - understands natural language like 'pending', 'todo', 'unscheduled', 'done'",
-  parameters: z.object({
-    query: z.string().optional().describe("Search in title or description"),
-    status: z.string().optional().default('all').describe("Task status - can be natural language like 'pending', 'todo', 'unscheduled', 'done', 'finished'"),
-    priority: z.enum(['high', 'medium', 'low', 'all']).optional().default('all'),
-    source: z.enum(['email', 'chat', 'calendar', 'manual', 'all']).optional().default('all'),
-    limit: z.number().optional().default(20).describe("Maximum number of results"),
-    showScores: z.boolean().optional().default(true).describe("Show AI-calculated priority scores"),
-  }),
-  execute: async (params): Promise<UniversalToolResponse> => {
-    const startTime = Date.now();
-    const toolOptions = {
-      toolName: 'viewTasks',
-      operation: 'read' as const,
-      resourceType: 'task' as const,
-      startTime,
-    };
-    
-    try {
+export const viewTasks = registerTool(
+  createTool<typeof parameters, TaskListResponse>({
+    name: 'task_viewTasks',
+    description: "View tasks with scoring and filters - understands natural language like 'pending', 'todo', 'unscheduled', 'done'",
+    parameters: z.object({
+      query: z.string().optional().describe("Search in title or description"),
+      status: z.string().optional().default('all').describe("Task status - can be natural language like 'pending', 'todo', 'unscheduled', 'done', 'finished'"),
+      priority: z.enum(['high', 'medium', 'low', 'all']).optional().default('all'),
+      source: z.enum(['email', 'chat', 'calendar', 'manual', 'all']).optional().default('all'),
+      limit: z.number().optional().default(20).describe("Maximum number of results"),
+      showScores: z.boolean().optional().default(true).describe("Show AI-calculated priority scores"),
+    }),
+    metadata: {
+      category: 'task',
+      displayName: 'View Tasks',
+      requiresConfirmation: false,
+      supportsStreaming: false,
+    },
+    execute: async (params) => {
       const taskService = ServiceFactory.getInstance().getTaskService();
       
       // Map user intent to database values
@@ -141,125 +139,41 @@ export const viewTasks = tool({
       // Apply limit
       const results = filteredTasks.slice(0, params.limit);
       
-      // Convert to schema-compliant tasks
-      const formattedTasks: Task[] = results.map(task => ({
-        id: task.id,
-        title: task.title,
-        description: task.description,
-        priority: task.priority || 'medium',
-        status: task.status as Task['status'],
-        estimatedMinutes: task.estimatedMinutes || 30,
-        source: (task.source === 'chat' ? 'ai' : task.source) as Task['source'],
-        createdAt: task.createdAt?.toISOString(),
-        score: params.showScores ? task.score : undefined,
-        daysInBacklog: task.days_in_backlog,
-        tags: task.tags,
-      }));
-      
-      // Build grouped results
-      const taskGroup: TaskGroup = {
-        groupBy: 'status',
-        groups: [
-          {
-            key: 'backlog',
-            label: 'Backlog',
-            tasks: formattedTasks.filter(t => t.status === 'backlog'),
-            count: formattedTasks.filter(t => t.status === 'backlog').length,
-            totalMinutes: formattedTasks.filter(t => t.status === 'backlog').reduce((sum, t) => sum + t.estimatedMinutes, 0),
-          },
-          {
-            key: 'scheduled',
-            label: 'Scheduled',
-            tasks: formattedTasks.filter(t => t.status === 'scheduled'),
-            count: formattedTasks.filter(t => t.status === 'scheduled').length,
-            totalMinutes: formattedTasks.filter(t => t.status === 'scheduled').reduce((sum, t) => sum + t.estimatedMinutes, 0),
-          },
-          {
-            key: 'completed',
-            label: 'Completed',
-            tasks: formattedTasks.filter(t => t.status === 'completed'),
-            count: formattedTasks.filter(t => t.status === 'completed').length,
-            totalMinutes: formattedTasks.filter(t => t.status === 'completed').reduce((sum, t) => sum + t.estimatedMinutes, 0),
-          },
-        ].filter(g => g.count > 0), // Only show groups with tasks
+      // Calculate stats
+      const stats = {
+        total: results.length,
+        completed: results.filter(t => t.status === 'completed').length,
+        highPriority: results.filter(t => t.priority === 'high').length,
+        totalEstimatedHours: results.reduce((sum, t) => sum + (t.estimatedMinutes || 30), 0) / 60,
       };
       
-      const searchResult: TaskSearchResult = {
-        query: params.query || '',
-        filters: {
-          priority: params.priority !== 'all' ? [params.priority] : undefined,
-          status: normalizedStatus !== 'all' ? [normalizedStatus as Task['status']] : undefined,
-        },
-        results: formattedTasks,
-        totalCount: formattedTasks.length,
-        groupedResults: taskGroup,
+      console.log(`[Tool: viewTasks] Found ${results.length} tasks with filters:`, { status: normalizedStatus, priority: params.priority });
+      
+      // Return pure data
+      return {
+        success: true,
+        tasks: results.map(task => ({
+          id: task.id,
+          title: task.title,
+          priority: task.priority || 'medium' as 'high' | 'medium' | 'low',
+          status: task.status as 'active' | 'completed' | 'backlog',
+          score: params.showScores ? task.score : undefined,
+          estimatedMinutes: task.estimatedMinutes || 30,
+          daysInBacklog: task.days_in_backlog,
+          description: task.description,
+          dueDate: task.dueDate,
+        })),
+        stats,
       };
-      
-      const interpretation = normalizedStatus !== params.status 
-        ? `Interpreted "${params.status}" as "${normalizedStatus}"`
-        : undefined;
-      
-      return buildToolResponse(
-        toolOptions,
-        searchResult,
-        {
-          type: 'list',
-          title: 'Tasks',
-          description: interpretation || 
-            (formattedTasks.length === 0 
-              ? 'No tasks found matching your criteria'
-              : `${formattedTasks.length} task${formattedTasks.length !== 1 ? 's' : ''} found`),
-          priority: 'medium',
-          components: [],
-        },
-        {
-          suggestions: results.length === 0
-            ? ['Try different search criteria', 'Create a new task', 'Show all tasks']
-            : taskGroup.groups.find(g => g.key === 'backlog')?.count || 0 > 0
-            ? ['Schedule high-priority tasks', 'Fill work blocks', 'Set task priorities']
-            : ['View backlog tasks', 'Create new tasks', 'Check schedule'],
-          actions: [
-            ...(taskGroup.groups.find(g => g.key === 'backlog')?.count || 0 > 0 ? [{
-              id: 'schedule-tasks',
-              label: 'Schedule Tasks',
-              icon: 'calendar',
-              variant: 'primary' as const,
-              action: {
-                type: 'message' as const,
-                message: 'Schedule my highest priority tasks',
-              },
-            }] : []),
-            {
-              id: 'create-task',
-              label: 'Create Task',
-              icon: 'plus',
-              variant: 'secondary',
-              action: {
-                type: 'message',
-                message: 'Create a new task',
-              },
-            },
-          ],
-          notification: params.showScores && taskGroup.groups.find(g => g.key === 'backlog')?.count || 0 > 0
-            ? {
-                show: true,
-                type: 'info',
-                message: 'Tasks are scored by priority, urgency, and age',
-                duration: 3000,
-              }
-            : undefined,
-        }
-      );
-      
-    } catch (error) {
-      return buildErrorResponse(
-        toolOptions,
-        error,
-        {
-          title: 'Failed to view tasks',
-          description: error instanceof Error ? error.message : 'Unknown error occurred',
-        }
-      );
-    }
-  },
+    },
+  })
+);
+
+const parameters = z.object({
+  query: z.string().optional().describe("Search in title or description"),
+  status: z.string().optional().default('all').describe("Task status - can be natural language like 'pending', 'todo', 'unscheduled', 'done', 'finished'"),
+  priority: z.enum(['high', 'medium', 'low', 'all']).optional().default('all'),
+  source: z.enum(['email', 'chat', 'calendar', 'manual', 'all']).optional().default('all'),
+  limit: z.number().optional().default(20).describe("Maximum number of results"),
+  showScores: z.boolean().optional().default(true).describe("Show AI-calculated priority scores"),
 });

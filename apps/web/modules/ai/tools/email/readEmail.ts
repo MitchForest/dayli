@@ -1,8 +1,7 @@
-import { tool } from 'ai';
 import { z } from 'zod';
-import { type UniversalToolResponse } from '../../schemas/universal.schema';
-import { type Email } from '../../schemas/email.schema';
-import { buildToolResponse, buildErrorResponse } from '../../utils/tool-helpers';
+import { createTool } from '../base/tool-factory';
+import { registerTool } from '../base/tool-registry';
+import { type ReadEmailResponse } from '../types/responses';
 import { ServiceFactory } from '@/services/factory/service.factory';
 
 // Helper to parse email address
@@ -32,36 +31,32 @@ function determineUrgency(subject: string, body: string): 'urgent' | 'important'
   return 'normal';
 }
 
-export const readEmail = tool({
-  description: "Read the full content of an email with urgency analysis",
-  parameters: z.object({
-    emailId: z.string().describe("Gmail message ID"),
-    includeAttachments: z.boolean().default(false),
-  }),
-  execute: async ({ emailId, includeAttachments }): Promise<UniversalToolResponse> => {
-    const startTime = Date.now();
-    const toolOptions = {
-      toolName: 'readEmail',
-      operation: 'read' as const,
-      resourceType: 'email' as const,
-      startTime,
-    };
-    
-    try {
+export const readEmail = registerTool(
+  createTool<typeof parameters, ReadEmailResponse>({
+    name: 'email_readEmail',
+    description: "Read the full content of an email with urgency analysis",
+    parameters: z.object({
+      emailId: z.string().describe("Gmail message ID"),
+      includeAttachments: z.boolean().default(false),
+    }),
+    metadata: {
+      category: 'email',
+      displayName: 'Read Email',
+      requiresConfirmation: false,
+      supportsStreaming: false,
+    },
+    execute: async ({ emailId, includeAttachments }) => {
       const gmailService = ServiceFactory.getInstance().getGmailService();
       
       // Get the full email message
       const fullMessage = await gmailService.getMessage(emailId);
       
       if (!fullMessage) {
-        return buildErrorResponse(
-          toolOptions,
-          new Error(`Email with ID ${emailId} not found`),
-          {
-            title: 'Email not found',
-            description: `Could not find email with ID ${emailId}`,
-          }
-        );
+        return {
+          success: false,
+          error: `Email with ID ${emailId} not found`,
+          email: null,
+        };
       }
       
       // Extract body content
@@ -121,106 +116,35 @@ export const readEmail = tool({
       // Determine urgency
       const urgency = determineUrgency(subject, bodyPlain);
       
-      const email: Email = {
-        id: emailId,
-        threadId: fullMessage.threadId || emailId,
-        subject,
-        from,
-        to,
-        cc,
-        bodyPreview: fullMessage.snippet || bodyPlain.substring(0, 200).trim(),
-        bodyHtml: bodyHtml || undefined,
-        bodyPlain,
-        attachments: attachments.length > 0 ? attachments : undefined,
-        actionItems: actionItems.length > 0 ? actionItems : undefined,
-        receivedAt: new Date(date).toISOString(),
-        isRead: fullMessage.labelIds?.includes('UNREAD') === false,
-        isStarred: fullMessage.labelIds?.includes('STARRED') || false,
-        labels: fullMessage.labelIds || [],
-        urgency,
+      console.log(`[Tool: readEmail] Read email ${emailId} with urgency: ${urgency}`);
+      
+      // Return pure data
+      return {
+        success: true,
+        email: {
+          id: emailId,
+          threadId: fullMessage.threadId || emailId,
+          subject,
+          from,
+          to,
+          cc,
+          body: bodyPlain,
+          bodyHtml: bodyHtml || undefined,
+          attachments: attachments.length > 0 ? attachments : undefined,
+          actionItems: actionItems.length > 0 ? actionItems : undefined,
+          receivedAt: new Date(date).toISOString(),
+          isRead: fullMessage.labelIds?.includes('UNREAD') === false,
+          urgency,
+        },
       };
       
-      return buildToolResponse(
-        toolOptions,
-        email,
-        {
-          type: 'card',
-          title: subject || '(No subject)',
-          description: `From: ${from.name || from.email}`,
-          priority: urgency === 'urgent' ? 'high' : urgency === 'important' ? 'medium' : 'low',
-          components: [
-            {
-              type: 'emailPreview',
-              data: {
-                id: email.id,
-                from: email.from.name,
-                fromEmail: email.from.email,
-                subject: email.subject,
-                preview: email.bodyPreview,
-                receivedAt: email.receivedAt,
-                isRead: email.isRead,
-                hasAttachments: attachments.length > 0,
-                urgency: email.urgency,
-              },
-            },
-          ],
-        },
-        {
-          suggestions: actionItems.length > 0 
-            ? ['Create tasks from action items', 'Draft a response', 'Archive this email']
-            : ['Draft a response', 'Archive this email', 'Forward to team'],
-          actions: [
-            {
-              id: 'draft-response',
-              label: 'Draft Response',
-              icon: 'reply',
-              variant: 'primary',
-              action: {
-                type: 'tool',
-                tool: 'draftEmailResponse',
-                params: { 
-                  emailId,
-                  to: [from.email],
-                  subject: `Re: ${subject}`,
-                },
-              },
-            },
-            ...(actionItems.length > 0 ? [{
-              id: 'create-tasks',
-              label: 'Create Tasks',
-              icon: 'tasks',
-              variant: 'secondary' as const,
-              action: {
-                type: 'tool' as const,
-                tool: 'processEmailToTask',
-                params: { emailId },
-              },
-            }] : []),
-            {
-              id: 'archive',
-              label: 'Archive',
-              icon: 'archive',
-              variant: 'secondary',
-              action: {
-                type: 'message' as const,
-                message: `Archive email ${emailId}`,
-              },
-            },
-          ],
-        }
-      );
-      
-    } catch (error) {
-      return buildErrorResponse(
-        toolOptions,
-        error,
-        {
-          title: 'Failed to read email',
-          description: error instanceof Error ? error.message : 'Unknown error occurred',
-        }
-      );
-    }
-  },
+    },
+  })
+);
+
+const parameters = z.object({
+  emailId: z.string().describe("Gmail message ID"),
+  includeAttachments: z.boolean().default(false),
 });
 
 // Helper function to extract action items from email body
