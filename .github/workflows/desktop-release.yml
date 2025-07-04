@@ -63,11 +63,14 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
         
-      - name: Build Tauri (Universal Binary)
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Tauri App
+        run: |
+          cd apps/desktop
+          bun run build:tauri --target universal-apple-darwin
+        
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
         with:
-          releaseId: ${{ needs.create-release.outputs.release_id }}
-          projectPath: apps/desktop
-          args: --target universal-apple-darwin 
+          files: apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

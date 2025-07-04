@@ -588,7 +588,7 @@ Be specific with workflow/tool names when confidence is high.`,
         } else {
           // Check for time references in the message (e.g., "9 am work block")
           const timeMatch = message.match(/(\d{1,2})\s*(?::\d{2})?\s*(?:am|pm|AM|PM)?\s*(?:work\s*block|block)/i);
-          if (timeMatch) {
+          if (timeMatch && timeMatch[1]) {
             const timeRef = timeMatch[1];
             const isPM = message.toLowerCase().includes('pm');
             const isAM = message.toLowerCase().includes('am');
