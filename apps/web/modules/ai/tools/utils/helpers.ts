@@ -1,5 +1,4 @@
 import { createServerActionClient } from '@/lib/supabase-server';
-import { format, parse, addMinutes } from 'date-fns';
 
 // Get current authenticated user ID
 export async function getCurrentUserId(): Promise<string> {
@@ -13,32 +12,6 @@ export async function getCurrentUserId(): Promise<string> {
   return user.id;
 }
 
-// Parse time string to Date object
-export function parseTime(timeStr: string): Date {
-  const parts = timeStr.split(':');
-  if (parts.length !== 2) {
-    throw new Error(`Invalid time format: ${timeStr}`);
-  }
-  const hours = parseInt(parts[0] || '0', 10);
-  const minutes = parseInt(parts[1] || '0', 10);
-  const date = new Date();
-  date.setHours(hours, minutes, 0, 0);
-  return date;
-}
-
-// Add minutes to time string
-export function addMinutesToTime(time: string | Date, minutes: number): string {
-  const date = typeof time === 'string' ? parseTime(time) : new Date(time);
-  return format(addMinutes(date, minutes), 'HH:mm');
-}
-
-// Format time range for display
-export function formatTimeRange(start: string, end: string): string {
-  const startTime = parseTime(start);
-  const endTime = parseTime(end);
-  return `${format(startTime, 'h:mm a')} - ${format(endTime, 'h:mm a')}`;
-}
-
 // Convert time string to minutes since midnight
 export function timeToMinutes(time: string): number {
   const parts = time.split(':');
@@ -46,34 +19,6 @@ export function timeToMinutes(time: string): number {
   const hours = parseInt(parts[0] || '0', 10);
   const minutes = parseInt(parts[1] || '0', 10);
   return hours * 60 + minutes;
-}
-
-// Parse natural language time
-export function parseNaturalTime(timeStr: string): Date {
-  const now = new Date();
-  const lower = timeStr.toLowerCase();
-  
-  // Handle relative days
-  if (lower.includes('tomorrow')) {
-    now.setDate(now.getDate() + 1);
-  } else if (lower.includes('next week')) {
-    now.setDate(now.getDate() + 7);
-  }
-  
-  // Extract time like "3pm", "15:00", etc
-  const timeMatch = timeStr.match(/(\d{1,2}):?(\d{0,2})\s*(am|pm)?/i);
-  if (timeMatch) {
-    let hours = parseInt(timeMatch[1] || '0', 10);
-    const minutes = parseInt(timeMatch[2] || '0', 10);
-    const meridiem = timeMatch[3]?.toLowerCase();
-    
-    if (meridiem === 'pm' && hours < 12) hours += 12;
-    if (meridiem === 'am' && hours === 12) hours = 0;
-    
-    now.setHours(hours, minutes, 0, 0);
-  }
-  
-  return now;
 }
 
 // Get user's working hours

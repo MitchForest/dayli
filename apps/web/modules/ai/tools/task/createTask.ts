@@ -7,7 +7,7 @@ import { ServiceFactory } from '@/services/factory/service.factory';
 export const createTask = registerTool(
   createTool<typeof parameters, CreateTaskResponse>({
     name: 'task_createTask',
-    description: "Create a new task from natural language",
+    description: "Create a new task",
     parameters: z.object({
       title: z.string().describe("Task title"),
       estimatedMinutes: z.number().optional().default(30),
@@ -33,24 +33,6 @@ export const createTask = registerTool(
         priority: params.priority,
         source: params.source,
       });
-      
-      // Add to today's schedule if high priority
-      if (params.priority === 'high') {
-        try {
-          const scheduleService = ServiceFactory.getInstance().getScheduleService();
-          const today = new Date().toISOString().substring(0, 10);
-          const blocks = await scheduleService.getScheduleForDate(today);
-          
-          // Find first work block
-          const workBlock = blocks.find(b => b.type === 'work');
-          if (workBlock) {
-            await taskService.assignTaskToBlock(task.id, workBlock.id);
-          }
-        } catch (error) {
-          // Non-critical error, task is still created
-          console.warn('Failed to auto-schedule high priority task:', error);
-        }
-      }
       
       console.log(`[Tool: createTask] Created task "${task.title}" with priority ${task.priority}`);
       

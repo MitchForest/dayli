@@ -27,7 +27,7 @@ function calculateTaskScore(task: any): number {
   if (task.dueDate) {
     const daysUntilDue = Math.floor((new Date(task.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     if (daysUntilDue <= 0) score += 40; // Overdue
-    else if (daysUntilDue <= 1) score += 30; // Due today/tomorrow
+    else if (daysUntilDue <= 1) score += 30; // Due soon
     else if (daysUntilDue <= 3) score += 20; // Due this week
     else if (daysUntilDue <= 7) score += 10;
   }
@@ -39,10 +39,10 @@ function calculateTaskScore(task: any): number {
 export const viewTasks = registerTool(
   createTool<typeof parameters, TaskListResponse>({
     name: 'task_viewTasks',
-    description: "View tasks with scoring and filters - understands natural language like 'pending', 'todo', 'unscheduled', 'done'",
+    description: "View tasks with scoring and filters",
     parameters: z.object({
       query: z.string().optional().describe("Search in title or description"),
-      status: z.string().optional().default('all').describe("Task status - can be natural language like 'pending', 'todo', 'unscheduled', 'done', 'finished'"),
+      status: z.enum(['backlog', 'scheduled', 'completed', 'all']).optional().default('all').describe("Task status"),
       priority: z.enum(['high', 'medium', 'low', 'all']).optional().default('all'),
       source: z.enum(['email', 'chat', 'calendar', 'manual', 'all']).optional().default('all'),
       limit: z.number().optional().default(20).describe("Maximum number of results"),
@@ -57,38 +57,15 @@ export const viewTasks = registerTool(
     execute: async (params) => {
       const taskService = ServiceFactory.getInstance().getTaskService();
       
-      // Map user intent to database values
-      const statusMap: Record<string, string> = {
-        // User might say these -> map to database value
-        'pending': 'backlog',
-        'todo': 'backlog',
-        'to do': 'backlog',
-        'unscheduled': 'backlog',
-        'not done': 'backlog',
-        'incomplete': 'backlog',
-        'backlog': 'backlog',
-        'scheduled': 'scheduled',
-        'assigned': 'scheduled',
-        'planned': 'scheduled',
-        'completed': 'completed',
-        'done': 'completed',
-        'finished': 'completed',
-        'complete': 'completed',
-        'all': 'all'
-      };
-      
-      // Normalize the status parameter
-      const normalizedStatus = statusMap[params.status.toLowerCase()] || params.status;
-      
       // Get tasks in parallel
       const [backlogTasks, scheduledTasks, completedTasks] = await Promise.all([
-        normalizedStatus === 'backlog' || normalizedStatus === 'all' 
+        params.status === 'backlog' || params.status === 'all' 
           ? taskService.getTaskBacklog()
           : Promise.resolve([]),
-        normalizedStatus === 'scheduled' || normalizedStatus === 'all'
+        params.status === 'scheduled' || params.status === 'all'
           ? taskService.getTasksByStatus('scheduled')
           : Promise.resolve([]),
-        normalizedStatus === 'completed' || normalizedStatus === 'all'
+        params.status === 'completed' || params.status === 'all'
           ? taskService.getTasksByStatus('completed')
           : Promise.resolve([])
       ]);
@@ -147,7 +124,7 @@ export const viewTasks = registerTool(
         totalEstimatedHours: results.reduce((sum, t) => sum + (t.estimatedMinutes || 30), 0) / 60,
       };
       
-      console.log(`[Tool: viewTasks] Found ${results.length} tasks with filters:`, { status: normalizedStatus, priority: params.priority });
+      console.log(`[Tool: viewTasks] Found ${results.length} tasks with filters:`, { status: params.status, priority: params.priority });
       
       // Return pure data
       return {
@@ -171,7 +148,7 @@ export const viewTasks = registerTool(
 
 const parameters = z.object({
   query: z.string().optional().describe("Search in title or description"),
-  status: z.string().optional().default('all').describe("Task status - can be natural language like 'pending', 'todo', 'unscheduled', 'done', 'finished'"),
+  status: z.enum(['backlog', 'scheduled', 'completed', 'all']).optional().default('all').describe("Task status"),
   priority: z.enum(['high', 'medium', 'low', 'all']).optional().default('all'),
   source: z.enum(['email', 'chat', 'calendar', 'manual', 'all']).optional().default('all'),
   limit: z.number().optional().default(20).describe("Maximum number of results"),

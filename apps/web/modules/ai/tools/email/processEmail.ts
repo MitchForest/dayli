@@ -12,7 +12,6 @@ export const processEmail = registerTool(
       emailId: z.string().describe("Gmail message ID"),
       action: z.enum(['convert_to_task', 'draft_reply', 'send_reply']).describe("Action to take"),
       taskTitle: z.string().optional().describe("For convert_to_task: Override auto-generated title"),
-      schedule: z.enum(['today', 'tomorrow', 'next_week', 'backlog']).optional().default('today').describe("For convert_to_task: When to schedule"),
       replyContent: z.string().optional().describe("For draft/send: Reply content"),
     }),
     metadata: {
@@ -21,7 +20,7 @@ export const processEmail = registerTool(
       requiresConfirmation: false,
       supportsStreaming: false,
     },
-    execute: async ({ emailId, action, taskTitle, schedule, replyContent }) => {
+    execute: async ({ emailId, action, taskTitle, replyContent }) => {
       const gmailService = ServiceFactory.getInstance().getGmailService();
       const taskService = ServiceFactory.getInstance().getTaskService();
       
@@ -163,6 +162,5 @@ const parameters = z.object({
   emailId: z.string().describe("Gmail message ID"),
   action: z.enum(['convert_to_task', 'draft_reply', 'send_reply']).describe("Action to take"),
   taskTitle: z.string().optional().describe("For convert_to_task: Override auto-generated title"),
-  schedule: z.enum(['today', 'tomorrow', 'next_week', 'backlog']).optional().default('today').describe("For convert_to_task: When to schedule"),
   replyContent: z.string().optional().describe("For draft/send: Reply content"),
 });

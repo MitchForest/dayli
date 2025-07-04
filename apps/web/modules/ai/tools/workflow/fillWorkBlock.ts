@@ -8,13 +8,11 @@ import { getBacklogWithScores } from '../task/getBacklogWithScores';
 import { suggestForDuration } from '../task/suggestForDuration';
 import { assignToTimeBlock } from '../task/assignToTimeBlock';
 import { viewSchedule } from '../schedule/viewSchedule';
-import { toMilitaryTime } from '../../utils/time-parser';
 import { format } from 'date-fns';
 
 const parameters = z.object({
-  blockId: z.string().describe("ID or description of the work block to fill (e.g., '9 am', 'morning work block')"),
-  blockTime: z.enum(["morning", "afternoon", "evening"]).optional().describe("Time of day for context"),
-  date: z.string().optional().describe("Date of the block (YYYY-MM-DD format)"),
+  blockId: z.string().describe("ID of the work block to fill"),
+  date: z.string().describe("Date in YYYY-MM-DD format"),
   confirmation: z.object({
     approved: z.boolean(),
     proposalId: z.string(),
@@ -28,7 +26,7 @@ const proposalStore = new Map<string, any>();
 export const fillWorkBlock = registerTool(
   createTool<typeof parameters, WorkflowFillWorkBlockResponse>({
     name: 'workflow_fillWorkBlock',
-    description: "Multi-step workflow to intelligently fill work blocks with tasks",
+    description: "Multi-step workflow to intelligently fill work blocks with tasks - requires block ID",
     parameters,
     metadata: {
       category: 'workflow',
@@ -36,57 +34,33 @@ export const fillWorkBlock = registerTool(
       requiresConfirmation: true,
       supportsStreaming: true,
     },
-    execute: async ({ blockId, blockTime, date, confirmation }) => {
+    execute: async ({ blockId, date, confirmation }) => {
       try {
         // PHASE 1: ANALYSIS & PROPOSAL (no confirmation provided)
         if (!confirmation) {
           console.log('[FillWorkBlock Workflow] Phase 1: Analyzing and generating proposals');
           
           // Step 1: Get block details from schedule
-          const scheduleResult = await viewSchedule.execute({ date: date || new Date().toISOString().split('T')[0] });
+          const scheduleResult = await viewSchedule.execute({ date });
           if (!scheduleResult.success) {
             throw new Error('Failed to get schedule');
           }
           
-          // Find the block by ID, time, or description
-          let block = null;
-          const searchLower = blockId.toLowerCase().trim();
-          
-          // First try exact ID match
-          block = scheduleResult.blocks.find((b: any) => b.id === blockId);
-          
-          // If not found, try to match by time
-          if (!block) {
-            const timeMatch = searchLower.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
-            if (timeMatch && timeMatch[1]) {
-              const searchTime = toMilitaryTime(timeMatch[1]);
-              block = scheduleResult.blocks.find((b: any) => {
-                const blockStart = format(new Date(b.startTime), 'HH:mm');
-                return blockStart === searchTime && b.type === 'work';
-              });
-            }
-          }
-          
-          // Try partial title match for work blocks
-          if (!block) {
-            block = scheduleResult.blocks.find((b: any) => 
-              b.type === 'work' && (
-                b.title.toLowerCase().includes(searchLower) ||
-                searchLower.includes(b.title.toLowerCase())
-              )
-            );
-          }
-          
-          // Try any work block if just "work" is mentioned
-          if (!block && searchLower.includes('work')) {
-            block = scheduleResult.blocks.find((b: any) => b.type === 'work');
-          }
+          // Find the block by ID
+          const block = scheduleResult.blocks.find((b: any) => b.id === blockId);
           
           if (!block) {
-            throw new Error(`No work block matching "${blockId}" found`);
+            throw new Error(`Block with ID "${blockId}" not found`);
           }
           
-          const blockDuration = block.duration;
+          if (block.type !== 'work') {
+            throw new Error(`Block "${blockId}" is not a work block (type: ${block.type})`);
+          }
+          
+          // Calculate duration in minutes
+          const startTime = new Date(block.startTime);
+          const endTime = new Date(block.endTime);
+          const blockDuration = Math.floor((endTime.getTime() - startTime.getTime()) / (1000 * 60));
           
           // Step 2: Get scored task backlog using atomic tool
           const backlogResult = await getBacklogWithScores.execute({

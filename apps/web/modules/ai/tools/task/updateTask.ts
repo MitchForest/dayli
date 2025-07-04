@@ -78,22 +78,6 @@ export const updateTask = registerTool(
       // Update the task
       const updatedTask = await taskService.updateTask(taskId, updates);
       
-      // Auto-schedule if priority changed to high
-      if (updates.priority === 'high' && currentTask.priority !== 'high' && updatedTask.status !== 'scheduled') {
-        try {
-          const scheduleService = ServiceFactory.getInstance().getScheduleService();
-          const today = new Date().toISOString().substring(0, 10);
-          const blocks = await scheduleService.getScheduleForDate(today);
-          
-          const workBlock = blocks.find(b => b.type === 'work');
-          if (workBlock) {
-            await taskService.assignTaskToBlock(taskId, workBlock.id);
-          }
-        } catch (error) {
-          console.warn('Failed to auto-schedule after priority change:', error);
-        }
-      }
-      
       console.log(`[Tool: updateTask] Updated task ${taskId} - changed fields: ${changedFields.join(', ')}`);
       
       // Return pure data

@@ -9,11 +9,8 @@ fn main() {
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             
-            // Enable devtools in debug mode
-            #[cfg(debug_assertions)]
-            {
-                window.open_devtools();
-            }
+            // Devtools can be opened manually if needed via right-click -> Inspect
+            // or by pressing Cmd+Option+I on macOS
             
             Ok(())
         })

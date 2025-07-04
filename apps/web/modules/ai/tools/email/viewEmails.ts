@@ -178,7 +178,7 @@ export const viewEmails = registerTool(
           fromEmail: email.from.email,
           subject: email.subject,
           snippet: email.bodyPreview,
-          receivedAt: new Date(email.receivedAt),
+          receivedAt: email.receivedAt,
           isRead: email.isRead,
           hasAttachments: false, // TODO: implement attachment detection
           urgency: email.urgency,

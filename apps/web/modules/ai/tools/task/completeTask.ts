@@ -28,7 +28,7 @@ export const completeTask = registerTool(
           error: 'Task not found',
           taskId: taskId,
           title: '',
-          completedAt: new Date(),
+          completedAt: '',
         };
       }
       
@@ -38,7 +38,7 @@ export const completeTask = registerTool(
           error: 'Task is already completed',
           taskId: taskId,
           title: task.title,
-          completedAt: new Date(),
+          completedAt: new Date().toISOString(),
         };
       }
       
@@ -61,7 +61,7 @@ export const completeTask = registerTool(
         success: true,
         taskId: taskId,
         title: completedTask.title,
-        completedAt: new Date(),
+        completedAt: new Date().toISOString(),
       };
       
     },

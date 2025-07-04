@@ -45,7 +45,7 @@ export const schedule = registerTool(
       
       // Ensure we have a valid date - use a default if not provided
       const defaultDate = new Date().toISOString().split('T')[0];
-      const targetDate = params.date || defaultDate;
+      const targetDate = (params.date ?? defaultDate) as string;
       
       try {
         // Check if this is a confirmation

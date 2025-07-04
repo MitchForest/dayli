@@ -9,12 +9,11 @@ import { batchCategorize } from '../email/batchCategorize';
 import { groupBySender } from '../email/groupBySender';
 import { archiveBatch } from '../email/archiveBatch';
 import { viewSchedule } from '../schedule/viewSchedule';
-import { toMilitaryTime } from '../../utils/time-parser';
 import { format } from 'date-fns';
 
 const parameters = z.object({
-  blockId: z.string().describe("ID or description of the email block to fill (e.g., '8:30', 'morning email block')"),
-  date: z.string().optional().describe("Date of the block (YYYY-MM-DD format)"),
+  blockId: z.string().describe("ID of the email block to fill"),
+  date: z.string().describe("Date in YYYY-MM-DD format"),
   confirmation: z.object({
     approved: z.boolean(),
     proposalId: z.string(),
@@ -31,7 +30,7 @@ const proposalStore = new Map<string, any>();
 export const fillEmailBlock = registerTool(
   createTool<typeof parameters, WorkflowFillEmailBlockResponse>({
     name: 'workflow_fillEmailBlock',
-    description: "Multi-step workflow to intelligently process emails during email blocks",
+    description: "Multi-step workflow to intelligently process emails during email blocks - requires block ID",
     parameters,
     metadata: {
       category: 'workflow',
@@ -46,50 +45,26 @@ export const fillEmailBlock = registerTool(
           console.log('[FillEmailBlock Workflow] Phase 1: Analyzing and generating proposals');
           
           // Step 1: Get block details from schedule
-          const scheduleResult = await viewSchedule.execute({ date: date || new Date().toISOString().split('T')[0] });
+          const scheduleResult = await viewSchedule.execute({ date });
           if (!scheduleResult.success) {
             throw new Error('Failed to get schedule');
           }
           
-          // Find the block by ID, time, or description
-          let block = null;
-          const searchLower = blockId.toLowerCase().trim();
-          
-          // First try exact ID match
-          block = scheduleResult.blocks.find((b: any) => b.id === blockId);
-          
-          // If not found, try to match by time
-          if (!block) {
-            const timeMatch = searchLower.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
-            if (timeMatch && timeMatch[1]) {
-              const searchTime = toMilitaryTime(timeMatch[1]);
-              block = scheduleResult.blocks.find((b: any) => {
-                const blockStart = format(new Date(b.startTime), 'HH:mm');
-                return blockStart === searchTime && b.type === 'email';
-              });
-            }
-          }
-          
-          // Try partial title match for email blocks
-          if (!block) {
-            block = scheduleResult.blocks.find((b: any) => 
-              b.type === 'email' && (
-                b.title.toLowerCase().includes(searchLower) ||
-                searchLower.includes(b.title.toLowerCase())
-              )
-            );
-          }
-          
-          // Try any email block if just "email" is mentioned
-          if (!block && searchLower.includes('email')) {
-            block = scheduleResult.blocks.find((b: any) => b.type === 'email');
-          }
+          // Find the block by ID
+          const block = scheduleResult.blocks.find((b: any) => b.id === blockId);
           
           if (!block) {
-            throw new Error(`No email block matching "${blockId}" found`);
+            throw new Error(`Block with ID "${blockId}" not found`);
           }
           
-          const blockDuration = block.duration;
+          if (block.type !== 'email') {
+            throw new Error(`Block "${blockId}" is not an email block (type: ${block.type})`);
+          }
+          
+          // Calculate duration in minutes
+          const startTime = new Date(block.startTime);
+          const endTime = new Date(block.endTime);
+          const blockDuration = Math.floor((endTime.getTime() - startTime.getTime()) / (1000 * 60));
           
           // Step 2: Get email backlog using atomic tool
           const backlogResult = await getBacklog.execute({

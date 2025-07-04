@@ -4,19 +4,19 @@ import { registerTool } from '../base/tool-registry';
 import { type ScheduleMeetingResponse } from '../types/responses';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format, addMinutes } from 'date-fns';
-import { parseFlexibleTime } from '../../utils/time-parser';
 
 export const scheduleMeeting = registerTool(
   createTool<typeof parameters, ScheduleMeetingResponse>({
     name: 'calendar_scheduleMeeting',
-    description: "Schedule a new meeting with smart time finding",
+    description: "Schedule a new meeting with concrete date and time values",
     parameters: z.object({
-      title: z.string(),
-      attendees: z.array(z.string()).describe("Email addresses"),
-      duration: z.number().default(30).describe("Duration in minutes"),
-      description: z.string().optional(),
-      preferredTimes: z.array(z.string()).optional().describe("Preferred time slots"),
-      needsPrepTime: z.boolean().default(false),
+      title: z.string().describe("Meeting title"),
+      attendees: z.array(z.string()).describe("Email addresses of attendees"),
+      date: z.string().describe("Date in YYYY-MM-DD format"),
+      startTime: z.string().describe("Start time in HH:MM format (24-hour)"),
+      duration: z.number().describe("Duration in minutes"),
+      description: z.string().optional().describe("Meeting description"),
+      needsPrepTime: z.boolean().default(false).describe("Whether to create a prep block before the meeting"),
     }),
     metadata: {
       category: 'calendar',
@@ -28,24 +28,30 @@ export const scheduleMeeting = registerTool(
       const calendarService = ServiceFactory.getInstance().getCalendarService();
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       
-      // For now, use a simple implementation
-      // In a real implementation, this would check attendee availability
-      const now = new Date();
-      const meetingStart = params.preferredTimes?.[0] 
-        ? parseNaturalDateTime(params.preferredTimes[0])
-        : addMinutes(now, 60); // Default to 1 hour from now
+      // Create date object from concrete values - NO PARSING
+      const dateParts = params.date.split('-');
+      const timeParts = params.startTime.split(':');
       
+      if (dateParts.length !== 3 || timeParts.length !== 2) {
+        throw new Error('Invalid date or time format');
+      }
+      
+      const year = parseInt(dateParts[0] || '0');
+      const month = parseInt(dateParts[1] || '0');
+      const day = parseInt(dateParts[2] || '0');
+      const hours = parseInt(timeParts[0] || '0');
+      const minutes = parseInt(timeParts[1] || '0');
+      
+      const meetingStart = new Date(year, month - 1, day, hours, minutes);
       const meetingEnd = addMinutes(meetingStart, params.duration);
       
-      // Check for conflicts in local schedule
-      const dateStr = format(meetingStart, 'yyyy-MM-dd');
-      const timeStr = format(meetingStart, 'HH:mm');
+      // Check for conflicts
       const endTimeStr = format(meetingEnd, 'HH:mm');
       
       const hasConflict = await scheduleService.checkForConflicts(
-        timeStr,
+        params.startTime,
         endTimeStr,
-        dateStr
+        params.date
       );
       
       if (hasConflict) {
@@ -55,8 +61,8 @@ export const scheduleMeeting = registerTool(
           meeting: {
             id: '',
             title: params.title,
-            startTime: meetingStart,
-            endTime: meetingEnd,
+            startTime: meetingStart.toISOString(),
+            endTime: meetingEnd.toISOString(),
             attendees: params.attendees,
             location: undefined,
             description: params.description,
@@ -85,8 +91,8 @@ export const scheduleMeeting = registerTool(
             type: 'blocked',
             title: `Prep: ${params.title}`,
             startTime: format(prepStart, 'HH:mm'),
-            endTime: timeStr,
-            date: dateStr,
+            endTime: params.startTime,
+            date: params.date,
             description: `Preparation time for ${params.title}`,
           });
           prepBlockId = prepBlock.id;
@@ -103,45 +109,24 @@ export const scheduleMeeting = registerTool(
         meeting: {
           id: meeting.id,
           title: meeting.summary || params.title,
-          startTime: meetingStart,
-          endTime: meetingEnd,
+          startTime: meetingStart.toISOString(),
+          endTime: meetingEnd.toISOString(),
           attendees: params.attendees,
           location: meeting.location,
           description: meeting.description,
         },
         prepBlockCreated: !!prepBlockId,
       };
-      
     },
   })
 );
 
 const parameters = z.object({
-  title: z.string(),
-  attendees: z.array(z.string()).describe("Email addresses"),
-  duration: z.number().default(30).describe("Duration in minutes"),
-  description: z.string().optional(),
-  preferredTimes: z.array(z.string()).optional().describe("Preferred time slots"),
-  needsPrepTime: z.boolean().default(false),
-});
-
-// Helper to parse natural language date/time
-function parseNaturalDateTime(input: string): Date {
-  const now = new Date();
-  const lower = input.toLowerCase();
-  
-  // Handle relative days
-  if (lower.includes('tomorrow')) {
-    now.setDate(now.getDate() + 1);
-  } else if (lower.includes('next week')) {
-    now.setDate(now.getDate() + 7);
-  }
-  
-  // Extract time using flexible parser
-  const timeResult = parseFlexibleTime(input);
-  if (timeResult) {
-    now.setHours(timeResult.hour, timeResult.minute, 0, 0);
-  }
-  
-  return now;
-} 
+  title: z.string().describe("Meeting title"),
+  attendees: z.array(z.string()).describe("Email addresses of attendees"),
+  date: z.string().describe("Date in YYYY-MM-DD format"),
+  startTime: z.string().describe("Start time in HH:MM format (24-hour)"),
+  duration: z.number().describe("Duration in minutes"),
+  description: z.string().optional().describe("Meeting description"),
+  needsPrepTime: z.boolean().default(false).describe("Whether to create a prep block before the meeting"),
+}); 

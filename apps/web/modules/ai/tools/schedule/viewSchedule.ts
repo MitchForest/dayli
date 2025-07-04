@@ -12,7 +12,7 @@ export const viewSchedule = registerTool(
     name: 'schedule_viewSchedule',
     description: 'View the schedule for a specific date with all time blocks and assigned tasks',
     parameters: z.object({
-      date: z.string().optional().describe('YYYY-MM-DD format, defaults to today'),
+      date: z.string().describe('Date in YYYY-MM-DD format'),
     }),
     metadata: {
       category: 'schedule',
@@ -21,12 +21,11 @@ export const viewSchedule = registerTool(
       supportsStreaming: false,
     },
     execute: async ({ date }) => {
-      const targetDate = date || format(new Date(), 'yyyy-MM-dd');
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       
-      console.log('[Tool: viewSchedule] Getting schedule for date:', targetDate);
+      console.log('[Tool: viewSchedule] Getting schedule for date:', date);
       
-      const blocks = await scheduleService.getScheduleForDate(targetDate);
+      const blocks = await scheduleService.getScheduleForDate(date);
       
       // Get supabase client for database queries
       const supabase = await createServerActionClient();
@@ -69,13 +68,13 @@ export const viewSchedule = registerTool(
       // Return pure data
       return {
         success: true,
-        date: targetDate,
+        date: date,
         blocks: blocksWithTasks.map(block => ({
           id: block.id,
           type: block.type as 'work' | 'meeting' | 'email' | 'break' | 'blocked',
           title: block.title,
-          startTime: block.startTime,
-          endTime: block.endTime,
+          startTime: block.startTime.toISOString(),
+          endTime: block.endTime.toISOString(),
           description: block.description,
           tasks: (block as any).tasks?.map((task: any) => ({
             id: task.id,
@@ -91,5 +90,5 @@ export const viewSchedule = registerTool(
 );
 
 const parameters = z.object({
-  date: z.string().optional().describe('YYYY-MM-DD format, defaults to today'),
+  date: z.string().describe('Date in YYYY-MM-DD format'),
 }); 

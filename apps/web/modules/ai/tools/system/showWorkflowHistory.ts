@@ -48,7 +48,7 @@ export const showWorkflowHistory = registerTool(
         workflows: history.slice(0, limit).map((workflow: any) => ({
           id: workflow.id,
           type: workflow.type,
-          executedAt: workflow.startedAt || new Date(),
+          executedAt: (workflow.startedAt || new Date()).toISOString(),
           status: workflow.status as 'completed' | 'failed' | 'interrupted',
           changes: workflow.changes || 0,
           outcome: workflow.outcome || workflow.result?.summary,

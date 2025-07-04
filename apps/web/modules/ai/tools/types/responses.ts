@@ -13,8 +13,8 @@ export interface ScheduleViewResponse extends BaseToolResponse {
     id: string;
     type: 'work' | 'meeting' | 'email' | 'break' | 'blocked';
     title: string;
-    startTime: Date;
-    endTime: Date;
+    startTime: string;
+    endTime: string;
     description?: string;
     tasks?: Array<{
       id: string;
@@ -36,15 +36,15 @@ export interface CreateTimeBlockResponse extends BaseToolResponse {
     id: string;
     type: 'work' | 'meeting' | 'email' | 'break' | 'blocked';
     title: string;
-    startTime: Date;
-    endTime: Date;
+    startTime: string;
+    endTime: string;
     description?: string;
   };
   conflicts?: Array<{
     id: string;
     title: string;
-    startTime: Date;
-    endTime: Date;
+    startTime: string;
+    endTime: string;
   }>;
 }
 
@@ -52,13 +52,13 @@ export interface MoveTimeBlockResponse extends BaseToolResponse {
   block: {
     id: string;
     title: string;
-    startTime: Date;
-    endTime: Date;
+    startTime: string;
+    endTime: string;
     type: string;
   };
   previousTime: {
-    startTime: Date;
-    endTime: Date;
+    startTime: string;
+    endTime: string;
   };
 }
 
@@ -94,8 +94,8 @@ export interface BatchCreateBlocksResponse extends BaseToolResponse {
     id: string;
     type: 'work' | 'meeting' | 'email' | 'break' | 'blocked';
     title: string;
-    startTime: Date;
-    endTime: Date;
+    startTime: string;
+    endTime: string;
     description?: string;
   }>;
   conflicts: Array<{
@@ -136,7 +136,7 @@ export interface TaskListResponse extends BaseToolResponse {
     estimatedMinutes?: number;
     daysInBacklog?: number;
     description?: string;
-    dueDate?: Date;
+    dueDate?: string;
   }>;
   stats: {
     total: number;
@@ -170,7 +170,7 @@ export interface UpdateTaskResponse extends BaseToolResponse {
 export interface CompleteTaskResponse extends BaseToolResponse {
   taskId: string;
   title: string;
-  completedAt: Date;
+  completedAt: string;
 }
 
 // Email tool responses
@@ -181,7 +181,7 @@ export interface EmailListResponse extends BaseToolResponse {
     fromEmail: string;
     subject: string;
     snippet: string;
-    receivedAt: Date;
+    receivedAt: string;
     isRead: boolean;
     hasAttachments: boolean;
     urgency?: 'urgent' | 'important' | 'normal';
@@ -202,7 +202,7 @@ export interface ReadEmailResponse extends BaseToolResponse {
     to: string;
     subject: string;
     body: string;
-    receivedAt: Date;
+    receivedAt: string;
     attachments?: Array<{
       filename: string;
       mimeType: string;
@@ -228,8 +228,8 @@ export interface ScheduleMeetingResponse extends BaseToolResponse {
   meeting: {
     id: string;
     title: string;
-    startTime: Date;
-    endTime: Date;
+    startTime: string;
+    endTime: string;
     attendees: string[];
     location?: string;
     description?: string;
@@ -240,12 +240,12 @@ export interface ScheduleMeetingResponse extends BaseToolResponse {
 export interface RescheduleMeetingResponse extends BaseToolResponse {
   meetingId: string;
   previousTime: {
-    startTime: Date;
-    endTime: Date;
+    startTime: string;
+    endTime: string;
   };
   newTime: {
-    startTime: Date;
-    endTime: Date;
+    startTime: string;
+    endTime: string;
   };
   notificationsSent: boolean;
 }
@@ -303,8 +303,8 @@ export interface WorkflowScheduleResponse extends BaseToolResponse {
     id: string;
     type: 'work' | 'meeting' | 'email' | 'break' | 'blocked';
     title: string;
-    startTime: Date;
-    endTime: Date;
+    startTime: string;
+    endTime: string;
     description?: string;
   }>;
   conflicts?: Array<{
@@ -415,7 +415,7 @@ export interface WorkflowHistoryResponse extends BaseToolResponse {
   workflows: Array<{
     id: string;
     type: string;
-    executedAt: Date;
+    executedAt: string;
     status: 'completed' | 'failed' | 'interrupted';
     changes?: number;
     outcome?: string;
@@ -455,8 +455,8 @@ export interface ViewTasksResponse extends BaseToolResponse {
     status: 'pending' | 'in_progress' | 'completed';
     priority: 'low' | 'medium' | 'high';
     estimatedMinutes?: number;
-    createdAt: Date;
-    updatedAt: Date;
+    createdAt: string;
+    updatedAt: string;
   }>;
   totalTasks: number;
   completedTasks: number;

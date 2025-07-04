@@ -62,7 +62,7 @@ export const readEmail = registerTool(
             to: '',
             subject: '',
             body: '',
-            receivedAt: new Date(),
+            receivedAt: new Date().toISOString(),
           },
         };
       }
@@ -137,7 +137,7 @@ export const readEmail = registerTool(
           fromEmail: from.email,
           to: to.map(t => t.email).join(', '),
           body: bodyPlain,
-          receivedAt: new Date(date),
+          receivedAt: new Date(date).toISOString(),
           attachments: attachments.length > 0 ? attachments.map(a => ({
             filename: a.filename,
             mimeType: a.mimeType,

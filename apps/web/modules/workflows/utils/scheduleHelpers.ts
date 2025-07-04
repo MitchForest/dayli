@@ -1,5 +1,4 @@
 import { format, parse, addMinutes, differenceInMinutes } from 'date-fns';
-import { toMilitaryTime } from '@/modules/ai/utils/time-parser';
 import type { Change, RAGContext, UserPattern, TimeGap, Inefficiency } from '../types/domain-workflow.types';
 import type { Task } from '@/services/interfaces/task.interface';
 import type { UserPreferences } from '@/services/interfaces/preference.interface';
@@ -138,17 +137,6 @@ export function isLunchTime(block: any): boolean {
 }
 
 /**
- * Parse time helper (uses existing time-parser)
- */
-function parseTime(timeStr: string): Date {
-  const today = new Date();
-  const militaryTime = toMilitaryTime(timeStr);
-  const [hours, minutes] = militaryTime.split(':').map(Number);
-  today.setHours(hours || 0, minutes || 0, 0, 0);
-  return today;
-}
-
-/**
  * Generate natural language summary of proposed changes
  */
 export function generateNaturalSummary(changes: Change[]): string {
@@ -198,8 +186,15 @@ export function generateNaturalSummary(changes: Change[]): string {
  * Format time range for display
  */
 export function formatTimeRange(startTime: string, endTime: string): string {
-  const start = parseTime(startTime);
-  const end = parseTime(endTime);
+  // Expect times in HH:MM format
+  const [startHours, startMinutes] = startTime.split(':').map(Number);
+  const [endHours, endMinutes] = endTime.split(':').map(Number);
+  
+  const start = new Date();
+  start.setHours(startHours || 0, startMinutes || 0, 0, 0);
+  const end = new Date();
+  end.setHours(endHours || 0, endMinutes || 0, 0, 0);
+  
   return `${format(start, 'h:mm a')} - ${format(end, 'h:mm a')}`;
 }
 

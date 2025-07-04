@@ -4,18 +4,17 @@ import { registerTool } from '../base/tool-registry';
 import { type CreateTimeBlockResponse } from '../types/responses';
 import { ServiceFactory } from '@/services/factory/service.factory';
 import { format } from 'date-fns';
-import { toMilitaryTime } from '../../utils/time-parser';
 
 export const createTimeBlock = registerTool(
   createTool<typeof parameters, CreateTimeBlockResponse>({
     name: 'schedule_createTimeBlock',
-    description: 'Create a new time block in the schedule',
+    description: 'Create a new time block in the schedule with concrete time values',
     parameters: z.object({
       type: z.enum(['work', 'email', 'break', 'meeting', 'blocked']),
       title: z.string(),
-      startTime: z.string().describe('Time in any format (e.g., "9am", "3:30 pm", "15:00")'),
-      endTime: z.string().describe('Time in any format (e.g., "10am", "4:30 pm", "16:00")'),
-      date: z.string().optional().describe('Date in YYYY-MM-DD format, defaults to today'),
+      startTime: z.string().describe('Start time in HH:MM format (24-hour)'),
+      endTime: z.string().describe('End time in HH:MM format (24-hour)'),
+      date: z.string().describe('Date in YYYY-MM-DD format'),
       description: z.string().optional(),
     }),
     metadata: {
@@ -27,27 +26,28 @@ export const createTimeBlock = registerTool(
     execute: async ({ type, title, startTime, endTime, date, description }) => {
       const scheduleService = ServiceFactory.getInstance().getScheduleService();
       
-      // Parse times using flexible parser
-      const militaryStartTime = toMilitaryTime(startTime);
-      const militaryEndTime = toMilitaryTime(endTime);
-      const targetDate = date || format(new Date(), 'yyyy-MM-dd');
+      // Validate time format (HH:MM)
+      const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+      if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
+        throw new Error('Invalid time format. Expected HH:MM');
+      }
       
       // Check for conflicts
       const hasConflict = await scheduleService.checkForConflicts(
-        militaryStartTime, 
-        militaryEndTime, 
-        targetDate
+        startTime, 
+        endTime, 
+        date
       );
       
       let conflicts: CreateTimeBlockResponse['conflicts'] = undefined;
       
       if (hasConflict) {
         // Get the current schedule to show what's overlapping
-        const currentSchedule = await scheduleService.getScheduleForDate(targetDate);
+        const currentSchedule = await scheduleService.getScheduleForDate(date);
         const overlappingBlocks = currentSchedule.filter(block => {
           const blockStart = format(block.startTime, 'HH:mm');
           const blockEnd = format(block.endTime, 'HH:mm');
-          return (militaryStartTime < blockEnd && militaryEndTime > blockStart);
+          return (startTime < blockEnd && endTime > blockStart);
         });
         
         // Check if we're at the 4-block limit
@@ -59,15 +59,15 @@ export const createTimeBlock = registerTool(
               id: '',
               type,
               title,
-              startTime: new Date(`${targetDate}T${militaryStartTime}`),
-              endTime: new Date(`${targetDate}T${militaryEndTime}`),
+              startTime: `${date}T${startTime}:00`,
+              endTime: `${date}T${endTime}:00`,
               description,
             },
             conflicts: overlappingBlocks.map(b => ({
               id: b.id,
               title: b.title,
-              startTime: b.startTime,
-              endTime: b.endTime,
+              startTime: b.startTime.toISOString(),
+              endTime: b.endTime.toISOString(),
             })),
           };
         }
@@ -75,8 +75,8 @@ export const createTimeBlock = registerTool(
         conflicts = overlappingBlocks.map(b => ({
           id: b.id,
           title: b.title,
-          startTime: b.startTime,
-          endTime: b.endTime,
+          startTime: b.startTime.toISOString(),
+          endTime: b.endTime.toISOString(),
         }));
       }
       
@@ -84,13 +84,13 @@ export const createTimeBlock = registerTool(
       const block = await scheduleService.createTimeBlock({
         type,
         title,
-        startTime: militaryStartTime,
-        endTime: militaryEndTime,
-        date: targetDate,
+        startTime,
+        endTime,
+        date,
         description,
       });
       
-      console.log(`[Tool: createTimeBlock] Created block ${block.id} for date: ${targetDate}`);
+      console.log(`[Tool: createTimeBlock] Created block ${block.id} for date: ${date}`);
       
       // Return pure data
       return {
@@ -99,8 +99,8 @@ export const createTimeBlock = registerTool(
           id: block.id,
           type: block.type as 'work' | 'meeting' | 'email' | 'break' | 'blocked',
           title: block.title,
-          startTime: block.startTime,
-          endTime: block.endTime,
+          startTime: block.startTime.toISOString(),
+          endTime: block.endTime.toISOString(),
           description: block.description,
         },
         conflicts,
@@ -112,8 +112,8 @@ export const createTimeBlock = registerTool(
 const parameters = z.object({
   type: z.enum(['work', 'email', 'break', 'meeting', 'blocked']),
   title: z.string(),
-  startTime: z.string().describe('Time in any format (e.g., "9am", "3:30 pm", "15:00")'),
-  endTime: z.string().describe('Time in any format (e.g., "10am", "4:30 pm", "16:00")'),
-  date: z.string().optional().describe('Date in YYYY-MM-DD format, defaults to today'),
+  startTime: z.string().describe('Start time in HH:MM format (24-hour)'),
+  endTime: z.string().describe('End time in HH:MM format (24-hour)'),
+  date: z.string().describe('Date in YYYY-MM-DD format'),
   description: z.string().optional(),
 }); 

@@ -38,8 +38,8 @@ export const batchCreateBlocks = registerTool(
           id: string;
           type: 'work' | 'meeting' | 'email' | 'break' | 'blocked';
           title: string;
-          startTime: Date;
-          endTime: Date;
+          startTime: string;
+          endTime: string;
           description?: string;
         }> = [];
         
@@ -138,8 +138,8 @@ export const batchCreateBlocks = registerTool(
                 id: newBlock.id,
                 type: newBlock.type as 'work' | 'meeting' | 'email' | 'break' | 'blocked',
                 title: newBlock.title,
-                startTime: newBlock.startTime,
-                endTime: newBlock.endTime,
+                startTime: newBlock.startTime.toISOString(),
+                endTime: newBlock.endTime.toISOString(),
                 description: newBlock.description,
               });
             } catch (error) {
