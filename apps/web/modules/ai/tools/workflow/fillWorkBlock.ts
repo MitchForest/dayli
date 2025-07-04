@@ -8,10 +8,13 @@ import { getBacklogWithScores } from '../task/getBacklogWithScores';
 import { suggestForDuration } from '../task/suggestForDuration';
 import { assignToTimeBlock } from '../task/assignToTimeBlock';
 import { viewSchedule } from '../schedule/viewSchedule';
+import { toMilitaryTime } from '../../utils/time-parser';
+import { format } from 'date-fns';
 
 const parameters = z.object({
-  blockId: z.string().describe("ID of the work block to fill"),
+  blockId: z.string().describe("ID or description of the work block to fill (e.g., '9 am', 'morning work block')"),
   blockTime: z.enum(["morning", "afternoon", "evening"]).optional().describe("Time of day for context"),
+  date: z.string().optional().describe("Date of the block (YYYY-MM-DD format)"),
   confirmation: z.object({
     approved: z.boolean(),
     proposalId: z.string(),
@@ -33,21 +36,54 @@ export const fillWorkBlock = registerTool(
       requiresConfirmation: true,
       supportsStreaming: true,
     },
-    execute: async ({ blockId, blockTime, confirmation }) => {
+    execute: async ({ blockId, blockTime, date, confirmation }) => {
       try {
         // PHASE 1: ANALYSIS & PROPOSAL (no confirmation provided)
         if (!confirmation) {
           console.log('[FillWorkBlock Workflow] Phase 1: Analyzing and generating proposals');
           
           // Step 1: Get block details from schedule
-          const scheduleResult = await viewSchedule.execute({ date: new Date().toISOString().split('T')[0] });
+          const scheduleResult = await viewSchedule.execute({ date: date || new Date().toISOString().split('T')[0] });
           if (!scheduleResult.success) {
             throw new Error('Failed to get schedule');
           }
           
-          const block = scheduleResult.blocks.find((b: any) => b.id === blockId);
+          // Find the block by ID, time, or description
+          let block = null;
+          const searchLower = blockId.toLowerCase().trim();
+          
+          // First try exact ID match
+          block = scheduleResult.blocks.find((b: any) => b.id === blockId);
+          
+          // If not found, try to match by time
           if (!block) {
-            throw new Error('Block not found');
+            const timeMatch = searchLower.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
+            if (timeMatch && timeMatch[1]) {
+              const searchTime = toMilitaryTime(timeMatch[1]);
+              block = scheduleResult.blocks.find((b: any) => {
+                const blockStart = format(new Date(b.startTime), 'HH:mm');
+                return blockStart === searchTime && b.type === 'work';
+              });
+            }
+          }
+          
+          // Try partial title match for work blocks
+          if (!block) {
+            block = scheduleResult.blocks.find((b: any) => 
+              b.type === 'work' && (
+                b.title.toLowerCase().includes(searchLower) ||
+                searchLower.includes(b.title.toLowerCase())
+              )
+            );
+          }
+          
+          // Try any work block if just "work" is mentioned
+          if (!block && searchLower.includes('work')) {
+            block = scheduleResult.blocks.find((b: any) => b.type === 'work');
+          }
+          
+          if (!block) {
+            throw new Error(`No work block matching "${blockId}" found`);
           }
           
           const blockDuration = block.duration;
@@ -74,7 +110,7 @@ export const fillWorkBlock = registerTool(
           // Store proposal for later confirmation
           const proposalId = crypto.randomUUID();
           proposalStore.set(proposalId, {
-            blockId,
+            blockId: block.id,
             blockTitle: block.title,
             blockDuration,
             tasks: suggestionsResult.combination,
@@ -87,7 +123,7 @@ export const fillWorkBlock = registerTool(
             phase: 'proposal',
             requiresConfirmation: true,
             proposalId,
-            blockId,
+            blockId: block.id,
             blockTitle: block.title,
             proposals: {
               combination: suggestionsResult.combination,

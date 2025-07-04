@@ -14,6 +14,7 @@ import { format } from 'date-fns';
 
 const parameters = z.object({
   blockId: z.string().describe("ID or description of the email block to fill (e.g., '8:30', 'morning email block')"),
+  date: z.string().optional().describe("Date of the block (YYYY-MM-DD format)"),
   confirmation: z.object({
     approved: z.boolean(),
     proposalId: z.string(),
@@ -38,14 +39,14 @@ export const fillEmailBlock = registerTool(
       requiresConfirmation: true,
       supportsStreaming: true,
     },
-    execute: async ({ blockId, confirmation }) => {
+    execute: async ({ blockId, date, confirmation }) => {
       try {
         // PHASE 1: ANALYSIS & PROPOSAL (no confirmation provided)
         if (!confirmation) {
           console.log('[FillEmailBlock Workflow] Phase 1: Analyzing and generating proposals');
           
           // Step 1: Get block details from schedule
-          const scheduleResult = await viewSchedule.execute({ date: new Date().toISOString().split('T')[0] });
+          const scheduleResult = await viewSchedule.execute({ date: date || new Date().toISOString().split('T')[0] });
           if (!scheduleResult.success) {
             throw new Error('Failed to get schedule');
           }

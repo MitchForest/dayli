@@ -120,6 +120,12 @@ export function ChatInput({
     const trimmedInput = input.trim();
     if (!trimmedInput && !blockContext) return;
 
+    console.log('[ChatInput] Submitting with:', { 
+      input: trimmedInput, 
+      blockContext,
+      hasBlockContext: !!blockContext 
+    });
+
     // If we have block context, prepend it to the message
     let finalMessage = trimmedInput;
     if (blockContext && trimmedInput) {
@@ -127,6 +133,8 @@ export function ChatInput({
     } else if (blockContext && !trimmedInput) {
       finalMessage = blockContext.raw;
     }
+    
+    console.log('[ChatInput] Final message:', finalMessage);
 
     // Add to history (without the block context prefix)
     if (trimmedInput) {
@@ -232,7 +240,7 @@ export function ChatInput({
         </div>
       )}
       
-      <form onSubmit={onSubmit} className="flex gap-2">
+      <form onSubmit={onSubmit} className="chat-input-form flex gap-2">
         <textarea
           ref={inputRef}
           value={input}

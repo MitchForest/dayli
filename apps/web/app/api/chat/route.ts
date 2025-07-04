@@ -355,7 +355,12 @@ export async function POST(req: Request) {
 
     console.log('[Chat API] Authenticated user:', user.id);
 
-    // Configure ServiceFactory with authenticated client
+    // Parse request
+    const { messages, viewingDate } = await req.json();
+    
+    console.log('[Chat API] Last message received:', messages[messages.length - 1]?.content);
+    
+    // Configure services for the user
     const factory = ServiceFactory.getInstance();
     try {
       factory.configure({
@@ -368,15 +373,6 @@ export async function POST(req: Request) {
       console.log('[Chat API] ServiceFactory already configured, updating userId');
       factory.updateUserId(user.id);
     }
-
-    // Parse request
-    const { messages, viewingDate } = await req.json();
-    
-    console.log('[Chat API] Processing request:', { 
-      userId: user.id, 
-      messageCount: messages.length,
-      lastMessage: messages[messages.length - 1]?.content?.substring(0, 100) 
-    });
 
     // Auto-register all tools on first request
     if (toolRegistry.listTools().length === 0) {

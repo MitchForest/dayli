@@ -61,20 +61,66 @@ export function ChatPanel() {
         'schedule_createTimeBlock',
         'schedule_moveTimeBlock', 
         'schedule_deleteTimeBlock',
+        'schedule_batchCreateBlocks',
         'schedule_assignTaskToBlock',
         'schedule_completeTask',
         'task_createTask',
         'task_editTask',
-        'task_deleteTask'
+        'task_deleteTask',
+        'workflow_schedule',
+        'workflow_fillWorkBlock',
+        'workflow_fillEmailBlock'
       ];
       
       console.log('[ChatPanel] Message finished, tool invocations:', message.toolInvocations);
       
-      if (message.toolInvocations?.some(inv => scheduleTools.includes(inv.toolName))) {
-        // Invalidate today's schedule to force a refresh
-        const today = format(new Date(), 'yyyy-MM-dd');
-        console.log('[ChatPanel] Invalidating schedule for:', today);
-        invalidateSchedule(today);
+      // Check if any schedule-modifying tools were executed
+      const scheduleModified = message.toolInvocations?.some(inv => {
+        // Check if it's a schedule-related tool
+        if (scheduleTools.includes(inv.toolName)) {
+          return true;
+        }
+        
+        // For workflows, check if they completed successfully
+        if (inv.toolName.startsWith('workflow_') && inv.state === 'result') {
+          const result = (inv as any).result;
+          // Check if it's a completed workflow that modified the schedule
+          if (result?.phase === 'completed' && result?.success) {
+            return true;
+          }
+        }
+        
+        return false;
+      });
+      
+      if (scheduleModified) {
+        // Find the date that was modified
+        let dateToInvalidate: string | null = null;
+        
+        // Check tool invocations for date parameters
+        message.toolInvocations?.forEach(inv => {
+          if (inv.args && typeof inv.args === 'object') {
+            const args = inv.args as Record<string, any>;
+            if (args.date) {
+              dateToInvalidate = args.date;
+            }
+          }
+          
+          // For completed workflows, check the result for the date
+          if (inv.state === 'result' && (inv as any).result?.date) {
+            dateToInvalidate = (inv as any).result.date;
+          }
+        });
+        
+        if (dateToInvalidate) {
+          console.log('[ChatPanel] Invalidating schedule for date:', dateToInvalidate);
+          invalidateSchedule(dateToInvalidate);
+        } else {
+          // Fallback to invalidating current viewing date
+          const viewingDateStr = format(currentViewingDate, 'yyyy-MM-dd');
+          console.log('[ChatPanel] No specific date found, invalidating viewing date:', viewingDateStr);
+          invalidateSchedule(viewingDateStr);
+        }
       }
     },
   });
@@ -112,19 +158,37 @@ export function ChatPanel() {
 
   // Handle suggestion selection
   const handleSuggestionSelect = useCallback((suggestion: string) => {
+    console.log('[ChatPanel] Suggestion selected:', suggestion);
     chatState.setInput(suggestion);
     setShowCommands(false);
     
-    // Submit immediately - create a proper form event
+    // Submit immediately - trigger the form submit event on the actual form
+    // This ensures ChatInput's onSubmit handler runs, which includes block context
     setTimeout(() => {
-      const form = document.querySelector('form');
-      if (form) {
-        form.requestSubmit();
+      console.log('[ChatPanel] Looking for chat input form...');
+      // Find the form inside the chat input area
+      const chatForm = document.querySelector('.chat-input-form');
+      if (chatForm) {
+        console.log('[ChatPanel] Found chat input form, dispatching submit event');
+        // Create and dispatch a submit event
+        const submitEvent = new Event('submit', { 
+          bubbles: true, 
+          cancelable: true 
+        });
+        chatForm.dispatchEvent(submitEvent);
       } else {
-        // Fallback to direct submit
-        chatState.handleSubmit(new Event('submit', { bubbles: true, cancelable: true }) as any);
+        console.log('[ChatPanel] Chat input form not found, trying fallback');
+        // Fallback: try to find any form
+        const form = document.querySelector('form');
+        if (form) {
+          form.requestSubmit();
+        } else {
+          // Last resort: direct submit
+          console.log('[ChatPanel] No form found, using direct submit');
+          chatState.handleSubmit(new Event('submit', { bubbles: true, cancelable: true }) as any);
+        }
       }
-    }, 0);
+    }, 100); // Increased delay to ensure form is ready
   }, [chatState]);
 
   // Handle modify proposal event (just set input, don't submit)

@@ -497,101 +497,233 @@ Be specific with workflow/tool names when confidence is high.`,
         
         return {
           ...handler,
-          params
+          params,
         };
       }
       
       return handler;
     }
     
-    // Handle workflow routing
-    if (classification.category === 'workflow' && classification.workflow) {
-      const workflowName = classification.workflow;
-      const params: Record<string, any> = classification.params || {};
+    // Handle workflow routing based on classification
+    if (classification.category === 'workflow' && classification.suggestedHandler?.name) {
+      const workflowName = classification.suggestedHandler.name;
+      const params = classification.suggestedHandler.params || {};
       
-      // For schedule workflow, add viewing date if not viewing today
-      if (workflowName === 'workflow_schedule' && context.viewingContext && !context.viewingContext.isViewingToday) {
-        // Check if the message contains explicit date references
+      // Add viewing date if needed
+      if (!params.date && context.viewingContext && !context.viewingContext.isViewingToday) {
         const hasExplicitDate = /\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2})\b/i.test(message);
         
-        if (!hasExplicitDate && !params.date) {
+        if (!hasExplicitDate) {
           params.date = context.viewingContext.scheduleDateStr;
-          console.log('[Orchestrator] Using viewing date for schedule workflow:', params.date);
+          console.log('[Orchestrator] Using viewing date for workflow:', params.date);
         }
       }
       
-      // Special handling for approval messages
-      if (message.toLowerCase().includes('approve') && 
-          (message.toLowerCase().includes('schedule') || message.toLowerCase().includes('proposal'))) {
-        // Extract proposal ID if mentioned
-        const proposalIdMatch = message.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i);
-        if (proposalIdMatch) {
-          params.proposalId = proposalIdMatch[0];
+      // Special handling for fillWorkBlock workflow
+      if (workflowName === 'workflow_fillWorkBlock') {
+        console.log('[Orchestrator] Processing fillWorkBlock with message:', message);
+        
+        // Check if message contains block context pattern (including multi-line)
+        const fullMessage = message; // This includes the block context if it was prepended
+        const blockPatterns = [
+          /Work on "(.+)" from (\d+:\d+) to (\d+:\d+)/i,
+          /Meeting "(.+)" from (\d+:\d+) to (\d+:\d+)/i,
+          /Email block "(.+)" from (\d+:\d+) to (\d+:\d+)/i,
+          /Break "(.+)" from (\d+:\d+) to (\d+:\d+)/i,
+          /Blocked time "(.+)" from (\d+:\d+) to (\d+:\d+)/i,
+        ];
+        
+        let blockMatch = null;
+        for (const pattern of blockPatterns) {
+          blockMatch = fullMessage.match(pattern);
+          if (blockMatch) break;
         }
-        params.isApproval = true;
+        
+        console.log('[Orchestrator] Block match result:', blockMatch);
+        
+        if (blockMatch) {
+          const matchedTitle = blockMatch[1];
+          const matchedStartTime = blockMatch[2];
+          const matchedEndTime = blockMatch[3];
+          
+          if (!matchedTitle || !matchedStartTime || !matchedEndTime) {
+            console.log('[Orchestrator] Invalid block match format');
+          } else {
+            console.log('[Orchestrator] Detected block context:', { 
+              blockTitle: matchedTitle, 
+              startTime: matchedStartTime, 
+              endTime: matchedEndTime 
+            });
+            
+            // Find the block in the viewing date's schedule
+            const scheduleBlocks = context.viewingContext?.viewDateSchedule || [];
+            const matchingBlock = scheduleBlocks.find((block: any) => {
+              // Match by title and time
+              const blockStartTime = new Date(block.startTime || block.start_time);
+              const blockEndTime = new Date(block.endTime || block.end_time);
+              
+              const blockStartStr = `${blockStartTime.getHours().toString().padStart(2, '0')}:${blockStartTime.getMinutes().toString().padStart(2, '0')}`;
+              const blockEndStr = `${blockEndTime.getHours().toString().padStart(2, '0')}:${blockEndTime.getMinutes().toString().padStart(2, '0')}`;
+              
+              return block.title === matchedTitle && 
+                     blockStartStr === matchedStartTime && 
+                     blockEndStr === matchedEndTime;
+            });
+            
+            if (matchingBlock) {
+              console.log('[Orchestrator] Found matching block:', matchingBlock.id);
+              params.blockId = matchingBlock.id;
+              // Also pass the date so the workflow knows which schedule to look at
+              params.date = context.viewingContext?.scheduleDateStr || new Date().toISOString().split('T')[0];
+            } else {
+              console.log('[Orchestrator] No matching block found for context');
+              // Still pass what we know so the workflow can provide a better error
+              if (matchedStartTime && matchedStartTime.includes(':')) {
+                const hour = parseInt(matchedStartTime.split(':')[0] as string);
+                params.blockTime = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+              }
+              params.date = context.viewingContext?.scheduleDateStr || new Date().toISOString().split('T')[0];
+            }
+          }
+        } else {
+          // Check for time references in the message (e.g., "9 am work block")
+          const timeMatch = message.match(/(\d{1,2})\s*(?::\d{2})?\s*(?:am|pm|AM|PM)?\s*(?:work\s*block|block)/i);
+          if (timeMatch) {
+            const timeRef = timeMatch[1];
+            const isPM = message.toLowerCase().includes('pm');
+            const isAM = message.toLowerCase().includes('am');
+            
+            let targetHour = parseInt(timeRef);
+            if (isPM && targetHour < 12) targetHour += 12;
+            if (isAM && targetHour === 12) targetHour = 0;
+            
+            console.log('[Orchestrator] Detected time reference for work block:', { timeRef, targetHour });
+            
+            // Find a work block at this time
+            const scheduleBlocks = context.viewingContext?.viewDateSchedule || [];
+            const matchingBlock = scheduleBlocks.find((block: any) => {
+              if (block.type !== 'work') return false;
+              
+              const blockTime = new Date(block.startTime || block.start_time);
+              const blockHour = blockTime.getHours();
+              
+              return blockHour === targetHour;
+            });
+            
+            if (matchingBlock) {
+              console.log('[Orchestrator] Found work block at time:', matchingBlock.id);
+              params.blockId = matchingBlock.id;
+              params.date = context.viewingContext?.scheduleDateStr || new Date().toISOString().split('T')[0];
+            } else {
+              console.log('[Orchestrator] No work block found at time:', targetHour);
+              // Pass the time reference so the workflow can provide a better error
+              params.blockTime = targetHour < 12 ? 'morning' : targetHour < 17 ? 'afternoon' : 'evening';
+              params.date = context.viewingContext?.scheduleDateStr || new Date().toISOString().split('T')[0];
+            }
+          } else if (message.toLowerCase().includes('this block') || message.toLowerCase().includes('in this block')) {
+            console.log('[Orchestrator] User asking about "this block" but no context found');
+            // The AI will need to ask for clarification
+          }
+        }
       }
       
       // Special handling for fillEmailBlock workflow
       if (workflowName === 'workflow_fillEmailBlock') {
-        // Extract time reference from the message
-        const timeMatch = message.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm|AM|PM)?|\d{1,2}:\d{2})/i);
-        if (timeMatch) {
-          const timeRef = timeMatch[0];
-          console.log('[Orchestrator] Detected time reference in message:', timeRef);
+        // Check if message contains block context pattern for email blocks
+        const emailBlockMatch = message.match(/Email block "(.+)" from (\d+:\d+) to (\d+:\d+)/i);
+        
+        if (emailBlockMatch) {
+          const [_, blockTitle, startTime, endTime] = emailBlockMatch;
+          console.log('[Orchestrator] Detected email block context:', { blockTitle, startTime, endTime });
           
-          // Find the block that matches this time
+          // Find the block in the viewing date's schedule
           const scheduleBlocks = context.viewingContext?.viewDateSchedule || [];
           const matchingBlock = scheduleBlocks.find((block: any) => {
-            if (block.type !== 'email') return false;
+            // Match by title and time
+            const blockStartTime = new Date(block.startTime || block.start_time);
+            const blockEndTime = new Date(block.endTime || block.end_time);
             
-            // Parse the block's start time
-            const blockTime = new Date(block.startTime || block.start_time);
-            const blockHour = blockTime.getHours();
-            const blockMinute = blockTime.getMinutes();
+            const blockStartStr = `${blockStartTime.getHours().toString().padStart(2, '0')}:${blockStartTime.getMinutes().toString().padStart(2, '0')}`;
+            const blockEndStr = `${blockEndTime.getHours().toString().padStart(2, '0')}:${blockEndTime.getMinutes().toString().padStart(2, '0')}`;
             
-            // Parse the user's time reference
-            const normalizedTime = timeRef.toLowerCase().replace(/\s+/g, '');
-            let targetHour: number;
-            let targetMinute = 0;
-            
-            if (normalizedTime.includes(':')) {
-              const parts = normalizedTime.split(':');
-              const h = parts[0];
-              const m = parts[1];
-              if (h && m) {
-                targetHour = parseInt(h);
-                const minutePart = m.replace(/[apm]/g, '');
-                targetMinute = parseInt(minutePart) || 0;
-              } else {
-                return false;
-              }
-            } else {
-              targetHour = parseInt(normalizedTime.replace(/[apm]/g, ''));
-            }
-            
-            // Adjust for PM
-            if (normalizedTime.includes('pm') && targetHour < 12) {
-              targetHour += 12;
-            } else if (normalizedTime.includes('am') && targetHour === 12) {
-              targetHour = 0;
-            }
-            
-            // If no AM/PM specified and hour is <= 6, assume PM for work hours
-            if (!normalizedTime.includes('am') && !normalizedTime.includes('pm') && targetHour <= 6) {
-              targetHour += 12;
-            }
-            
-            // Check if times match
-            return blockHour === targetHour && blockMinute === targetMinute;
+            return block.title === blockTitle && 
+                   blockStartStr === startTime && 
+                   blockEndStr === endTime &&
+                   block.type === 'email';
           });
           
           if (matchingBlock) {
             console.log('[Orchestrator] Found matching email block:', matchingBlock.id);
             params.blockId = matchingBlock.id;
+            // Also pass the date so the workflow knows which schedule to look at
+            params.date = context.viewingContext?.scheduleDateStr || new Date().toISOString().split('T')[0];
           } else {
-            console.log('[Orchestrator] No email block found for time:', timeRef);
-            // Still pass the time reference so the workflow can provide a better error
-            params.blockId = timeRef;
+            console.log('[Orchestrator] No matching email block found for context');
+          }
+        } else {
+          // Extract time reference from the message
+          const timeMatch = message.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm|AM|PM)?|\d{1,2}:\d{2})/i);
+          if (timeMatch) {
+            const timeRef = timeMatch[0];
+            console.log('[Orchestrator] Detected time reference in message:', timeRef);
+            
+            // Find the block that matches this time
+            const scheduleBlocks = context.viewingContext?.viewDateSchedule || [];
+            const matchingBlock = scheduleBlocks.find((block: any) => {
+              if (block.type !== 'email') return false;
+              
+              // Parse the block's start time
+              const blockTime = new Date(block.startTime || block.start_time);
+              const blockHour = blockTime.getHours();
+              const blockMinute = blockTime.getMinutes();
+              
+              // Parse the user's time reference
+              const normalizedTime = timeRef.toLowerCase().replace(/\s+/g, '');
+              let targetHour: number;
+              let targetMinute = 0;
+              
+              if (normalizedTime.includes(':')) {
+                const parts = normalizedTime.split(':');
+                const h = parts[0];
+                const m = parts[1];
+                if (h && m) {
+                  targetHour = parseInt(h);
+                  const minutePart = m.replace(/[apm]/g, '');
+                  targetMinute = parseInt(minutePart) || 0;
+                } else {
+                  return false;
+                }
+              } else {
+                targetHour = parseInt(normalizedTime.replace(/[apm]/g, ''));
+              }
+              
+              // Adjust for PM
+              if (normalizedTime.includes('pm') && targetHour < 12) {
+                targetHour += 12;
+              } else if (normalizedTime.includes('am') && targetHour === 12) {
+                targetHour = 0;
+              }
+              
+              // If no AM/PM specified and hour is <= 6, assume PM for work hours
+              if (!normalizedTime.includes('am') && !normalizedTime.includes('pm') && targetHour <= 6) {
+                targetHour += 12;
+              }
+              
+              // Check if times match
+              return blockHour === targetHour && blockMinute === targetMinute;
+            });
+            
+            if (matchingBlock) {
+              console.log('[Orchestrator] Found matching email block:', matchingBlock.id);
+              params.blockId = matchingBlock.id;
+              // Also pass the date
+              params.date = context.viewingContext?.scheduleDateStr || new Date().toISOString().split('T')[0];
+            } else {
+              console.log('[Orchestrator] No email block found for time:', timeRef);
+              // Still pass the time reference so the workflow can provide a better error
+              params.blockId = timeRef;
+              params.date = context.viewingContext?.scheduleDateStr || new Date().toISOString().split('T')[0];
+            }
           }
         }
       }
