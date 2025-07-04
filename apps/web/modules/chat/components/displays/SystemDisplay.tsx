@@ -422,7 +422,7 @@ const ContextCleared = memo(function ContextCleared({ data, onAction }: ContextC
         <div>
           <h4 className="font-medium">Context Cleared</h4>
           <p className="text-sm text-muted-foreground mt-1">
-            {data.scope === 'all' 
+            {(data as any).scope === 'all' 
               ? 'All conversation context has been cleared. Starting fresh!'
               : 'Conversation context has been cleared.'}
           </p>

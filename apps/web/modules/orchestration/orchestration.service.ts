@@ -13,6 +13,7 @@ import type {
   IntentCacheEntry, 
   RejectionPattern 
 } from './types';
+import { toolRegistry } from '../ai/tools/registry';
 
 /**
  * Intent classification schema for AI SDK generateObject
@@ -44,6 +45,18 @@ export class OrchestrationService {
   private cache: Map<string, IntentCacheEntry> = new Map();
   private readonly cacheMaxSize = 1000;
   private readonly cacheTTL = 5 * 60 * 1000; // 5 minutes
+  
+  /**
+   * Initialize the service and ensure tools are registered
+   */
+  async initialize(): Promise<void> {
+    // Ensure tools are registered
+    if (toolRegistry.listTools().length === 0) {
+      console.log('[OrchestrationService] Registering tools...');
+      await toolRegistry.autoRegister();
+      console.log('[OrchestrationService] Registered tools:', toolRegistry.listTools());
+    }
+  }
   
   /**
    * Classify user intent using AI with context awareness
@@ -114,6 +127,10 @@ Tool examples (use the exact tool name):
 - "Mark task as done" → tools: ["task_completeTask"]
 - "Show my tasks" → tools: ["task_viewTasks"]
 - "Read email from John" → tools: ["email_readEmail"]
+
+System tools (for workflow management):
+- "Get proposal" → tools: ["system_getProposal"]
+- "Confirm proposal" → tools: ["system_confirmProposal"]
 
 Important distinctions:
 - Time blocks (work, break, email, blocked time) → use schedule_createTimeBlock
@@ -593,7 +610,7 @@ Be specific with workflow/tool names when confidence is high.`,
             const isPM = message.toLowerCase().includes('pm');
             const isAM = message.toLowerCase().includes('am');
             
-            let targetHour = parseInt(timeRef);
+            let targetHour = parseInt(timeRef || '0');
             if (isPM && targetHour < 12) targetHour += 12;
             if (isAM && targetHour === 12) targetHour = 0;
             
@@ -736,33 +753,32 @@ Be specific with workflow/tool names when confidence is high.`,
     }
     
     if (classification.category === 'tool' && classification.tools?.length > 0) {
-      // Map tool names to full registered names
-      const toolMap: Record<string, string> = {
-        'viewSchedule': 'schedule_viewSchedule',
-        'createTimeBlock': 'schedule_createTimeBlock',
-        'moveTimeBlock': 'schedule_moveTimeBlock',
-        'deleteTimeBlock': 'schedule_deleteTimeBlock',
-        'fillWorkBlock': 'schedule_fillWorkBlock',
-        'viewTasks': 'task_viewTasks',
-        'createTask': 'task_createTask',
-        'updateTask': 'task_updateTask',
-        'completeTask': 'task_completeTask',
-        'viewEmails': 'email_viewEmails',
-        'readEmail': 'email_readEmail',
-        'processEmail': 'email_processEmail',
-        'scheduleMeeting': 'calendar_scheduleMeeting',
-        'rescheduleMeeting': 'calendar_rescheduleMeeting',
-        'updatePreferences': 'preference_updatePreferences',
-        'confirmProposal': 'system_confirmProposal',
-        'showWorkflowHistory': 'system_showWorkflowHistory',
-        'resumeWorkflow': 'system_resumeWorkflow',
-        'provideFeedback': 'system_provideFeedback',
-        'showPatterns': 'system_showPatterns',
-        'clearContext': 'system_clearContext',
-      };
-      
+      // Use the tool registry to validate and map tool names
       const toolName = classification.tools[0];
-      const mappedName = toolMap[toolName] || toolName;
+      const registeredTools = toolRegistry.listTools();
+      
+      // Try to find the tool in the registry
+      let mappedName = toolName;
+      
+      // If the tool name doesn't have a prefix, try to find it with common prefixes
+      if (!toolName.includes('_')) {
+        const possiblePrefixes = ['schedule', 'task', 'email', 'calendar', 'preference', 'system'];
+        for (const prefix of possiblePrefixes) {
+          const fullName = `${prefix}_${toolName}`;
+          if (registeredTools.includes(fullName)) {
+            mappedName = fullName;
+            console.log(`[Orchestrator] Mapped tool ${toolName} to ${fullName}`);
+            break;
+          }
+        }
+      }
+      
+      // If still not found, check if it's registered as-is
+      if (!registeredTools.includes(mappedName)) {
+        console.warn(`[Orchestrator] Tool ${mappedName} not found in registry. Available tools:`, registeredTools);
+        // Still return it - the AI might handle the error gracefully
+      }
+      
       const params = classification.params || {};
       
       // For schedule tools, add viewing date if needed

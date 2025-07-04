@@ -21,7 +21,7 @@ export const confirmProposal = registerTool(
     },
     execute: async ({ proposalId, userConfirmed, selectedOption }) => {
       // Get the proposal
-      const proposal = proposalStore.get(proposalId);
+      const proposal = proposalStore.getProposal(proposalId);
       
       if (!proposal) {
         return {
@@ -36,7 +36,7 @@ export const confirmProposal = registerTool(
       // Check if user confirmed
       if (!userConfirmed) {
         // Remove the proposal since it was rejected
-        proposalStore.delete(proposalId);
+        proposalStore.clearProposal(proposalId);
         
         console.log(`[Tool: confirmProposal] Proposal ${proposalId} rejected`);
         
@@ -58,7 +58,7 @@ export const confirmProposal = registerTool(
         executed: true,
         workflowType: proposal.workflowType,
         date: proposal.date,
-        blockId: proposal.blockId,
+                  blockId: (proposal.data as any).blockId,
         changes: proposal.data?.changes || [{
           type: 'confirmation',
           description: `Confirmed ${proposal.workflowType} proposal`,

@@ -4,6 +4,7 @@ import { registerTool } from '../base/tool-registry';
 import { type WorkflowScheduleResponse } from '../types/responses';
 import { format, parse, addMinutes, differenceInMinutes, addDays } from 'date-fns';
 import { proposalStore } from '../../utils/proposal-store';
+import { ServiceFactory } from '@/services/factory/service.factory';
 
 // Import our atomic tools
 import { viewSchedule } from '../schedule/viewSchedule';
@@ -11,198 +12,268 @@ import { findGaps } from '../schedule/findGaps';
 import { analyzeUtilization } from '../schedule/analyzeUtilization';
 import { batchCreateBlocks } from '../schedule/batchCreateBlocks';
 
-const parameters = z.object({
-  date: z.string().optional().describe("Date to schedule in YYYY-MM-DD format"),
+const paramsSchema = z.object({
+  date: z.string().optional().describe('Target date for scheduling (YYYY-MM-DD)'),
   preferences: z.object({
-    workStart: z.string().default("09:00"),
-    workEnd: z.string().default("17:00"),
+    workStart: z.string().default('09:00'),
+    workEnd: z.string().default('17:00'),
     lunchDuration: z.number().default(60),
-    breakDuration: z.number().default(15)
-  }).optional(),
-  feedback: z.string().optional().describe("User feedback about schedule adjustments"),
+    breakDuration: z.number().default(15),
+  }).optional().describe('User preferences for schedule generation'),
+  feedback: z.string().optional().describe('User feedback for adjustments'),
   confirmation: z.object({
     approved: z.boolean(),
     proposalId: z.string(),
-    modifiedBlocks: z.array(z.object({
-      type: z.enum(['work', 'meeting', 'email', 'break', 'blocked']),
-      title: z.string(),
-      startTime: z.string(),
-      endTime: z.string(),
-      description: z.string().optional(),
-    })).optional()
-  }).optional().describe("Confirmation of proposed schedule")
+    modifiedBlocks: z.array(z.any()).optional(),
+  }).optional().describe('Confirmation of proposed schedule'),
 });
 
 export const schedule = registerTool(
-  createTool<typeof parameters, WorkflowScheduleResponse>({
+  createTool<typeof paramsSchema, WorkflowScheduleResponse>({
     name: 'workflow_schedule',
-    description: "Multi-step schedule optimization workflow with user confirmation",
-    parameters,
+    description: 'Comprehensive daily planning workflow that analyzes and optimizes your schedule',
+    parameters: paramsSchema,
     metadata: {
       category: 'workflow',
-      displayName: 'Plan My Day',
+      displayName: 'Daily Schedule Planning',
       requiresConfirmation: true,
       supportsStreaming: true,
     },
-    execute: async ({ date, preferences = {}, feedback, confirmation }) => {
+    execute: async (params: z.infer<typeof paramsSchema>): Promise<WorkflowScheduleResponse> => {
+      console.log('[Workflow: Schedule] Starting with params:', params);
+      const factory = ServiceFactory.getInstance();
+      
+      // Ensure we have a valid date - use a default if not provided
+      const defaultDate = new Date().toISOString().split('T')[0];
+      const targetDate = params.date || defaultDate;
+      
       try {
-        // Smart date determination
-        const now = new Date();
-        const currentHour = now.getHours();
-        let targetDate = date;
-        
-        if (!targetDate) {
-          // If it's after 3 PM, assume they mean tomorrow
-          if (currentHour >= 15) {
-            targetDate = format(addDays(now, 1), 'yyyy-MM-dd');
-            console.log('[Schedule Workflow] Evening request detected, planning for tomorrow:', targetDate);
-          } else {
-            targetDate = format(now, 'yyyy-MM-dd');
-          }
-        }
-        
-        // Merge with default preferences
-        const userPrefs = {
-          workStart: "09:00",
-          workEnd: "17:00",
-          lunchDuration: 60,
-          breakDuration: 15,
-          ...preferences
-        };
-        
-        // PHASE 1: ANALYSIS & PROPOSAL (no confirmation provided)
-        if (!confirmation) {
-          console.log('[Schedule Workflow] Phase 1: Analyzing and generating proposals');
+        // Check if this is a confirmation
+        if (params.confirmation) {
+          console.log('[Workflow: Schedule] Processing confirmation:', params.confirmation);
           
-          // Step 1: Get current schedule using atomic tool
-          const currentScheduleResult = await viewSchedule.execute({ date: targetDate });
-          if (!currentScheduleResult.success) {
-            throw new Error('Failed to get current schedule');
+          // Retrieve the proposal
+          const proposalId = params.confirmation.proposalId;
+          if (!proposalId) {
+            return {
+              success: false,
+              error: 'No proposal ID provided for confirmation',
+              phase: 'completed',
+              requiresConfirmation: false,
+              date: targetDate,
+              blocks: [],
+              changes: [],
+              summary: 'Failed to confirm - no proposal ID',
+            };
           }
           
-          // Step 2: Find gaps using atomic tool
-          const gapsResult = await findGaps.execute({
-            date: targetDate,
-            minDuration: 30,
-            between: {
-              start: userPrefs.workStart,
-              end: userPrefs.workEnd
+          const proposal = proposalStore.getProposal(proposalId);
+          if (!proposal) {
+            return {
+              success: false,
+              error: 'Proposal not found or expired',
+              phase: 'completed',
+              requiresConfirmation: false,
+              date: targetDate,
+              blocks: [],
+              changes: [],
+              summary: 'Failed to confirm - proposal not found',
+            };
+          }
+          
+          // Check if approved
+          if (!params.confirmation.approved) {
+            proposalStore.clearProposal(proposalId);
+            return {
+              success: true,
+              phase: 'completed',
+              requiresConfirmation: false,
+              message: 'Schedule proposal cancelled',
+              date: proposal.date,
+              blocks: [],
+              changes: [],
+              summary: 'Schedule proposal cancelled by user',
+            };
+          }
+          
+          // Apply the proposed schedule
+          console.log('[Workflow: Schedule] Applying proposed schedule');
+          const scheduleService = factory.getScheduleService();
+          const changes: Array<{
+            action: string;
+            block: string;
+            reason: string;
+          }> = [];
+          
+          // Apply each block from the proposal
+          for (const block of proposal.data.blocks) {
+            try {
+              // Parse the times to get Date objects
+              const startTime = new Date(block.startTime);
+              const endTime = new Date(block.endTime);
+              
+              await scheduleService.createTimeBlock({
+                date: proposal.date,
+                type: block.type,
+                title: block.title,
+                description: block.description,
+                startTime: startTime.toTimeString().slice(0, 5), // HH:MM format
+                endTime: endTime.toTimeString().slice(0, 5), // HH:MM format
+                metadata: block.metadata,
+              });
+              
+              changes.push({
+                action: 'created',
+                block: block.title,
+                reason: `Created ${block.type} block from ${startTime.toTimeString().slice(0, 5)} to ${endTime.toTimeString().slice(0, 5)}`,
+              });
+            } catch (error) {
+              console.error('[Workflow: Schedule] Failed to create block:', error);
+              changes.push({
+                action: 'create_failed',
+                block: block.title,
+                reason: error instanceof Error ? error.message : 'Unknown error',
+              });
             }
-          });
-          if (!gapsResult.success) {
-            throw new Error('Failed to find schedule gaps');
           }
           
-          // Step 3: Analyze utilization using atomic tool
-          const utilizationResult = await analyzeUtilization.execute({ date: targetDate });
-          if (!utilizationResult.success) {
-            throw new Error('Failed to analyze schedule');
-          }
+          // Clear the proposal after use
+          proposalStore.clearProposal(proposalId);
           
-          // Step 4: Generate block proposals based on analysis
-          const proposals = generateScheduleProposals(
-            currentScheduleResult.blocks,
-            gapsResult.gaps,
-            utilizationResult,
-            userPrefs,
-            feedback
-          );
-          
-          // Store proposal for later confirmation
-          const proposalId = crypto.randomUUID();
-          proposalStore.store(proposalId, 'workflow_schedule', {
-            date: targetDate,
-            blocks: proposals.blocks,
-            changes: proposals.changes,
-            timestamp: new Date()
-          }, { date: targetDate });
-          
-          // Return proposal for user review
           return {
             success: true,
-            phase: 'proposal',
-            requiresConfirmation: true,
-            proposalId,
-            date: targetDate,
-            blocks: proposals.blocks,
-            changes: proposals.changes,
-            summary: proposals.summary,
-            message: "Here's your proposed schedule. Would you like me to create these time blocks?",
-            utilizationBefore: utilizationResult.utilization,
-            utilizationAfter: proposals.estimatedUtilization,
+            phase: 'completed',
+            requiresConfirmation: false,
+            message: 'Schedule has been created successfully',
+            date: proposal.date,
+            blocks: proposal.data.blocks,
+            changes,
+            summary: `Created ${changes.filter(c => c.action === 'created').length} of ${proposal.data.blocks.length} blocks`,
           };
         }
         
-        // PHASE 2: EXECUTION (user confirmed)
-        console.log('[Schedule Workflow] Phase 2: Executing approved schedule');
+        // Get services
+        const scheduleService = factory.getScheduleService();
+        const preferenceService = factory.getPreferenceService();
         
-        // Get the stored proposal
-        const storedProposal = proposalStore.get(confirmation.proposalId);
-        if (!storedProposal) {
-          throw new Error('Proposal not found or expired');
+        // Get user preferences
+        const preferences = await preferenceService.getUserPreferences();
+        const workStart = preferences?.workStartTime || '09:00';
+        const workEnd = preferences?.workEndTime || '17:00';
+        const lunchTime = '12:00'; // Default lunch time
+        const lunchDuration = 60; // Default 60 minutes
+        
+        console.log('[Workflow: Schedule] Planning for date:', targetDate);
+        
+        // Get existing schedule
+        const existingBlocks = await scheduleService.getScheduleForDate(targetDate);
+        
+        // If schedule already exists and is reasonably full, inform user
+        if (existingBlocks.length >= 4) {
+          const totalMinutes = existingBlocks.reduce((sum: number, block: any) => {
+            const duration = (block.endTime.getTime() - block.startTime.getTime()) / (1000 * 60);
+            return sum + duration;
+          }, 0);
+          
+          const utilization = Math.round((totalMinutes / 480) * 100); // Assume 8-hour day
+          
+          return {
+            success: true,
+            phase: 'completed',
+            requiresConfirmation: false,
+            message: `Your schedule for ${targetDate} is already ${utilization}% utilized with ${existingBlocks.length} blocks`,
+            date: targetDate,
+            blocks: existingBlocks.map((block: any) => ({
+              id: block.id,
+              type: block.type,
+              title: block.title,
+              description: block.description || '',
+              startTime: block.startTime.toISOString(),
+              endTime: block.endTime.toISOString(),
+              metadata: block.metadata || {},
+            })),
+            changes: [],
+            summary: `Schedule already ${utilization}% utilized`,
+          };
         }
         
-        const proposal = storedProposal.data;
-        const proposalDate = proposal.date; // Get the date from the proposal
-        
-        console.log('[Schedule Workflow] Using date from proposal:', proposalDate);
-        
-        // Use modified blocks if provided, otherwise use original proposal
-        const blocksToCreate = confirmation.modifiedBlocks || proposal.blocks;
-        
-        // Filter out existing blocks (only create new ones)
-        const existingSchedule = await viewSchedule.execute({ date: proposalDate });
-        const existingBlockIds = new Set(existingSchedule.blocks.map((b: any) => b.id));
-        
-        const newBlocks = blocksToCreate.filter((block: any) => 
-          !block.id || !existingBlockIds.has(block.id)
+        // Generate optimized schedule
+        const proposedBlocks = await generateOptimizedSchedule(
+          targetDate,
+          workStart,
+          workEnd,
+          lunchTime,
+          lunchDuration,
+          existingBlocks
         );
         
-        // Step 5: Create blocks using atomic tool
-        const createResult = await batchCreateBlocks.execute({
-          date: proposalDate,
-          blocks: newBlocks
-        });
+        // Calculate utilization
+        const totalMinutes = proposedBlocks.reduce((sum: number, block: any) => {
+          const start = new Date(block.startTime);
+          const end = new Date(block.endTime);
+          return sum + (end.getTime() - start.getTime()) / (1000 * 60);
+        }, 0);
         
-        if (!createResult.success) {
-          throw new Error('Failed to create time blocks');
-        }
+        const existingMinutes = existingBlocks.reduce((sum: number, block: any) => {
+          return sum + (block.endTime.getTime() - block.startTime.getTime()) / (1000 * 60);
+        }, 0);
         
-        // Step 6: Get final schedule and utilization
-        const finalSchedule = await viewSchedule.execute({ date: proposalDate });
-        const finalUtilization = await analyzeUtilization.execute({ date: proposalDate });
+        const newUtilization = Math.round((totalMinutes / 480) * 100);
+        const oldUtilization = Math.round((existingMinutes / 480) * 100);
         
-        // Clean up proposal
-        proposalStore.delete(confirmation.proposalId);
+        // Count blocks by type
+        const blocksByType = proposedBlocks.reduce((acc: Record<string, number>, block: any) => {
+          acc[block.type] = (acc[block.type] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
         
+        const summary = [];
+        if (blocksByType.work) summary.push(`${blocksByType.work} work block${blocksByType.work > 1 ? 's' : ''}`);
+        if (blocksByType.break) summary.push(`${blocksByType.break} break${blocksByType.break > 1 ? 's' : ''}`);
+        
+        // Save the proposal
+        // Get userId from the service config - for now use a placeholder
+        const userId = 'workflow-user'; // This will be properly set from context
+        const proposalId = proposalStore.saveProposal(
+          userId,
+          'schedule',
+          'workflow_schedule',
+          targetDate,
+          {
+            blocks: proposedBlocks,
+            utilization: newUtilization,
+            summary: summary.join(', '),
+          }
+        );
+        
+        console.log('[Workflow: Schedule] Saved proposal:', proposalId);
+        
+        // Return proposal for review
         return {
           success: true,
-          phase: 'completed',
-          date: proposalDate,
-          blocks: finalSchedule.blocks,
-          changes: [
-            ...proposal.changes,
-            {
-              action: 'executed',
-              block: 'All blocks',
-              reason: `Created ${createResult.totalCreated} blocks, ${createResult.conflicts.length} conflicts`
-            }
-          ],
-          summary: `Successfully created ${createResult.totalCreated} time blocks. Your day is ${finalUtilization.utilization}% scheduled.`,
-          created: createResult.created,
-          conflicts: createResult.conflicts,
+          phase: 'proposal',
+          requiresConfirmation: true,
+          proposalId,
+          message: "Here's your proposed schedule. Would you like me to create these time blocks?",
+          date: targetDate,
+          blocks: proposedBlocks,
+          changes: [],
+          summary: `Proposing ${summary.join(', ')}`,
+          utilizationBefore: oldUtilization,
+          utilizationAfter: newUtilization,
         };
         
       } catch (error) {
-        console.error('[Workflow: schedule] Error:', error);
+        console.error('[Workflow: Schedule] Error:', error);
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to manage schedule',
-          phase: confirmation ? 'execution' : 'proposal',
-          date: date || format(new Date(), 'yyyy-MM-dd'),
+          error: error instanceof Error ? error.message : 'Failed to create schedule',
+          phase: 'completed',
+          requiresConfirmation: false,
+          date: targetDate,
           blocks: [],
           changes: [],
-          summary: 'Failed to manage schedule'
+          summary: 'Failed to create schedule',
         };
       }
     },
@@ -561,4 +632,79 @@ function parseFeedback(feedback: string | undefined, defaults: any): any {
   }
   
   return adjustments;
+}
+
+// Helper function to generate optimized schedule
+async function generateOptimizedSchedule(
+  targetDate: string,
+  workStart: string,
+  workEnd: string,
+  lunchTime: string,
+  lunchDuration: number,
+  existingBlocks: any[]
+): Promise<any[]> {
+  const blocks = [];
+  
+  // Parse work hours
+  const startParts = workStart.split(':');
+  const startHour = parseInt(startParts[0] || '9');
+  const startMin = parseInt(startParts[1] || '0');
+  
+  const endParts = workEnd.split(':');
+  const endHour = parseInt(endParts[0] || '17');
+  const endMin = parseInt(endParts[1] || '0');
+  
+  const lunchParts = lunchTime.split(':');
+  const lunchHour = parseInt(lunchParts[0] || '12');
+  const lunchMin = parseInt(lunchParts[1] || '0');
+  
+  // Create date objects for the target date
+  const date = new Date(targetDate);
+  const workStartTime = new Date(date);
+  workStartTime.setHours(startHour, startMin, 0, 0);
+  
+  const workEndTime = new Date(date);
+  workEndTime.setHours(endHour, endMin, 0, 0);
+  
+  const lunchStartTime = new Date(date);
+  lunchStartTime.setHours(lunchHour, lunchMin, 0, 0);
+  
+  const lunchEndTime = new Date(lunchStartTime);
+  lunchEndTime.setMinutes(lunchEndTime.getMinutes() + lunchDuration);
+  
+  // Morning work block (start to lunch)
+  if (workStartTime < lunchStartTime) {
+    blocks.push({
+      type: 'work',
+      title: 'Morning Focus Block',
+      description: 'Deep work on priority tasks',
+      startTime: workStartTime.toISOString(),
+      endTime: lunchStartTime.toISOString(),
+      metadata: {},
+    });
+  }
+  
+  // Lunch break
+  blocks.push({
+    type: 'break',
+    title: 'Lunch Break',
+    description: 'Recharge with a meal',
+    startTime: lunchStartTime.toISOString(),
+    endTime: lunchEndTime.toISOString(),
+    metadata: {},
+  });
+  
+  // Afternoon work block (after lunch to end)
+  if (lunchEndTime < workEndTime) {
+    blocks.push({
+      type: 'work',
+      title: 'Afternoon Work Block',
+      description: 'Collaborative work and meetings',
+      startTime: lunchEndTime.toISOString(),
+      endTime: workEndTime.toISOString(),
+      metadata: {},
+    });
+  }
+  
+  return blocks;
 } 

@@ -50,13 +50,13 @@ function getUserWorkHours(): string {
 }
 
 // System prompts for different routing paths
-const workflowSystemPrompt = (workflowName: string, intent: UserIntent, viewingDate?: string) => `You are dayli, an AI executive assistant executing the ${workflowName} workflow.
+const workflowSystemPrompt = (workflowName: string, intent: UserIntent, userId: string) => `You are dayli, an AI executive assistant executing the ${workflowName} workflow.
 
 CONTEXT:
 - Current time: ${getCurrentTime()}
 - Day of week: ${getDayOfWeek()}
 - User's typical work hours: ${getUserWorkHours()}
-${viewingDate ? `- User is viewing schedule for: ${viewingDate}` : ''}
+- User ID: ${userId}
 
 WORKFLOW EXECUTION:
 - Executing: ${workflowName}
@@ -71,28 +71,48 @@ The user is trying to approve a proposal. You need to:
 2. Then call the ${workflowName} workflow with the confirmation parameter including the proposalId
 
 Example:
-- First: system_getProposal with workflowType="${workflowName}" and date="${intent.suggestedHandler.params?.date || viewingDate || 'today'}"
+- First: system_getProposal with workflowType="${workflowName}" and date="${intent.suggestedHandler.params?.date || 'today'}" and userId="${userId}"
 - Then: ${workflowName} with confirmation: { approved: true, proposalId: <from getProposal result> }
+
+IMPORTANT: Always include userId="${userId}" when calling system_getProposal.
 ` : `This workflow will analyze and optimize based on the user's request.
 
-${workflowName === 'workflow_schedule' ? `
-IMPORTANT: ${viewingDate ? `The user is viewing the schedule for ${viewingDate}. Use date="${viewingDate}" when calling the workflow unless they explicitly mention a different date.` : 'If no date is specified, the workflow will determine the appropriate date.'}
+${workflowName === 'workflow_schedule' && intent.suggestedHandler.params?.date ? `
+IMPORTANT: The user is viewing the schedule for ${intent.suggestedHandler.params.date}.
+Call the workflow with date="${intent.suggestedHandler.params.date}" to plan that specific day.
 ` : ''}`}
 
-CRITICAL WORKFLOW RULES:
-1. Let the workflow tool display its results - DO NOT describe what was created
-2. After a workflow completes (phase: 'completed'), the UI shows everything - no need to repeat
-3. For completed workflows, just provide a brief acknowledgment like "Done!" or "All set!"
-4. NEVER ask for additional confirmation after a workflow shows phase: 'completed'
-5. The workflow UI already shows all blocks, changes, and summaries - don't repeat them`;
+CRITICAL RULES - YOU MUST FOLLOW THESE:
+1. DO NOT describe what the workflow results show
+2. DO NOT list items from the workflow results  
+3. DO NOT reformat or summarize workflow data
+4. DO NOT say things like "I've optimized your schedule by..." followed by details
+5. The workflow results will be displayed with rich UI components automatically
+6. Your ONLY job is to execute the workflow - the UI handles all display
+7. Keep your response to 1-2 sentences MAX introducing the workflow execution
+8. NEVER write out proposals, changes, or recommendations - the UI shows these
+${intent.suggestedHandler.params && Object.keys(intent.suggestedHandler.params).length > 0 ? '9. Use the provided parameters when calling the workflow' : ''}
+10. When calling system_getProposal, always include userId="${userId}"
 
-const toolSystemPrompt = (toolName: string | undefined, intent: UserIntent, viewingDate?: string) => `You are dayli, an AI executive assistant executing specific tool operations.
+GOOD EXAMPLES:
+- "I'm optimizing your schedule." [workflow displays results]
+- "Processing your email triage." [workflow displays results]
+- "Analyzing your calendar." [workflow displays results]
+
+BAD EXAMPLES (NEVER DO THIS):
+- "I've moved your meeting from 2pm to 3pm..." ❌
+- "Here are the emails to process: 1. From Sarah..." ❌
+- "I recommend the following changes..." ❌
+
+Remember: The workflow UI is sophisticated and will show all the details. You don't need to describe anything.`;
+
+const toolSystemPrompt = (toolName: string | undefined, intent: UserIntent) => `You are dayli, an AI executive assistant executing specific tool operations.
 
 CONTEXT:
 - Current time: ${getCurrentTime()}
 - Day of week: ${getDayOfWeek()}
 - User's typical work hours: ${getUserWorkHours()}
-${viewingDate ? `- User is viewing schedule for: ${viewingDate}` : ''}
+
 
 TOOL EXECUTION:
 - The user's request has been classified as needing ${toolName ? `the ${toolName} tool` : 'specific tools'}
@@ -100,9 +120,7 @@ TOOL EXECUTION:
 - Confidence: ${(intent.confidence * 100).toFixed(0)}%
 ${intent.suggestedHandler.params ? `- Suggested parameters: ${JSON.stringify(intent.suggestedHandler.params)}` : ''}
 
-${toolName && toolName.includes('schedule_') && viewingDate ? `
-IMPORTANT: The user is viewing the schedule for ${viewingDate}. Use date="${viewingDate}" when calling schedule tools unless they explicitly mention a different date.
-` : ''}
+
 
 Execute the requested operation and present the results clearly.
 
@@ -380,6 +398,9 @@ export async function POST(req: Request) {
       await toolRegistry.autoRegister();
       console.log('[Chat API] Registered tools:', toolRegistry.listTools());
     }
+    
+    // Initialize orchestrator to ensure it has access to registered tools
+    await orchestrator.initialize();
 
     // Build orchestration context with viewing date
     console.log('[Orchestration] Building context...');
@@ -448,8 +469,7 @@ export async function POST(req: Request) {
             messages,
             intent,
             user.id,
-            headers,
-            viewingDate
+            headers
           );
           
         case 'tool':
@@ -457,8 +477,7 @@ export async function POST(req: Request) {
             messages,
             intent,
             user.id,
-            headers,
-            viewingDate
+            headers
           );
           
         case 'direct':
@@ -504,8 +523,7 @@ async function handleWorkflowRequest(
   messages: Message[],
   intent: UserIntent,
   userId: string,
-  headers: Record<string, string>,
-  viewingDate?: string
+  headers: Record<string, string>
 ) {
   const workflowName = intent.suggestedHandler.name || 'unknown';
   
@@ -531,7 +549,7 @@ async function handleWorkflowRequest(
     model: openai('gpt-4-turbo'),
     messages: enhancedMessages,
     tools: { [workflowName]: workflowTool },
-    system: workflowSystemPrompt(workflowName, intent, viewingDate),
+    system: workflowSystemPrompt(workflowName, intent, userId),
     temperature: 0.7,
     maxSteps: 1, // Workflow is a single tool call
     experimental_toolCallStreaming: true,
@@ -555,8 +573,7 @@ async function handleToolRequest(
   messages: Message[],
   intent: UserIntent,
   userId: string,
-  headers: Record<string, string>,
-  viewingDate?: string
+  headers: Record<string, string>
 ) {
   // Get specific tools needed
   let tools;
@@ -578,7 +595,7 @@ async function handleToolRequest(
     model: openai('gpt-4-turbo'),
     messages,
     tools,
-    system: toolSystemPrompt(intent.suggestedHandler.name, intent, viewingDate),
+    system: toolSystemPrompt(intent.suggestedHandler.name, intent),
     temperature: 0.7,
     maxSteps: 5, // Allow multiple tool calls if needed
     experimental_toolCallStreaming: true,

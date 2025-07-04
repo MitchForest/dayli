@@ -17,6 +17,7 @@ interface ProposalDisplayProps {
     error?: string;
     phase: 'proposal' | 'completed';
     requiresConfirmation: boolean;
+    proposalId?: string;
     proposals?: any;
     changes?: any[];
     message?: string;
@@ -30,6 +31,9 @@ interface ProposalDisplayProps {
     urgent?: any[];
     batched?: any[];
     toArchive?: string[];
+    stats?: any;
+    processed?: number;
+    archived?: number;
   };
   onAction?: (action: { type: string; payload?: any }) => void;
 }
@@ -115,7 +119,7 @@ export const ProposalDisplay = memo(function ProposalDisplay({
               type: 'approve_proposal', 
               payload: { 
                 workflowType,
-                proposalId: (data as any).proposalId || data.proposals?.id,
+                proposalId: data.proposalId || (data as any).proposalId || data.proposals?.id,
                 date: data.date,
                 blockId: data.blockId
               } 
@@ -131,7 +135,7 @@ export const ProposalDisplay = memo(function ProposalDisplay({
               type: 'modify_proposal', 
               payload: { 
                 workflowType,
-                proposalId: data.proposals?.id
+                proposalId: data.proposalId || (data as any).proposalId || data.proposals?.id
               } 
             })}
           >

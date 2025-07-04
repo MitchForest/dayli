@@ -99,13 +99,15 @@ export const fillWorkBlock = registerTool(
           
           // Step 3: Get task suggestions for duration using atomic tool
           const suggestionsResult = await suggestForDuration.execute({
-            availableMinutes: blockDuration,
-            blockTime: blockTime || 'morning',
-            maxTasks: 5
+            duration: blockDuration,
+            strategy: 'mixed'
           });
-          if (!suggestionsResult.success) {
+          if (!suggestionsResult.success || !suggestionsResult.suggestions.length) {
             throw new Error('Failed to get task suggestions');
           }
+          
+          // Get the best suggestion (first one, as they're sorted by score)
+          const bestSuggestion = suggestionsResult.suggestions[0];
           
           // Store proposal for later confirmation
           const proposalId = crypto.randomUUID();
@@ -113,7 +115,7 @@ export const fillWorkBlock = registerTool(
             blockId: block.id,
             blockTitle: block.title,
             blockDuration,
-            tasks: suggestionsResult.combination,
+            tasks: bestSuggestion.combination,
             timestamp: new Date()
           });
           
@@ -126,13 +128,13 @@ export const fillWorkBlock = registerTool(
             blockId: block.id,
             blockTitle: block.title,
             proposals: {
-              combination: suggestionsResult.combination,
-              totalMinutes: suggestionsResult.totalMinutes,
-              totalScore: suggestionsResult.totalScore,
-              reasoning: suggestionsResult.reasoning
+              combination: bestSuggestion.combination,
+              totalMinutes: bestSuggestion.totalMinutes,
+              totalScore: bestSuggestion.totalScore,
+              reasoning: bestSuggestion.reasoning
             },
-            message: `Here are ${suggestionsResult.combination.length} tasks totaling ${suggestionsResult.totalMinutes} minutes for your ${block.title}. Would you like to assign these?`,
-            summary: `Proposed ${suggestionsResult.combination.length} tasks for ${blockDuration}-minute block`
+            message: `Here are ${bestSuggestion.combination.length} tasks totaling ${bestSuggestion.totalMinutes} minutes for your ${block.title}. Would you like to assign these?`,
+            summary: `Proposed ${bestSuggestion.combination.length} tasks for ${blockDuration}-minute block`
           };
         }
         

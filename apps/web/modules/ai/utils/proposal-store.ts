@@ -1,210 +1,184 @@
-import { z } from 'zod';
+/**
+ * Proposal Store
+ * 
+ * Manages workflow proposals between chat messages to maintain context
+ */
+
 import { v4 as uuidv4 } from 'uuid';
 
-// Schema for a proposal
-const proposalSchema = z.object({
-  id: z.string(),
-  type: z.string(),
-  description: z.string(),
-  data: z.any(),
-  createdAt: z.date(),
-  expiresAt: z.date(),
-  metadata: z.record(z.any()).optional(),
-});
-
-export type Proposal = z.infer<typeof proposalSchema>;
-
-interface ProposalStoreOptions {
-  ttlMinutes?: number; // Time to live in minutes
-  maxSize?: number; // Maximum number of proposals to store
-}
-
-interface StoredProposal {
-  proposalId: string;
+export interface Proposal {
+  id: string;
+  type: 'schedule' | 'tasks' | 'emails';
   workflowType: string;
-  date?: string;
-  blockId?: string;
+  date: string;
   data: any;
-  timestamp: Date;
-  userId?: string;
+  createdAt: Date;
+  expiresAt: Date;
+  userId: string;
 }
 
-export class ProposalStore {
-  private static instance: ProposalStore;
-  private proposals = new Map<string, StoredProposal>();
-  private proposalsByKey = new Map<string, string>(); // composite key -> proposalId
-  private cleanupInterval?: NodeJS.Timeout;
-  private options: Required<ProposalStoreOptions>;
-  
-  static getInstance(): ProposalStore {
-    if (!ProposalStore.instance) {
-      ProposalStore.instance = new ProposalStore();
-    }
-    return ProposalStore.instance;
-  }
-  
-  constructor(options: ProposalStoreOptions = {}) {
-    this.options = {
-      ttlMinutes: options.ttlMinutes ?? 5, // 5 minutes default
-      maxSize: options.maxSize ?? 100, // 100 proposals max
-    };
-    
-    // Start cleanup routine
-    this.startCleanupRoutine();
-  }
-  
+class ProposalStore {
+  private proposals: Map<string, Proposal> = new Map();
+  private readonly TTL_MINUTES = 10; // Proposals expire after 10 minutes
+
   /**
-   * Store a proposal
+   * Save a new proposal
    */
-  store(
-    proposalId: string,
+  saveProposal(
+    userId: string,
+    type: 'schedule' | 'tasks' | 'emails',
     workflowType: string,
-    data: any,
-    metadata?: { date?: string; blockId?: string; userId?: string }
-  ): void {
-    const proposal: StoredProposal = {
-      proposalId,
+    date: string,
+    data: any
+  ): string {
+    // Clear expired proposals first
+    this.clearExpired();
+
+    const id = uuidv4();
+    const now = new Date();
+    const proposal: Proposal = {
+      id,
+      type,
       workflowType,
-      date: metadata?.date,
-      blockId: metadata?.blockId,
+      date,
       data,
-      timestamp: new Date(),
-      userId: metadata?.userId
+      userId,
+      createdAt: now,
+      expiresAt: new Date(now.getTime() + this.TTL_MINUTES * 60 * 1000),
     };
+
+    this.proposals.set(id, proposal);
+    console.log('[ProposalStore] Saved proposal:', { id, type, date, workflowType });
     
-    this.proposals.set(proposalId, proposal);
+    return id;
+  }
+
+  /**
+   * Get a proposal by ID
+   */
+  getProposal(id: string): Proposal | null {
+    this.clearExpired();
+    const proposal = this.proposals.get(id);
     
-    // Create composite keys for easier lookup
-    if (metadata?.date) {
-      const dateKey = `${workflowType}:${metadata.date}`;
-      this.proposalsByKey.set(dateKey, proposalId);
+    if (!proposal) {
+      console.log('[ProposalStore] Proposal not found:', id);
+      return null;
     }
-    
-    if (metadata?.blockId) {
-      const blockKey = `${workflowType}:block:${metadata.blockId}`;
-      this.proposalsByKey.set(blockKey, proposalId);
-    }
-    
-    // Clean up old proposals (older than 10 minutes)
-    this.cleanup();
+
+    return proposal;
   }
-  
+
   /**
-   * Retrieve a proposal by ID
+   * Get the latest proposal for a workflow type and optional date
    */
-  get(proposalId: string): StoredProposal | null {
-    return this.proposals.get(proposalId) || null;
-  }
-  
-  /**
-   * Find a proposal by workflow and date
-   */
-  findByWorkflowAndDate(workflowType: string, date: string): StoredProposal | null {
-    const key = `${workflowType}:${date}`;
-    const proposalId = this.proposalsByKey.get(key);
-    return proposalId ? this.get(proposalId) : null;
-  }
-  
-  /**
-   * Find a proposal by workflow and block
-   */
-  findByWorkflowAndBlock(workflowType: string, blockId: string): StoredProposal | null {
-    const key = `${workflowType}:block:${blockId}`;
-    const proposalId = this.proposalsByKey.get(key);
-    return proposalId ? this.get(proposalId) : null;
-  }
-  
-  /**
-   * Get the latest proposal by workflow
-   */
-  getLatestByWorkflow(workflowType: string): StoredProposal | null {
-    let latest: StoredProposal | null = null;
-    
+  getLatestProposal(
+    userId: string,
+    workflowType: string,
+    date?: string
+  ): Proposal | null {
+    this.clearExpired();
+
+    let latestProposal: Proposal | null = null;
+    let latestTime = 0;
+
     for (const proposal of this.proposals.values()) {
-      if (proposal.workflowType === workflowType) {
-        if (!latest || proposal.timestamp > latest.timestamp) {
-          latest = proposal;
+      // Match user, workflow type, and optionally date
+      if (proposal.userId === userId && 
+          proposal.workflowType === workflowType &&
+          (!date || proposal.date === date)) {
+        const proposalTime = proposal.createdAt.getTime();
+        if (proposalTime > latestTime) {
+          latestTime = proposalTime;
+          latestProposal = proposal;
         }
       }
     }
+
+    if (latestProposal) {
+      console.log('[ProposalStore] Found latest proposal:', {
+        id: latestProposal.id,
+        type: latestProposal.type,
+        date: latestProposal.date
+      });
+    } else {
+      console.log('[ProposalStore] No proposal found for:', { userId, workflowType, date });
+    }
+
+    return latestProposal;
+  }
+
+  /**
+   * Get recent proposals for a user
+   */
+  getRecentProposals(userId: string, limit: number = 5): Proposal[] {
+    this.clearExpired();
+
+    const userProposals = Array.from(this.proposals.values())
+      .filter(p => p.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+
+    return userProposals;
+  }
+
+  /**
+   * Clear a specific proposal
+   */
+  clearProposal(id: string): void {
+    this.proposals.delete(id);
+    console.log('[ProposalStore] Cleared proposal:', id);
+  }
+
+  /**
+   * Clear expired proposals
+   */
+  private clearExpired(): void {
+    const now = new Date();
+    let cleared = 0;
+
+    for (const [id, proposal] of this.proposals.entries()) {
+      if (proposal.expiresAt < now) {
+        this.proposals.delete(id);
+        cleared++;
+      }
+    }
+
+    if (cleared > 0) {
+      console.log('[ProposalStore] Cleared expired proposals:', cleared);
+    }
+  }
+
+  /**
+   * Clear all proposals for a user
+   */
+  clearUserProposals(userId: string): void {
+    let cleared = 0;
+    for (const [id, proposal] of this.proposals.entries()) {
+      if (proposal.userId === userId) {
+        this.proposals.delete(id);
+        cleared++;
+      }
+    }
+    console.log('[ProposalStore] Cleared user proposals:', { userId, count: cleared });
+  }
+
+  /**
+   * Get store stats
+   */
+  getStats(): { total: number; byType: Record<string, number> } {
+    this.clearExpired();
     
-    return latest;
-  }
-  
-  /**
-   * Delete a proposal
-   */
-  delete(proposalId: string): void {
-    const proposal = this.proposals.get(proposalId);
-    if (proposal) {
-      this.proposals.delete(proposalId);
-      
-      // Remove composite keys
-      if (proposal.date) {
-        const dateKey = `${proposal.workflowType}:${proposal.date}`;
-        this.proposalsByKey.delete(dateKey);
-      }
-      
-      if (proposal.blockId) {
-        const blockKey = `${proposal.workflowType}:block:${proposal.blockId}`;
-        this.proposalsByKey.delete(blockKey);
-      }
+    const byType: Record<string, number> = {};
+    for (const proposal of this.proposals.values()) {
+      byType[proposal.type] = (byType[proposal.type] || 0) + 1;
     }
-  }
-  
-  /**
-   * Clean up expired proposals
-   */
-  private cleanup(): void {
-    const now = Date.now();
-    const maxAge = 10 * 60 * 1000; // 10 minutes
-    
-    for (const [proposalId, proposal] of this.proposals.entries()) {
-      if (now - proposal.timestamp.getTime() > maxAge) {
-        this.delete(proposalId);
-      }
-    }
-  }
-  
-  /**
-   * Clear all proposals
-   */
-  clear(): void {
-    this.proposals.clear();
-    this.proposalsByKey.clear();
-  }
-  
-  /**
-   * Start automatic cleanup routine
-   */
-  private startCleanupRoutine(): void {
-    // Run cleanup every minute
-    this.cleanupInterval = setInterval(() => {
-      this.cleanup();
-    }, 60 * 1000); // 1 minute
-  }
-  
-  /**
-   * Stop cleanup routine
-   */
-  stopCleanupRoutine(): void {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = undefined;
-    }
-  }
-  
-  /**
-   * Destroy the store and clean up resources
-   */
-  destroy(): void {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = undefined;
-    }
-    this.clear();
+
+    return {
+      total: this.proposals.size,
+      byType,
+    };
   }
 }
 
 // Export singleton instance
-export const proposalStore = ProposalStore.getInstance(); 
+export const proposalStore = new ProposalStore(); 

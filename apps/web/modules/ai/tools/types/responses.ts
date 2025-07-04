@@ -402,10 +402,10 @@ export interface OptimizeCalendarResponse extends BaseToolResponse {
 
 // System tool responses
 export interface ConfirmProposalResponse extends BaseToolResponse {
-  proposalId: string;
   executed: boolean;
-  changes: Array<{
-    type: string;
+  proposalId?: string;
+  changes?: Array<{
+    action: string;
     description: string;
     result: 'success' | 'failed';
   }>;
@@ -443,8 +443,8 @@ export interface ShowPatternsResponse extends BaseToolResponse {
 }
 
 export interface ClearContextResponse extends BaseToolResponse {
-  cleared: boolean;
-  scope: 'conversation' | 'all';
+  message?: string;
+  clearedCount?: number;
 }
 
 export interface ViewTasksResponse extends BaseToolResponse {
@@ -590,4 +590,13 @@ export interface CreateTaskFromEmailResponse extends BaseToolResponse {
     source: 'email';
     emailId: string;
   };
+}
+
+export interface GetProposalResponse extends BaseToolResponse {
+  proposalId?: string;
+  type?: 'schedule' | 'tasks' | 'emails';
+  workflowType?: string;
+  date?: string;
+  data?: any;
+  createdAt?: string;
 }

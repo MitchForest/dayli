@@ -87,11 +87,23 @@ export class ToolRegistry {
       
       // Register system tools
       const systemTools = await import('./system');
-      Object.entries(systemTools).forEach(([name, tool]) => {
-        if (tool && typeof tool === 'object' && 'execute' in tool) {
-          this.register(`system_${name}`, tool as CoreTool<any, any>);
-        }
-      });
+      const {
+        confirmProposal,
+        showWorkflowHistory,
+        resumeWorkflow,
+        provideFeedback,
+        showPatterns,
+        clearContext,
+        getProposal,
+      } = await systemTools;
+      
+             this.register(confirmProposal.name, confirmProposal);
+       this.register(showWorkflowHistory.name, showWorkflowHistory);
+       this.register(resumeWorkflow.name, resumeWorkflow);
+       this.register(provideFeedback.name, provideFeedback);
+       this.register(showPatterns.name, showPatterns);
+       this.register(clearContext.name, clearContext);
+       this.register(getProposal.name, getProposal);
       
       console.log(`[ToolRegistry] Auto-registration complete. Total tools: ${this.tools.size}`);
     } catch (error) {

@@ -1,67 +1,71 @@
-import { z } from 'zod';
-import { createTool } from '../base/tool-factory';
-import { registerTool } from '../base/tool-registry';
-import { proposalStore } from '../../utils/proposal-store';
+/**
+ * Get Proposal Tool
+ * 
+ * Retrieves a stored proposal by ID or finds the latest proposal for a workflow
+ */
 
-const parameters = z.object({
-  workflowType: z.string().describe('The workflow type (e.g., "workflow_schedule")'),
-  date: z.string().optional().describe('The date associated with the proposal (YYYY-MM-DD)'),
-  blockId: z.string().optional().describe('The block ID associated with the proposal'),
+import { z } from 'zod';
+import { proposalStore } from '../../utils/proposal-store';
+import type { GetProposalResponse } from '../types/responses';
+
+const paramsSchema = z.object({
+  proposalId: z.string().optional().describe('Specific proposal ID to retrieve'),
+  workflowType: z.string().describe('Type of workflow (e.g., workflow_schedule)'),
+  date: z.string().optional().describe('Optional date to filter by (YYYY-MM-DD)'),
+  userId: z.string().describe('User ID to retrieve proposal for'),
 });
 
-export const getProposal = registerTool(
-  createTool<typeof parameters, any>({
-    name: 'system_getProposal',
-    description: 'Retrieve a stored proposal for a workflow. Use this when the user wants to approve, modify, or cancel a proposal.',
-    parameters,
-    metadata: {
-      category: 'system',
-      displayName: 'Get Proposal',
-      requiresConfirmation: false,
-      supportsStreaming: false,
-    },
-    execute: async ({ workflowType, date, blockId }) => {
-      try {
-        let proposal = null;
-        
-        // Try to find by date first
-        if (date) {
-          proposal = proposalStore.findByWorkflowAndDate(workflowType, date);
-        }
-        
-        // If not found by date, try by block
-        if (!proposal && blockId) {
-          proposal = proposalStore.findByWorkflowAndBlock(workflowType, blockId);
-        }
-        
-        // If still not found, get the latest
-        if (!proposal) {
-          proposal = proposalStore.getLatestByWorkflow(workflowType);
-        }
-        
-        if (!proposal) {
-          return {
-            success: false,
-            error: `No proposal found for ${workflowType}`,
-          };
-        }
-        
-        return {
-          success: true,
-          proposalId: proposal.proposalId,
-          workflowType: proposal.workflowType,
-          date: proposal.date,
-          blockId: proposal.blockId,
-          timestamp: proposal.timestamp,
-          // Don't return the full data, just the metadata
-        };
-      } catch (error) {
-        console.error('[Tool: getProposal] Error:', error);
+export const getProposal = {
+  name: 'system_getProposal',
+  description: 'Retrieve a stored workflow proposal by ID or find the latest proposal for a workflow type',
+  parameters: paramsSchema,
+  execute: async (params: z.infer<typeof paramsSchema>): Promise<GetProposalResponse> => {
+    console.log('[GetProposal] Retrieving proposal:', params);
+    
+    try {
+      let proposal = null;
+      
+      if (params.proposalId) {
+        // Get specific proposal by ID
+        proposal = proposalStore.getProposal(params.proposalId);
+      } else {
+        // Get latest proposal for workflow type
+        proposal = proposalStore.getLatestProposal(
+          params.userId,
+          params.workflowType,
+          params.date
+        );
+      }
+      
+      if (!proposal) {
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to retrieve proposal',
+          error: 'No proposal found matching the criteria',
         };
       }
-    },
-  })
-); 
+      
+      console.log('[GetProposal] Found proposal:', {
+        id: proposal.id,
+        type: proposal.type,
+        date: proposal.date,
+      });
+      
+      return {
+        success: true,
+        proposalId: proposal.id,
+        type: proposal.type,
+        workflowType: proposal.workflowType,
+        date: proposal.date,
+        data: proposal.data,
+        createdAt: proposal.createdAt.toISOString(),
+      };
+      
+    } catch (error) {
+      console.error('[GetProposal] Error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to retrieve proposal',
+      };
+    }
+  },
+}; 
